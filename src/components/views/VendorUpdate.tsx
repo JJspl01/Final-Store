@@ -91,7 +91,7 @@ export default () => {
                     uom: sheet.uom,
                     rate: sheet.approvedRate || 0,
                     vendorType: sheet.vendorType as HistoryData['vendorType'],
-                    lastUpdated: sheet.lastUpdated,
+                    // lastUpdated: sheet.lastUpdated,
                 }))
                 // Sort by indentNo in descending order (newest first)
                 .sort((a, b) => {
@@ -373,7 +373,7 @@ export default () => {
             ? [
                 {
                     id: 'editActions',
-                    cell: ({ row }) => {
+                    cell: ({ row }: { row: Row<HistoryData> }) => {
                         const isEditing = editingRow === row.original.indentNo;
                         return isEditing ? (
                             <div className="flex gap-2">

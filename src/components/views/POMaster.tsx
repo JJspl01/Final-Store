@@ -77,7 +77,7 @@ export default () => {
             console.log('DEBUG: GST related properties:');
             Object.keys(firstRow).forEach(key => {
                 if (key.toLowerCase().includes('gst')) {
-                    console.log(`  ${key}: ${firstRow[key]}`);
+                    // console.log(`  ${key}: ${firstRow[key]}`);
                 }
             });
         }
