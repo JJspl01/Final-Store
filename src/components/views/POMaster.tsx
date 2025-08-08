@@ -89,7 +89,7 @@ export default () => {
             setTableData(
                 poMasterSheet
                     // Filter for pending POs - adjust this condition based on your pending criteria
-                    .filter((sheet) => {
+                    .filter(() => {
                         // Example: You can add filtering logic here if needed
                         // For now, showing all records
                         return true;

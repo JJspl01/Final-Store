@@ -95,8 +95,8 @@ export type InventorySheet = {
 
 
 export type PoMasterSheet = {
-    discountPercent(discountPercent: any): number;
-    gstPercent(gstPercent: any): number;
+    discountPercent: number;
+    gstPercent: number;
     timestamp: string;
     partyName: string;
     poNumber: string;
@@ -127,6 +127,7 @@ export type PoMasterSheet = {
     term8: string;
     term9: string;
     term10: string;
+
 };
 
 export type Vendor = {

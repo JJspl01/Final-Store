@@ -1473,7 +1473,7 @@ export default () => {
             });
 
             const pdfProps: POPdfProps = {
-                companyLogo: logoBase64,
+                // companyLogo: logoBase64,
                 companyName: details?.companyName || '',
                 companyPhone: details?.companyPhone || '',
                 companyGstin: details?.companyGstin || '',
@@ -1596,6 +1596,8 @@ export default () => {
                     term8: values.terms[7],
                     term9: values.terms[8],
                     term10: values.terms[9],
+                    discountPercent: v.discount || 0, // Add this
+                    gstPercent: v.gst, // Add this
                 };
             });
 

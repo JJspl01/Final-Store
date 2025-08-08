@@ -113,7 +113,7 @@ export default () => {
                     specifications: sheet.specifications || '',
                     date: formatDate(new Date(sheet.timestamp)),
                     approvedDate: formatDate(new Date(sheet.actual1)),
-                    lastUpdated: sheet.lastUpdated,
+                    // lastUpdated: sheet.lastUpdated,
                 }))
                 // Sort by indentNo in descending order (newest first)
                 .sort((a, b) => {
@@ -244,7 +244,7 @@ export default () => {
         {
             accessorKey: 'vendorType',
             header: 'Status',
-            cell: ({ row }) => {
+            cell: ({ row }: { row: Row<ApproveTableData> }) => {
                 const status = row.original.vendorType;
                 return <Pill variant="pending">{status}</Pill>;
             },
@@ -252,7 +252,7 @@ export default () => {
         {
             accessorKey: 'attachment',
             header: 'Attachment',
-            cell: ({ row }) => {
+            cell: ({ row }: { row: Row<ApproveTableData> }) => {
                 const attachment = row.original.attachment;
                 return attachment ? (
                     <a href={attachment} target="_blank">
@@ -397,7 +397,7 @@ export default () => {
             ? [
                 {
                     id: 'editActions',
-                    cell: ({ row }) => {
+                    cell: ({ row }: { row: Row<HistoryData> }) => {
                         const isEditing = editingRow === row.original.indentNo;
                         return isEditing ? (
                             <div className="flex gap-2">
