@@ -54,6 +54,19 @@ export type IndentSheet = {
     issueApprovedBy: string;
     issueStatus: string;
     issuedQuantity: number;
+    planned7: string;
+    actual7: string;
+    timeDelay7: string;
+    billStatus: string;
+    billNumber: string;
+    qty: number;
+    leadTimeToLiftMaterial: string;
+    typeOfBill: string;
+    billAmount: number;
+    discountAmount: number;
+    paymentType: string;
+    advanceAmountIfAny: number;
+    photoOfBill: string;
 };
 
 export type ReceivedSheet = {
@@ -174,6 +187,7 @@ export type UserPermissions = {
     pendingIndentsView: boolean;
     ordersView: boolean;
     poMaster: boolean;
+    getPurchase: boolean;
 };
 
 export const allPermissionKeys = [

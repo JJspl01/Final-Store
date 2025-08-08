@@ -15,6 +15,7 @@ import VendorUpdate from './components/views/VendorUpdate';
 import RateApproval from './components/views/RateApproval';
 import ReceiveItems from './components/views/ReceiveItems';
 import StoreOutApproval from './components/views/StoreOutApproval';
+import GetPurchase from './components/views/getPurchase';
 import type { RouteAttributes } from './types';
 import {
     LayoutDashboard,
@@ -154,6 +155,14 @@ const routes: RouteAttributes[] = [
         name: 'PO History',
         icon: <Package2 size={20} />,
         element: <Order />,
+        notifications: () => 0,
+    },
+    {
+        path: 'get-purchase',
+        gateKey: 'ordersView',
+        name: 'Get Purchase',
+        icon: <Package2 size={20} />,
+        element: <GetPurchase />,
         notifications: () => 0,
     },
     {

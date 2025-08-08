@@ -12,7 +12,7 @@ import {
 import { useAuth } from '@/context/AuthContext';
 import { useSheets } from '@/context/SheetsContext';
 import type { RouteAttributes } from '@/types';
-import { LogOut, RotateCw } from 'lucide-react';
+import { LogOut, RotateCw, ShoppingCart } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import Logo from './Logo';
@@ -22,6 +22,11 @@ export default ({ items }: { items: RouteAttributes[] }) => {
     const navigate = useNavigate();
     const { indentSheet, updateAll, allLoading } = useSheets();
     const { user, logout } = useAuth();
+
+    // Add Get Purchase item to the existing items
+    const allItems = [
+        ...items,
+    ];
 
     return (
         <Sidebar side="left" variant="inset" collapsible="offcanvas">
@@ -57,7 +62,7 @@ export default ({ items }: { items: RouteAttributes[] }) => {
             <SidebarContent className="py-1 border-b-1">
                 <SidebarGroup>
                     <SidebarMenu>
-                        {items
+                        {allItems
                             .filter((item) =>
                                 item.gateKey ? user[item.gateKey] !== 'No Access' : true
                             )
@@ -66,7 +71,7 @@ export default ({ items }: { items: RouteAttributes[] }) => {
                                     <SidebarMenuButton
                                         className="transition-colors duration-200 rounded-md py-5 flex justify-between font-medium text-secondary-foreground"
                                         onClick={() => navigate(item.path)}
-                                        isActive={location.pathname.slice(1) === item.path}
+                                        isActive={window.location.pathname.slice(1) === item.path}
                                     >
                                         {' '}
                                         <div className="flex gap-2 items-center">
