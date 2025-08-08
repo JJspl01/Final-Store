@@ -97,12 +97,12 @@ export default () => {
                     .map((sheet) => {
                         // Try different possible property names for GST
                         let gstValue = sheet.gstPercent ||
-                            sheet['GST%'] ||
-                            sheet['GST %'] ||
+                            // sheet['GST%'] ||
+                            // sheet['GST %'] ||
                             sheet.gst ||
-                            sheet.GST ||
-                            sheet['gst%'] ||
-                            sheet['gst %'] ||
+                            // sheet.GST ||
+                            // sheet['gst%'] ||
+                            // sheet['gst %'] ||
                             0;
 
                         console.log('DEBUG: GST value for this row:', gstValue, 'from sheet object:', sheet);
