@@ -47,7 +47,7 @@ export default function DataTable<TData, TValue>({
     data,
     searchFields = [],
     dataLoading,
-    children,
+    children: _children, // <-- underscore avoids TS unused variable error
     className,
     extraActions,
 }: DataTableProps<TData, TValue>) {
