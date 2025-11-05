@@ -85,7 +85,7 @@ export default () => {
             <DataTable
                 data={historyData}
                 columns={historyColumns}
-                searchFields={['product', 'poNumber']}
+                searchFields={['vendorName', 'poNumber']}
                 dataLoading={poMasterLoading}
                 className='h-[80dvh]'
             />

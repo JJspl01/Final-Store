@@ -195,14 +195,14 @@ const routes: RouteAttributes[] = [
         element: <CreatePO />,
         notifications: () => 0,
     },
-    {
-        path: 'po-master',
-        gateKey: 'poMaster',
-        name: 'PO Master',
-        icon: <Users size={20} />,
-        element: <POMaster />,
-        notifications: () => 0,
-    },
+    // {
+    //     path: 'po-master',
+    //     gateKey: 'poMaster',
+    //     name: 'PO Master',
+    //     icon: <Users size={20} />,
+    //     element: <POMaster />,
+    //     notifications: () => 0,
+    // },
     {
         path: 'po-history',
         gateKey: 'ordersView',

@@ -39,7 +39,7 @@ const pathToPermissionMap: Record<string, keyof UserPermissions> = {
     'get-purchase': 'getPurchase',
     'approve-indent': 'indentApprovalView',
     'po-history': 'ordersView',
-    'po-master': 'poMaster',
+    // 'po-master': 'poMaster',
     'pending-pos': 'pendingIndentsView',
     'receive-items': 'receiveItemView',
     'store-out-approval': 'storeOutApprovalView',
