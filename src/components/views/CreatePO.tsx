@@ -243,41 +243,41 @@ export default () => {
         }
     }, [vendor]);
 
-    useEffect(() => {
-        const po = poMasterSheet.find((p) => p.poNumber === poNumber)!;
-        if (mode === 'revise' && po) {
-            const vendor = details?.vendors.find((v) => v.vendorName === po.partyName);
-            form.setValue('poDate', new Date(po.timestamp));
-            form.setValue('supplierName', po.partyName);
-            form.setValue('supplierAddress', vendor?.address || '');
-            form.setValue('preparedBy', po.preparedBy);
-            form.setValue('approvedBy', po.approvedBy);
-            form.setValue('gstin', vendor?.gstin || '');
-            form.setValue('quotationNumber', po.quotationNumber);
-            form.setValue('quotationDate', new Date(po.quotationDate));
-            form.setValue('description', po.description);
-            form.setValue('ourEnqNo', po.enquiryNumber);
-            form.setValue('enquiryDate', new Date(po.enquiryDate));
-            form.setValue(
-                'indents',
-                poMasterSheet
-                    .filter((p) => p.poNumber === po.poNumber)
-                    .map((po) => ({
-                        indentNumber: po.internalCode,
-                        gst: po.gst,
-                        discount: po.discount,
-                    }))
-            );
-            const terms = [];
-            for (let i = 0; i < 10; i++) {
-                const term = po[`term${i + 1}` as keyof PoMasterSheet] as string;
-                if (term !== '') {
-                    terms.push(term);
-                }
+   useEffect(() => {
+    const po = poMasterSheet.find((p) => p.poNumber === poNumber)!;
+    if (mode === 'revise' && po) {
+        const vendor = details?.vendors.find((v) => v.vendorName === po.partyName);
+        form.setValue('poDate', po.timestamp ? new Date(po.timestamp) : new Date());
+        form.setValue('supplierName', po.partyName);
+        form.setValue('supplierAddress', vendor?.address || '');
+        form.setValue('preparedBy', po.preparedBy);
+        form.setValue('approvedBy', po.approvedBy);
+        form.setValue('gstin', vendor?.gstin || '');
+        form.setValue('quotationNumber', po.quotationNumber);
+        form.setValue('quotationDate', po.quotationDate ? new Date(po.quotationDate) : new Date());
+        form.setValue('description', po.description);
+        form.setValue('ourEnqNo', po.enquiryNumber);
+        form.setValue('enquiryDate', po.enquiryDate ? new Date(po.enquiryDate) : new Date());
+        form.setValue(
+            'indents',
+            poMasterSheet
+                .filter((p) => p.poNumber === po.poNumber)
+                .map((po) => ({
+                    indentNumber: po.internalCode,
+                    gst: po.gst,
+                    discount: po.discount,
+                }))
+        );
+        const terms = [];
+        for (let i = 0; i < 10; i++) {
+            const term = po[`term${i + 1}` as keyof PoMasterSheet] as string;
+            if (term !== '') {
+                terms.push(term);
             }
-            form.setValue('terms', terms);
         }
-    }, [poNumber]);
+        form.setValue('terms', terms);
+    }
+}, [poNumber]);
 
     const handleDestinationEdit = () => {
         setIsEditingDestination(true);

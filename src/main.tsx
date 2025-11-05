@@ -59,22 +59,70 @@ function GatedRoute({
     identifier?: keyof UserPermissions;
 }) {
     const { user } = useAuth();
-    console.log("user", user);
-    console.log("identifier", identifier);
     if (!identifier) return children;
-    if (!user[identifier]) {
-        console.log("ram")
+    
+    const permissionValue = (user as any)[identifier];
+    
+    // Check permission
+    if (typeof permissionValue === 'string') {
+        if (permissionValue.toUpperCase() !== 'TRUE') {
+            return <Navigate to="/" replace />;
+        }
+    } else if (typeof permissionValue === 'boolean') {
+        if (!permissionValue) {
+            return <Navigate to="/" replace />;
+        }
+    } else if (typeof permissionValue === 'number') {
+        if (permissionValue === 0) {
+            return <Navigate to="/" replace />;
+        }
+    } else {
         return <Navigate to="/" replace />;
     }
+    
     return children;
+}
+
+function DefaultRoute({ routes }: { routes: RouteAttributes[] }) {
+    const { user } = useAuth();
+    
+    if (!user) return <Navigate to="/login" />;
+    
+    // Find first accessible route
+    const firstAccessibleRoute = routes.find(route => {
+        // Skip routes without gateKey (always accessible)
+        if (!route.gateKey) return true;
+        
+        const permissionValue = (user as any)[route.gateKey];
+        
+        // Check if user has access
+        if (typeof permissionValue === 'string') {
+            return permissionValue.toUpperCase() === 'TRUE';
+        }
+        if (typeof permissionValue === 'boolean') {
+            return permissionValue;
+        }
+        if (typeof permissionValue === 'number') {
+            return permissionValue !== 0;
+        }
+        return false;
+    });
+    
+    if (firstAccessibleRoute) {
+        return <Navigate to={`/${firstAccessibleRoute.path}`} replace />;
+    }
+    
+    // If no accessible routes, logout or show error
+    return <Navigate to="/login" replace />;
 }
 
 const routes: RouteAttributes[] = [
     {
-        path: '',
+        path: 'dashboard',
         name: 'Dashboard',
         icon: <LayoutDashboard size={20} />,
         element: <Dashboard />,
+        gateKey: 'dashboard',
         notifications: () => 0,
     },
     {
@@ -82,6 +130,7 @@ const routes: RouteAttributes[] = [
         name: 'Inventory',
         icon: <Store size={20} />,
         element: <Inventory />,
+        gateKey: 'inventory',
         notifications: () => 0,
     },
     {
@@ -148,7 +197,7 @@ const routes: RouteAttributes[] = [
     },
     {
         path: 'po-master',
-        // gateKey: 'poMaster',
+        gateKey: 'poMaster',
         name: 'PO Master',
         icon: <Users size={20} />,
         element: <POMaster />,
@@ -164,7 +213,7 @@ const routes: RouteAttributes[] = [
     },
     {
         path: 'get-purchase',
-        gateKey: 'ordersView',
+        gateKey: 'getPurchase',
         name: 'Get Purchase',
         icon: <Package2 size={20} />,
         element: <GetPurchase />,
@@ -179,7 +228,6 @@ const routes: RouteAttributes[] = [
         notifications: (sheets) =>
             sheets.filter((sheet) => sheet.planned5 !== '' && sheet.actual5 === '').length,
     },
-
     {
         path: 'store-out-approval',
         gateKey: 'storeOutApprovalView',
@@ -202,23 +250,15 @@ const routes: RouteAttributes[] = [
         element: <Administration />,
         notifications: () => 0,
     },
-
-
-    
-
     { 
         path: 'training-video',
-        // gateKey: 'viewTrainingVideo',
         name: 'Training Video',
         icon: <Video size={20} />,
         element: <TrainnigVideo />,
         notifications: () => 0,
-
-
     },
     {
         path: 'license',
-        // gateKey: 'viewLicense',
         name: 'License',
         icon: <KeyRound size={20} />,
         element: <License />,
@@ -242,9 +282,10 @@ createRoot(document.getElementById('root')!).render(
                             </ProtectedRoute>
                         }
                     >
-                        {routes.map(({ path, element, gateKey }) => {
-                            // console.log("path", path);
+                        <Route index element={<DefaultRoute routes={routes} />} />
+                        {routes.map(({ path, element, gateKey }, index) => {
                             return <Route
+                                key={`${path}-${index}`}
                                 path={path}
                                 element={<GatedRoute identifier={gateKey}>{element}</GatedRoute>}
                             />

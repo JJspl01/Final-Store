@@ -27,22 +27,25 @@ export default ({ items }: { items: RouteAttributes[] }) => {
     // Fix the permission checking logic
     const hasPermission = useMemo(() => {
         return (routeItem: RouteAttributes) => {
-            // Map actual route paths to UserPermissions permission keys
-            const pathToPermissionMap: Record<string, keyof UserPermissions> = {
-                'administration': 'administrate',
-                'create-indent': 'createIndent',
-                'create-po': 'createPo',
-                'get-purchase': 'getPurchase',
-                'approve-indent': 'indentApprovalView',
-                'po-history': 'ordersView',
-                'pending-pos': 'pendingIndentsView',
-                'receive-items': 'receiveItemView',
-                'store-out-approval': 'storeOutApprovalView',
-                'three-party-approval': 'threePartyApprovalView',
-                'vendor-rate-update': 'updateVendorView',
-                'dashboard': 'dashboardView',
-                'inventory': 'inventoryView',
-            };
+          // In the Sidebar component, update the pathToPermissionMap:
+
+const pathToPermissionMap: Record<string, keyof UserPermissions> = {
+    '': 'dashboard', // Dashboard route
+    'dashboard': 'dashboard',
+    'inventory': 'inventory',
+    'administration': 'administrate',
+    'create-indent': 'createIndent',
+    'create-po': 'createPo',
+    'get-purchase': 'getPurchase',
+    'approve-indent': 'indentApprovalView',
+    'po-history': 'ordersView',
+    'po-master': 'poMaster',
+    'pending-pos': 'pendingIndentsView',
+    'receive-items': 'receiveItemView',
+    'store-out-approval': 'storeOutApprovalView',
+    'three-party-approval': 'threePartyApprovalView',
+    'vendor-rate-update': 'updateVendorView',
+};
 
             const permissionKey = pathToPermissionMap[routeItem.path];
             if (!permissionKey) return true; // Show by default if no mapping found
