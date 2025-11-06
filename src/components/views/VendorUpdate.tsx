@@ -37,6 +37,7 @@ interface VendorUpdateData {
     quantity: number;
     uom: string;
     vendorType: 'Three Party' | 'Regular';
+    vendorName?: string;
 }
 interface HistoryData {
     indentNo: string;
@@ -49,6 +50,7 @@ interface HistoryData {
     vendorType: 'Three Party' | 'Regular';
     date: string;
     lastUpdated?: string;
+    vendorName?: string;
 }
 
 export default () => {
@@ -62,6 +64,7 @@ export default () => {
     const [openDialog, setOpenDialog] = useState(false);
     const [editingRow, setEditingRow] = useState<string | null>(null);
     const [editValues, setEditValues] = useState<Partial<HistoryData>>({});
+    const [vendorSearch, setVendorSearch] = useState('');
 
     // Fetching table data
     useEffect(() => {
@@ -76,6 +79,7 @@ export default () => {
                     quantity: sheet.approvedQuantity,
                     uom: sheet.uom,
                     vendorType: sheet.vendorType as VendorUpdateData['vendorType'],
+                    vendorName: sheet.approvedVendorName || sheet.vendorName1 || '',
                 }))
         );
         setHistoryData(
@@ -91,7 +95,7 @@ export default () => {
                     uom: sheet.uom,
                     rate: sheet.approvedRate || 0,
                     vendorType: sheet.vendorType as HistoryData['vendorType'],
-                    // lastUpdated: sheet.lastUpdated,
+                    vendorName: sheet.approvedVendorName || sheet.vendorName1 || '',
                 }))
                 // Sort by indentNo in descending order (newest first)
                 .sort((a, b) => {
@@ -329,6 +333,10 @@ export default () => {
                     </div>
                 );
             },
+        },
+        {
+            accessorKey: 'vendorName',
+            header: 'Vendor Name',
         },
         {
             accessorKey: 'vendorType',
@@ -577,21 +585,22 @@ export default () => {
                         <UserCheck size={50} className="text-primary" />
                     </Heading>
                     <TabsContent value="pending">
-                        <DataTable
-                            data={tableData}
-                            columns={columns}
-                            searchFields={['product', 'department', 'indenter', 'vendorType']}
-                            dataLoading={indentLoading}
-                        />
-                    </TabsContent>
-                    <TabsContent value="history">
-                        <DataTable
-                            data={historyData}
-                            columns={historyColumns}
-                            searchFields={['product', 'department', 'indenter', 'vendorType']}
-                            dataLoading={indentLoading}
-                        />
-                    </TabsContent>
+    <DataTable
+        data={tableData}
+        columns={columns}
+        searchFields={['product', 'department', 'indenter', 'vendorType', 'vendorName']}
+        dataLoading={indentLoading}
+    />
+</TabsContent>
+<TabsContent value="history">
+    <DataTable
+        data={historyData}
+        columns={historyColumns}
+        searchFields={['product', 'department', 'indenter', 'vendorType', 'vendorName']}
+        dataLoading={indentLoading}
+    />
+</TabsContent>
+
                 </Tabs>
                 {selectedIndent &&
                     (selectedIndent.vendorType === 'Three Party' ? (
@@ -772,37 +781,58 @@ export default () => {
                                         </div>
                                     </div>
                                     <div className="grid gap-3">
-                                        <FormField
-                                            control={regularForm.control}
-                                            name="vendorName"
-                                            render={({ field }) => (
-                                                <FormItem>
-                                                    <Select
-                                                        onValueChange={field.onChange}
-                                                        value={field.value}
-                                                    >
-                                                        <FormLabel>Vendor Name</FormLabel>
-                                                        <FormControl>
-                                                            <SelectTrigger className="w-full">
-                                                                <SelectValue placeholder="Select vendor" />
-                                                            </SelectTrigger>
-                                                        </FormControl>
-                                                        <SelectContent>
-                                                            {options?.vendors?.map(
-                                                                ({ vendorName }, i) => (
-                                                                    <SelectItem
-                                                                        key={i}
-                                                                        value={vendorName}
-                                                                    >
-                                                                        {vendorName}
-                                                                    </SelectItem>
-                                                                )
-                                                            )}
-                                                        </SelectContent>
-                                                    </Select>
-                                                </FormItem>
-                                            )}
-                                        />
+                                 <FormField
+    control={regularForm.control}
+    name="vendorName"
+    render={({ field }) => {
+        const filteredVendors = options?.vendors?.filter(({ vendorName }) =>
+            vendorName.toLowerCase().includes(vendorSearch.toLowerCase())
+        ) || [];
+
+        return (
+            <FormItem>
+                <FormLabel>Vendor Name</FormLabel>
+                <Select
+                    onValueChange={field.onChange}
+                    value={field.value}
+                    onOpenChange={(open) => {
+                        if (!open) setVendorSearch(''); // Close hone pe search clear karo
+                    }}
+                >
+                    <FormControl>
+                        <SelectTrigger className="w-full">
+                            <SelectValue placeholder="Select vendor" />
+                        </SelectTrigger>
+                    </FormControl>
+                    <SelectContent>
+                        <div className="flex items-center border-b px-3 pb-2">
+                            <Input
+                                placeholder="Search vendors..."
+                                className="h-8 border-0 focus-visible:ring-0 focus-visible:ring-offset-0"
+                                value={vendorSearch}
+                                onChange={(e) => setVendorSearch(e.target.value)}
+                                onClick={(e) => e.stopPropagation()}
+                                onKeyDown={(e) => e.stopPropagation()} // Ye add karo
+                            />
+                        </div>
+                        <div className="max-h-[200px] overflow-y-auto">
+                            {filteredVendors.map(({ vendorName }, i) => (
+                                <SelectItem key={i} value={vendorName}>
+                                    {vendorName}
+                                </SelectItem>
+                            ))}
+                            {filteredVendors.length === 0 && (
+                                <div className="py-6 text-center text-sm text-muted-foreground">
+                                    No vendors found
+                                </div>
+                            )}
+                        </div>
+                    </SelectContent>
+                </Select>
+            </FormItem>
+        );
+    }}
+/>
 
                                         <FormField
                                             control={regularForm.control}

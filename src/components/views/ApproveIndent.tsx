@@ -1,24 +1,11 @@
+
 import { type ColumnDef, type Row } from '@tanstack/react-table';
 import DataTable from '../element/DataTable';
 import { useEffect, useState } from 'react';
 import { useSheets } from '@/context/SheetsContext';
 import { DownloadOutlined } from "@ant-design/icons";
 
-import {
-    DialogClose,
-    DialogContent,
-    DialogDescription,
-    DialogFooter,
-    DialogHeader,
-    DialogTitle,
-    DialogTrigger,
-} from '@/components/ui/dialog';
 import { Button } from '../ui/button';
-import { Dialog } from '@radix-ui/react-dialog';
-import { z } from 'zod';
-import { useForm, type FieldErrors } from 'react-hook-form';
-import { zodResolver } from '@hookform/resolvers/zod';
-import { Form, FormControl, FormField, FormItem, FormLabel } from '../ui/form';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select';
 import { postToSheet } from '@/lib/fetchers';
 import { toast } from 'sonner';
@@ -64,14 +51,15 @@ export default () => {
     const { indentSheet, indentLoading, updateIndentSheet } = useSheets();
     const { user } = useAuth();
 
-    const [selectedIndent, setSelectedIndent] = useState<ApproveTableData | null>(null);
     const [tableData, setTableData] = useState<ApproveTableData[]>([]);
     const [historyData, setHistoryData] = useState<HistoryData[]>([]);
-    const [openDialog, setOpenDialog] = useState(false);
     const [editingRow, setEditingRow] = useState<string | null>(null);
     const [editValues, setEditValues] = useState<Partial<HistoryData>>({});
     const [loading, setLoading] = useState(false);
-
+    const [selectedRows, setSelectedRows] = useState<Set<string>>(new Set());
+    const [bulkUpdates, setBulkUpdates] = useState<Map<string, { vendorType?: string; quantity?: number }>>(new Map());
+    const [submitting, setSubmitting] = useState(false);
+    
     // Fetching table data
     useEffect(() => {
         setTableData(
@@ -122,6 +110,110 @@ export default () => {
                 })
         );
     }, [indentSheet]);
+
+    const handleRowSelect = (indentNo: string, checked: boolean) => {
+        setSelectedRows(prev => {
+            const newSet = new Set(prev);
+            if (checked) {
+                newSet.add(indentNo);
+                // Initialize with default values when selected
+                const currentRow = tableData.find(row => row.indentNo === indentNo);
+                if (currentRow) {
+                    setBulkUpdates(prevUpdates => {
+                        const newUpdates = new Map(prevUpdates);
+                        newUpdates.set(indentNo, {
+                            vendorType: currentRow.vendorType,
+                            quantity: currentRow.quantity
+                        });
+                        return newUpdates;
+                    });
+                }
+            } else {
+                newSet.delete(indentNo);
+                // Remove from bulk updates when unchecked
+                setBulkUpdates(prevUpdates => {
+                    const newUpdates = new Map(prevUpdates);
+                    newUpdates.delete(indentNo);
+                    return newUpdates;
+                });
+            }
+            return newSet;
+        });
+    };
+
+    // Add this function to handle select all
+    const handleSelectAll = (checked: boolean) => {
+        if (checked) {
+            setSelectedRows(new Set(tableData.map(row => row.indentNo)));
+            // Initialize bulk updates for all rows
+            const newUpdates = new Map();
+            tableData.forEach(row => {
+                newUpdates.set(row.indentNo, {
+                    vendorType: row.vendorType,
+                    quantity: row.quantity
+                });
+            });
+            setBulkUpdates(newUpdates);
+        } else {
+            setSelectedRows(new Set());
+            setBulkUpdates(new Map());
+        }
+    };
+
+    const handleBulkUpdate = (indentNo: string, field: 'vendorType' | 'quantity', value: string | number) => {
+        setBulkUpdates(prevUpdates => {
+            const newUpdates = new Map(prevUpdates);
+            const currentUpdate = newUpdates.get(indentNo) || {};
+            newUpdates.set(indentNo, {
+                ...currentUpdate,
+                [field]: value
+            });
+            return newUpdates;
+        });
+    };
+
+    // Fixed TypeScript error with proper type assertion
+    const handleSubmitBulkUpdates = async () => {
+        if (selectedRows.size === 0) {
+            toast.error('Please select at least one row to update');
+            return;
+        }
+
+        setSubmitting(true);
+        try {
+            const updatesToProcess = Array.from(selectedRows)
+                .map(indentNo => {
+                    const update = bulkUpdates.get(indentNo);
+                    const originalSheet = indentSheet.find(s => s.indentNumber === indentNo);
+                    
+                    if (!originalSheet || !update) return null;
+
+                    return {
+                        ...originalSheet,
+                        vendorType: update.vendorType || originalSheet.vendorType,
+                        approvedQuantity: update.quantity || originalSheet.quantity,
+                        actual1: new Date().toISOString(),
+                        lastUpdated: new Date().toISOString(),
+                    };
+                })
+                .filter((item): item is NonNullable<typeof item> => item !== null); // Type assertion fix
+
+            if (updatesToProcess.length > 0) {
+                await postToSheet(updatesToProcess, 'update');
+                toast.success(`Updated ${updatesToProcess.length} indents successfully`);
+                
+                // Clear selections and updates
+                setSelectedRows(new Set());
+                setBulkUpdates(new Map());
+                
+                setTimeout(() => updateIndentSheet(), 1000);
+            }
+        } catch (error) {
+            toast.error('Failed to update indents');
+        } finally {
+            setSubmitting(false);
+        }
+    };
 
     const handleDownload = (data: any[]) => {
         if (!data || data.length === 0) {
@@ -221,47 +313,157 @@ export default () => {
         setEditValues(prev => ({ ...prev, [field]: value }));
     };
 
-    // Creating table columns
+    // Creating table columns with mobile responsiveness
     const columns: ColumnDef<ApproveTableData>[] = [
+        {
+            id: 'select',
+            header: ({ table }) => (
+                <div className="flex justify-center">
+                    <input
+                        type="checkbox"
+                        checked={table.getIsAllPageRowsSelected()}
+                        onChange={(e) => handleSelectAll(e.target.checked)}
+                        className="w-4 h-4"
+                    />
+                </div>
+            ),
+            cell: ({ row }: { row: Row<ApproveTableData> }) => {
+                const indent = row.original;
+                return (
+                    <div className="flex justify-center">
+                        <input
+                            type="checkbox"
+                            checked={selectedRows.has(indent.indentNo)}
+                            onChange={(e) => handleRowSelect(indent.indentNo, e.target.checked)}
+                            className="w-4 h-4"
+                        />
+                    </div>
+                );
+            },
+            size: 50,
+        },
         ...(user.indentApprovalAction
             ? [
                 {
-                    header: 'Action',
-                    id: 'action',
+                    header: 'Vendor Type',
+                    id: 'vendorTypeAction',
                     cell: ({ row }: { row: Row<ApproveTableData> }) => {
                         const indent = row.original;
+                        const isSelected = selectedRows.has(indent.indentNo);
+                        const currentValue = bulkUpdates.get(indent.indentNo)?.vendorType || indent.vendorType;
+                        
                         return (
-                            <div>
-                                <DialogTrigger asChild>
-                                    <Button
-                                        variant="outline"
-                                        onClick={() => {
-                                            setSelectedIndent(indent);
-                                        }}
-                                    >
-                                        Approve
-                                    </Button>
-                                </DialogTrigger>
-                            </div>
+                            <Select
+                                value={currentValue}
+                                onValueChange={(value) => handleBulkUpdate(indent.indentNo, 'vendorType', value)}
+                                disabled={!isSelected}
+                            >
+                                <SelectTrigger className={`w-full min-w-[120px] max-w-[150px] text-xs ${!isSelected ? 'opacity-50' : ''}`}>
+                                    <SelectValue placeholder="Select type" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="Pending">Pending</SelectItem>
+                                    <SelectItem value="Regular">Regular</SelectItem>
+                                    <SelectItem value="Three Party">Three Party</SelectItem>
+                                    <SelectItem value="Reject">Reject</SelectItem>
+                                </SelectContent>
+                            </Select>
                         );
                     },
+                    size: 150,
                 },
             ]
             : []),
-        { accessorKey: 'indentNo', header: 'Indent No.' },
-        { accessorKey: 'indenter', header: 'Indenter' },
-        { accessorKey: 'department', header: 'Department' },
+        { 
+            accessorKey: 'indentNo', 
+            header: 'Indent No.',
+            cell: ({ getValue }) => (
+                <div className="font-medium text-xs sm:text-sm">
+                    {getValue() as string}
+                </div>
+            ),
+            size: 100,
+        },
+        { 
+            accessorKey: 'indenter', 
+            header: 'Indenter',
+            cell: ({ getValue }) => (
+                <div className="text-xs sm:text-sm truncate max-w-[100px]">
+                    {getValue() as string}
+                </div>
+            ),
+            size: 120,
+        },
+        { 
+            accessorKey: 'department', 
+            header: 'Department',
+            cell: ({ getValue }) => (
+                <div className="text-xs sm:text-sm truncate max-w-[100px]">
+                    {getValue() as string}
+                </div>
+            ),
+            size: 120,
+        },
         {
             accessorKey: 'product',
             header: 'Product',
             cell: ({ getValue }) => (
-                <div className="max-w-[150px] break-words whitespace-normal">
+                <div className="max-w-[120px] sm:max-w-[150px] break-words whitespace-normal text-xs sm:text-sm">
                     {getValue() as string}
                 </div>
             ),
+            size: 150,
         },
-        { accessorKey: 'quantity', header: 'Quantity' },
-        { accessorKey: 'uom', header: 'UOM' },
+       {
+    accessorKey: 'quantity',
+    header: 'Quantity',
+    cell: ({ row }: { row: Row<ApproveTableData> }) => {
+        const indent = row.original;
+        const isSelected = selectedRows.has(indent.indentNo);
+        const currentValue = bulkUpdates.get(indent.indentNo)?.quantity || indent.quantity;
+        
+        // Local state for input value
+        const [localValue, setLocalValue] = useState(String(currentValue));
+        
+        // Update local value when currentValue changes
+        useEffect(() => {
+            setLocalValue(String(currentValue));
+        }, [currentValue]);
+        
+        return (
+            <Input
+                type="number"
+                value={localValue}
+                onChange={(e) => {
+                    setLocalValue(e.target.value); // Only update local state
+                }}
+                onBlur={(e) => {
+                    // Update bulk updates only on blur
+                    const value = e.target.value;
+                    if (value === '' || !isNaN(Number(value))) {
+                        handleBulkUpdate(indent.indentNo, 'quantity', Number(value) || 0);
+                    }
+                }}
+                disabled={!isSelected}
+                className={`w-16 sm:w-20 text-xs sm:text-sm ${!isSelected ? 'opacity-50' : ''}`}
+                min="0"
+                step="1"
+            />
+        );
+    },
+    size: 80,
+},
+
+        { 
+            accessorKey: 'uom', 
+            header: 'UOM',
+            cell: ({ getValue }) => (
+                <div className="text-xs sm:text-sm">
+                    {getValue() as string}
+                </div>
+            ),
+            size: 60,
+        },
         {
             accessorKey: 'specifications',
             header: 'Specifications',
@@ -288,24 +490,18 @@ export default () => {
                 };
 
                 return (
-                    <div className="max-w-[150px]">
+                    <div className="max-w-[120px] sm:max-w-[150px]">
                         <Input
                             value={value}
                             onChange={(e) => setValue(e.target.value)}
                             onBlur={handleBlur}
-                            className="border-none focus:border-1"
+                            className="border-none focus:border-1 text-xs sm:text-sm"
+                            placeholder="Add specs..."
                         />
                     </div>
                 );
             },
-        },
-        {
-            accessorKey: 'vendorType',
-            header: 'Status',
-            cell: ({ row }: { row: Row<ApproveTableData> }) => {
-                const status = row.original.vendorType;
-                return <Pill variant="pending">{status}</Pill>;
-            },
+            size: 150,
         },
         {
             accessorKey: 'attachment',
@@ -313,21 +509,64 @@ export default () => {
             cell: ({ row }: { row: Row<ApproveTableData> }) => {
                 const attachment = row.original.attachment;
                 return attachment ? (
-                    <a href={attachment} target="_blank">
-                        Attachment
+                    <a 
+                        href={attachment} 
+                        target="_blank" 
+                        rel="noopener noreferrer"
+                        className="text-blue-600 hover:text-blue-800 text-xs sm:text-sm underline"
+                    >
+                        View
                     </a>
                 ) : (
-                    <></>
+                    <span className="text-gray-400 text-xs sm:text-sm">-</span>
                 );
             },
+            size: 80,
         },
-        { accessorKey: 'date', header: 'Date' },
+        { 
+            accessorKey: 'date', 
+            header: 'Date',
+            cell: ({ getValue }) => (
+                <div className="text-xs sm:text-sm whitespace-nowrap">
+                    {getValue() as string}
+                </div>
+            ),
+            size: 100,
+        },
     ];
 
+    // History columns with mobile responsiveness
     const historyColumns: ColumnDef<HistoryData>[] = [
-        { accessorKey: 'indentNo', header: 'Indent No.' },
-        { accessorKey: 'indenter', header: 'Indenter' },
-        { accessorKey: 'department', header: 'Department' },
+        { 
+            accessorKey: 'indentNo', 
+            header: 'Indent No.',
+            cell: ({ getValue }) => (
+                <div className="font-medium text-xs sm:text-sm">
+                    {getValue() as string}
+                </div>
+            ),
+            size: 100,
+        },
+        { 
+            accessorKey: 'indenter', 
+            header: 'Indenter',
+            cell: ({ getValue }) => (
+                <div className="text-xs sm:text-sm truncate max-w-[100px]">
+                    {getValue() as string}
+                </div>
+            ),
+            size: 120,
+        },
+        { 
+            accessorKey: 'department', 
+            header: 'Department',
+            cell: ({ getValue }) => (
+                <div className="text-xs sm:text-sm truncate max-w-[100px]">
+                    {getValue() as string}
+                </div>
+            ),
+            size: 120,
+        },
         {
             accessorKey: 'product',
             header: 'Product',
@@ -337,24 +576,25 @@ export default () => {
                     <Input
                         value={editValues.product ?? row.original.product}
                         onChange={(e) => handleInputChange('product', e.target.value)}
-                        className="max-w-[150px]"
+                        className="max-w-[120px] sm:max-w-[150px] text-xs sm:text-sm"
                     />
                 ) : (
-                    <div className="flex items-center gap-2 max-w-[150px] break-words whitespace-normal">
-                        {row.original.product}
+                    <div className="flex items-center gap-1 sm:gap-2 max-w-[120px] sm:max-w-[150px] break-words whitespace-normal">
+                        <span className="text-xs sm:text-sm">{row.original.product}</span>
                         {user.indentApprovalAction && (
                             <Button
                                 variant="ghost"
                                 size="icon"
-                                className="h-4 w-4"
+                                className="h-6 w-6 sm:h-8 sm:w-8"
                                 onClick={() => handleEditClick(row.original)}
                             >
-                                <PenSquare className="h-3 w-3" />
+                                <PenSquare className="h-2 w-2 sm:h-3 sm:w-3" />
                             </Button>
                         )}
                     </div>
                 );
             },
+            size: 150,
         },
         {
             accessorKey: 'approvedQuantity',
@@ -366,24 +606,25 @@ export default () => {
                         type="number"
                         value={editValues.approvedQuantity ?? row.original.approvedQuantity}
                         onChange={(e) => handleInputChange('approvedQuantity', Number(e.target.value))}
-                        className="w-20"
+                        className="w-16 sm:w-20 text-xs sm:text-sm"
                     />
                 ) : (
-                    <div className="flex items-center gap-2">
-                        {row.original.approvedQuantity}
+                    <div className="flex items-center gap-1 sm:gap-2">
+                        <span className="text-xs sm:text-sm">{row.original.approvedQuantity}</span>
                         {user.indentApprovalAction && editingRow !== row.original.indentNo && (
                             <Button
                                 variant="ghost"
                                 size="icon"
-                                className="h-4 w-4"
+                                className="h-6 w-6 sm:h-8 sm:w-8"
                                 onClick={() => handleEditClick(row.original)}
                             >
-                                <PenSquare className="h-3 w-3" />
+                                <PenSquare className="h-2 w-2 sm:h-3 sm:w-3" />
                             </Button>
                         )}
                     </div>
                 );
             },
+            size: 100,
         },
         {
             accessorKey: 'uom',
@@ -394,33 +635,35 @@ export default () => {
                     <Input
                         value={editValues.uom ?? row.original.uom}
                         onChange={(e) => handleInputChange('uom', e.target.value)}
-                        className="w-20"
+                        className="w-16 sm:w-20 text-xs sm:text-sm"
                     />
                 ) : (
-                    <div className="flex items-center gap-2">
-                        {row.original.uom}
+                    <div className="flex items-center gap-1 sm:gap-2">
+                        <span className="text-xs sm:text-sm">{row.original.uom}</span>
                         {user.indentApprovalAction && editingRow !== row.original.indentNo && (
                             <Button
                                 variant="ghost"
                                 size="icon"
-                                className="h-4 w-4"
+                                className="h-6 w-6 sm:h-8 sm:w-8"
                                 onClick={() => handleEditClick(row.original)}
                             >
-                                <PenSquare className="h-3 w-3" />
+                                <PenSquare className="h-2 w-2 sm:h-3 sm:w-3" />
                             </Button>
                         )}
                     </div>
                 );
             },
+            size: 80,
         },
         {
             accessorKey: 'specifications',
             header: 'Specifications',
             cell: ({ getValue }) => (
-                <div className="max-w-[150px] break-words whitespace-normal">
+                <div className="max-w-[120px] sm:max-w-[150px] break-words whitespace-normal text-xs sm:text-sm">
                     {getValue() as string}
                 </div>
             ),
+            size: 150,
         },
         {
             accessorKey: 'vendorType',
@@ -432,7 +675,7 @@ export default () => {
                         value={editValues.vendorType ?? row.original.vendorType}
                         onValueChange={(value) => handleInputChange('vendorType', value)}
                     >
-                        <SelectTrigger className="w-[150px]">
+                        <SelectTrigger className="w-[120px] sm:w-[150px] text-xs sm:text-sm">
                             <SelectValue placeholder="Select type" />
                         </SelectTrigger>
                         <SelectContent>
@@ -442,7 +685,7 @@ export default () => {
                         </SelectContent>
                     </Select>
                 ) : (
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-1 sm:gap-2">
                         <Pill
                             variant={
                                 row.original.vendorType === 'Reject'
@@ -452,35 +695,56 @@ export default () => {
                                         : 'secondary'
                             }
                         >
-                            {row.original.vendorType}
+                            <span className="text-xs sm:text-sm">{row.original.vendorType}</span>
                         </Pill>
                         {user.indentApprovalAction && editingRow !== row.original.indentNo && (
                             <Button
                                 variant="ghost"
                                 size="icon"
-                                className="h-4 w-4"
+                                className="h-6 w-6 sm:h-8 sm:w-8"
                                 onClick={() => handleEditClick(row.original)}
                             >
-                                <PenSquare className="h-3 w-3" />
+                                <PenSquare className="h-2 w-2 sm:h-3 sm:w-3" />
                             </Button>
                         )}
                     </div>
                 );
             },
+            size: 150,
         },
-        { accessorKey: 'date', header: 'Request Date' },
-        { accessorKey: 'approvedDate', header: 'Approval Date' },
+        { 
+            accessorKey: 'date', 
+            header: 'Request Date',
+            cell: ({ getValue }) => (
+                <div className="text-xs sm:text-sm whitespace-nowrap">
+                    {getValue() as string}
+                </div>
+            ),
+            size: 100,
+        },
+        { 
+            accessorKey: 'approvedDate', 
+            header: 'Approval Date',
+            cell: ({ getValue }) => (
+                <div className="text-xs sm:text-sm whitespace-nowrap">
+                    {getValue() as string}
+                </div>
+            ),
+            size: 100,
+        },
         ...(user.indentApprovalAction
             ? [
                 {
                     id: 'editActions',
+                    header: 'Actions',
                     cell: ({ row }: { row: Row<HistoryData> }) => {
                         const isEditing = editingRow === row.original.indentNo;
                         return isEditing ? (
-                            <div className="flex gap-2">
+                            <div className="flex gap-1 sm:gap-2">
                                 <Button
                                     size="sm"
                                     onClick={() => handleSaveEdit(row.original.indentNo)}
+                                    className="text-xs sm:text-sm px-2 py-1"
                                 >
                                     Save
                                 </Button>
@@ -488,209 +752,93 @@ export default () => {
                                     size="sm"
                                     variant="outline"
                                     onClick={handleCancelEdit}
+                                    className="text-xs sm:text-sm px-2 py-1"
                                 >
                                     Cancel
                                 </Button>
                             </div>
                         ) : null;
                     },
+                    size: 120,
                 },
             ]
             : []),
     ];
 
-    // Creating Form
-    const schema = z
-        .object({
-            approval: z.enum(['Reject', 'Three Party', 'Regular']),
-            approvedQuantity: z.coerce.number().optional(),
-        })
-        .superRefine((data, ctx) => {
-            if (data.approval !== 'Reject') {
-                if (!data.approvedQuantity || data.approvedQuantity === 0) {
-                    ctx.addIssue({
-                        path: ['approvedQuantity'],
-                        code: z.ZodIssueCode.custom,
-                    });
-                }
-            }
-        });
-
-    const form = useForm<z.infer<typeof schema>>({
-        resolver: zodResolver(schema),
-        defaultValues: { approvedQuantity: undefined, approval: undefined },
-    });
-
-    const approval = form.watch('approval');
-
-    useEffect(() => {
-        if (selectedIndent) {
-            form.setValue("approvedQuantity", selectedIndent.quantity)
-        }
-    }, [selectedIndent]);
-
-    async function onSubmit(values: z.infer<typeof schema>) {
-        try {
-            await postToSheet(
-                indentSheet
-                    .filter((s) => s.indentNumber === selectedIndent?.indentNo)
-                    .map((prev) => ({
-                        ...prev,
-                        vendorType: values.approval,
-                        approvedQuantity: values.approvedQuantity,
-                        actual1: new Date().toISOString(),
-                        lastUpdated: new Date().toISOString(),
-                    })),
-                'update'
-            );
-            toast.success(`Updated approval status of ${selectedIndent?.indentNo}`);
-            setOpenDialog(false);
-            form.reset();
-            setTimeout(() => updateIndentSheet(), 1000);
-        } catch {
-            toast.error('Failed to approve indent');
-        }
-    }
-
-    function onError(e: FieldErrors<z.infer<typeof schema>>) {
-        console.log(e);
-        toast.error('Please fill all required fields');
-    }
-
     return (
-        <div>
-            <Dialog open={openDialog} onOpenChange={setOpenDialog}>
-                <Tabs defaultValue="pending">
-                    <Heading
-                        heading="Approve Indent"
-                        subtext="Update Indent status to Approve or Reject them"
-                        tabs
-                    >
-                        <ClipboardCheck size={50} className="text-primary" />
-                    </Heading>
-                    <TabsContent value="pending">
-                        <DataTable
-                            data={tableData}
-                            columns={columns}
-                            searchFields={['product', 'department', 'indenter', 'vendorType']}
-                            dataLoading={indentLoading}
-                            extraActions={
+        <div className="w-full overflow-hidden">
+            <Tabs defaultValue="pending" className="w-full">
+                <Heading
+                    heading="Approve Indent"
+                    subtext="Update Indent status to Approve or Reject them"
+                    tabs
+                >
+                    <ClipboardCheck size={50} className="text-primary" />
+                </Heading>
+                <TabsContent value="pending" className="w-full">
+                    <div className="space-y-4">
+                        {selectedRows.size > 0 && (
+                            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center p-3 sm:p-4 bg-blue-50 rounded-lg gap-2 sm:gap-0">
+                                <span className="text-sm font-medium">
+                                    {selectedRows.size} row(s) selected for update
+                                </span>
                                 <Button
-                                    variant="default"
-                                    onClick={onDownloadClick}
-                                    style={{
-                                        background: "linear-gradient(90deg, #4CAF50, #2E7D32)",
-                                        border: "none",
-                                        borderRadius: "8px",
-                                        padding: "0 16px",
-                                        fontWeight: "bold",
-                                        boxShadow: "0 4px 8px rgba(0,0,0,0.15)",
-                                        display: "flex",
-                                        alignItems: "center",
-                                        gap: "8px",
-                                    }}
+                                    onClick={handleSubmitBulkUpdates}
+                                    disabled={submitting}
+                                    className="flex items-center gap-2 w-full sm:w-auto"
                                 >
-                                    <DownloadOutlined />
-                                    {loading ? "Downloading..." : "Download"}
+                                    {submitting && (
+                                        <Loader
+                                            size={16}
+                                            color="white"
+                                            aria-label="Loading Spinner"
+                                        />
+                                    )}
+                                    Submit Updates
                                 </Button>
-                            }
-                        />
-                    </TabsContent>
-                    <TabsContent value="history">
+                            </div>
+                        )}
+                        
+                        <div className="w-full overflow-x-auto">
+                            <DataTable
+                                data={tableData}
+                                columns={columns}
+                                searchFields={['product', 'department', 'indenter', 'vendorType']}
+                                dataLoading={indentLoading}
+                                extraActions={
+                                    <Button
+                                        variant="default"
+                                        onClick={onDownloadClick}
+                                        className="flex items-center gap-2 text-xs sm:text-sm"
+                                        style={{
+                                            background: "linear-gradient(90deg, #4CAF50, #2E7D32)",
+                                            border: "none",
+                                            borderRadius: "8px",
+                                            padding: "8px 12px",
+                                            fontWeight: "bold",
+                                            boxShadow: "0 4px 8px rgba(0,0,0,0.15)",
+                                        }}
+                                    >
+                                        <DownloadOutlined />
+                                        <span className="hidden sm:inline">{loading ? "Downloading..." : "Download"}</span>
+                                        <span className="sm:hidden">{loading ? "..." : "CSV"}</span>
+                                    </Button>
+                                }
+                            />
+                        </div>
+                    </div>
+                </TabsContent>
+                <TabsContent value="history" className="w-full">
+                    <div className="w-full overflow-x-auto">
                         <DataTable
                             data={historyData}
                             columns={historyColumns}
                             searchFields={['product', 'department', 'indenter', 'vendorType']}
                             dataLoading={indentLoading}
                         />
-                    </TabsContent>
-                </Tabs>
-
-                {selectedIndent && (
-                    <DialogContent>
-                        <Form {...form}>
-                            <form
-                                onSubmit={form.handleSubmit(onSubmit, onError)}
-                                className="grid gap-5"
-                            >
-                                <DialogHeader className="grid gap-2">
-                                    <DialogTitle>Approve Indent</DialogTitle>
-                                    <DialogDescription>
-                                        Approve indent{' '}
-                                        <span className="font-medium">
-                                            {selectedIndent.indentNo}
-                                        </span>
-                                    </DialogDescription>
-                                </DialogHeader>
-
-                                <div className="grid gap-3">
-                                    <FormField
-                                        control={form.control}
-                                        name="approval"
-                                        render={({ field }) => (
-                                            <FormItem>
-                                                <FormLabel>Vendor Type</FormLabel>
-                                                <Select
-                                                    onValueChange={field.onChange}
-                                                    value={field.value}
-                                                >
-                                                    <FormControl>
-                                                        <SelectTrigger className="w-full">
-                                                            <SelectValue placeholder="Select approval status" />
-                                                        </SelectTrigger>
-                                                    </FormControl>
-                                                    <SelectContent>
-                                                        <SelectItem value="Regular">
-                                                            Regular
-                                                        </SelectItem>
-                                                        <SelectItem value="Three Party">
-                                                            Three Party
-                                                        </SelectItem>
-                                                        <SelectItem value="Reject">
-                                                            Reject
-                                                        </SelectItem>
-                                                    </SelectContent>
-                                                </Select>
-                                            </FormItem>
-                                        )}
-                                    />
-                                    <FormField
-                                        control={form.control}
-                                        name="approvedQuantity"
-                                        render={({ field }) => (
-                                            <FormItem>
-                                                <FormLabel>Quantity</FormLabel>
-                                                <FormControl>
-                                                    <Input
-                                                        {...field}
-                                                        disabled={approval === 'Reject'}
-                                                    />
-                                                </FormControl>
-                                            </FormItem>
-                                        )}
-                                    />
-                                </div>
-                                <DialogFooter>
-                                    <DialogClose asChild>
-                                        <Button variant="outline">Close</Button>
-                                    </DialogClose>
-
-                                    <Button type="submit" disabled={form.formState.isSubmitting}>
-                                        {form.formState.isSubmitting && (
-                                            <Loader
-                                                size={20}
-                                                color="white"
-                                                aria-label="Loading Spinner"
-                                            />
-                                        )}
-                                        Approve
-                                    </Button>
-                                </DialogFooter>
-                            </form>
-                        </Form>
-                    </DialogContent>
-                )}
-            </Dialog>
+                    </div>
+                </TabsContent>
+            </Tabs>
         </div>
     );
 };
