@@ -91,5 +91,6 @@ export interface QuotationHistorySheet {
     approvedBy?: string;
     approvalDate?: string;
     remarks?: string;
+    terms: string[];
     // Add any other fields you need based on your application
 }
