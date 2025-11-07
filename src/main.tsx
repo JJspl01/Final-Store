@@ -18,7 +18,10 @@ import StoreOutApproval from './components/views/StoreOutApproval';
 import GetPurchase from './components/views/getPurchase';
 import TrainnigVideo from './components/views/TrainingVideo';
 import License from './components/views/License';
+import AllIndent from './components/views/AllIndent';
+import Quotation from './components/views/Quotation';
 import type { RouteAttributes } from './types';
+
 import {
     LayoutDashboard,
     ClipboardList,
@@ -141,6 +144,16 @@ const routes: RouteAttributes[] = [
         element: <CreateIndent />,
         notifications: () => 0,
     },
+
+    
+     {
+        path: 'all-indent',
+        gateKey: 'allIndent',
+        name: 'All Indent',
+        icon: <ClipboardList size={20} />,
+        element: <AllIndent />,
+        notifications: () => 0,
+    },
     {
         path: 'approve-indent',
         gateKey: 'indentApprovalView',
@@ -241,6 +254,14 @@ const routes: RouteAttributes[] = [
                     sheet.actual6 === '' &&
                     sheet.indentType === 'Store Out'
             ).length,
+    },
+    {
+        path: 'quotation',
+        gateKey: 'quotation',
+        name: 'Quotation',
+        icon: <ClipboardList size={20} />,
+        element: <Quotation />,
+        notifications: () => 0,
     },
     {
         path: 'administration',

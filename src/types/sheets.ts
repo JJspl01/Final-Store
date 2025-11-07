@@ -1,4 +1,4 @@
-export type Sheet = 'INDENT' | 'RECEIVED' | 'MASTER' | 'USER' | 'PO MASTER' | 'INVENTORY';
+export type Sheet = 'INDENT' | 'RECEIVED' | 'MASTER' | 'USER' | 'PO MASTER' | 'INVENTORY' | 'QUOTATION HISTORY';
 
 export type IndentSheet = {
     timestamp: string;
@@ -171,6 +171,7 @@ export type UserPermissions = {
 
     administrate: boolean;
     createIndent: boolean;
+    allIndent: boolean;
     createPo: boolean;
     indentApprovalView: boolean;
     indentApprovalAction: boolean;
@@ -182,6 +183,7 @@ export type UserPermissions = {
     receiveItemAction: boolean;
     storeOutApprovalView: boolean;
     storeOutApprovalAction: boolean;
+    quotation: boolean;
     pendingIndentsView: boolean;
     ordersView: boolean;
     poMaster: boolean;
@@ -195,6 +197,7 @@ export type UserPermissions = {
 export const allPermissionKeys = [
     "administrate",
     "createIndent",
+    "allIndent",
     "createPo",
     "indentApprovalView",
     "indentApprovalAction",
@@ -206,6 +209,7 @@ export const allPermissionKeys = [
     "receiveItemAction",
     "storeOutApprovalView",
     "storeOutApprovalAction",
+    "quotation",
     "pendingIndentsView",
     "ordersView",
     "poMaster",
@@ -213,3 +217,18 @@ export const allPermissionKeys = [
     "dashboard",
     "inventory",
 ] as const;
+
+
+export type QuotationHistorySheet = {
+    timestamp: string;
+    quatationNo: string;      // Note: matches sheet spelling
+    supplierName: string;
+    adreess: string;          // Note: matches sheet spelling
+    gst: string;
+    indentNo: string;
+    product: string;
+    description: string;
+    qty: string;
+    unit: string;
+    pdfLink: string;
+};

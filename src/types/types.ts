@@ -51,6 +51,7 @@ export type UserPermissions = {
     
     administrate: boolean;
     createIndent: boolean;
+    allIndent: boolean;
     createPo: boolean;
     indentApprovalView: boolean;
     indentApprovalAction: boolean;
@@ -62,6 +63,7 @@ export type UserPermissions = {
     receiveItemAction: boolean;
     storeOutApprovalView: boolean;
     storeOutApprovalAction: boolean;
+    quotation: boolean;
     pendingIndentsView: boolean;
     ordersView: boolean;
     poMaster: boolean;
@@ -71,3 +73,23 @@ export type UserPermissions = {
     dashboardView: boolean;
     inventoryView: boolean;
 };
+// In @/types.ts - add this interface
+
+export interface QuotationHistorySheet {
+    timestamp: string;
+    indentNumber: string;
+    indenterName: string;
+    department: string;
+    productName: string;
+    quantity: number;
+    uom: string;
+    vendorName: string;
+    rate: number;
+    paymentTerm: string;
+    quotationFile: string;
+    status?: 'Pending' | 'Approved' | 'Rejected';
+    approvedBy?: string;
+    approvalDate?: string;
+    remarks?: string;
+    // Add any other fields you need based on your application
+}

@@ -35,6 +35,7 @@ const pathToPermissionMap: Record<string, keyof UserPermissions> = {
     'inventory': 'inventory',
     'administration': 'administrate',
     'create-indent': 'createIndent',
+    'all-indent': 'allIndent',
     'create-po': 'createPo',
     'get-purchase': 'getPurchase',
     'approve-indent': 'indentApprovalView',
@@ -43,6 +44,7 @@ const pathToPermissionMap: Record<string, keyof UserPermissions> = {
     'pending-pos': 'pendingIndentsView',
     'receive-items': 'receiveItemView',
     'store-out-approval': 'storeOutApprovalView',
+    'quotation': 'quotation',
     'three-party-approval': 'threePartyApprovalView',
     'vendor-rate-update': 'updateVendorView',
 };

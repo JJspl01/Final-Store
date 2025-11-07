@@ -104,42 +104,45 @@ export default () => {
         );
     }, [indentSheet]);
 
-    const handleEditClick = (row: HistoryData) => {
-        setEditingRow(row.indentNo);
-        setEditValues({
-            quantity: row.quantity,
-            uom: row.uom,
-            vendorType: row.vendorType,
-        });
-    };
+  const handleEditClick = (row: HistoryData) => {
+    setEditingRow(row.indentNo);
+    setEditValues({
+        quantity: row.quantity,
+        uom: row.uom,
+        vendorType: row.vendorType,
+        rate: row.rate, // Add rate to edit values
+    });
+};
 
     const handleCancelEdit = () => {
         setEditingRow(null);
         setEditValues({});
     };
 
-    const handleSaveEdit = async (indentNo: string) => {
-        try {
-            await postToSheet(
-                indentSheet
-                    .filter((s) => s.indentNumber === indentNo)
-                    .map((prev) => ({
-                        ...prev,
-                        quantity: editValues.quantity,
-                        uom: editValues.uom,
-                        vendorType: editValues.vendorType,
-                        lastUpdated: new Date().toISOString(),
-                    })),
-                'update'
-            );
-            toast.success(`Updated indent ${indentNo}`);
-            updateIndentSheet();
-            setEditingRow(null);
-            setEditValues({});
-        } catch {
-            toast.error('Failed to update indent');
-        }
-    };
+  const handleSaveEdit = async (indentNo: string) => {
+    try {
+        await postToSheet(
+            indentSheet
+                .filter((s) => s.indentNumber === indentNo)
+                .map((prev) => ({
+                    ...prev,
+                    quantity: editValues.quantity,
+                    uom: editValues.uom,
+                    vendorType: editValues.vendorType,
+                    rate1: editValues.rate?.toString(), // Add rate update
+                    approvedRate: editValues.rate, // Add approved rate update
+                    lastUpdated: new Date().toISOString(),
+                })),
+            'update'
+        );
+        toast.success(`Updated indent ${indentNo}`);
+        updateIndentSheet();
+        setEditingRow(null);
+        setEditValues({});
+    } catch {
+        toast.error('Failed to update indent');
+    }
+};
 
     const handleInputChange = (field: keyof HistoryData, value: any) => {
         setEditValues(prev => ({ ...prev, [field]: value }));
@@ -291,21 +294,45 @@ export default () => {
                 );
             },
         },
-        {
-            accessorKey: "rate",
-            header: "Rate",
-            cell: ({ row }) => {
-                const rate = row.original.rate;
-                const vendorType = row.original.vendorType;
+      {
+    accessorKey: "rate",
+    header: "Rate",
+    cell: ({ row }) => {
+        const isEditing = editingRow === row.original.indentNo;
+        const rate = row.original.rate;
+        const vendorType = row.original.vendorType;
 
-                if (!rate && vendorType === "Three Party") {
-                    return (
-                        <span className="text-muted-foreground">Not Decided</span>
-                    )
-                }
-                return <>&#8377;{rate}</>;
-            },
-        },
+        if (!rate && vendorType === "Three Party") {
+            return (
+                <span className="text-muted-foreground">Not Decided</span>
+            )
+        }
+        
+        return isEditing ? (
+            <Input
+                type="number"
+                value={editValues.rate ?? rate}
+                onChange={(e) => handleInputChange('rate', Number(e.target.value))}
+                className="w-20"
+            />
+        ) : (
+            <div className="flex items-center gap-2">
+                &#8377;{rate}
+                {user.updateVendorAction && (
+                    <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-4 w-4"
+                        onClick={() => handleEditClick(row.original)}
+                    >
+                        <PenSquare className="h-3 w-3" />
+                    </Button>
+                )}
+            </div>
+        );
+    },
+},
+
         {
             accessorKey: 'uom',
             header: 'UOM',

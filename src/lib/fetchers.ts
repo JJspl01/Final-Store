@@ -1,5 +1,5 @@
 import type { IndentSheet, MasterSheet, ReceivedSheet, Sheet } from '@/types';
-import type { InventorySheet, PoMasterSheet, UserPermissions, Vendor } from '@/types/sheets';
+import type { InventorySheet, PoMasterSheet, QuotationHistorySheet, UserPermissions, Vendor } from '@/types/sheets';
 
 export async function uploadFile(file: File, folderId: string, uploadType: 'upload' | 'email' = 'upload', email?: string): Promise<string> {
     const base64: string = await new Promise((resolve, reject) => {
@@ -101,13 +101,41 @@ export async function fetchSheet(
     return raw.rows.filter((r: IndentSheet) => r.timestamp !== '');
 }
 
+
+// lib/fetchers.ts में या जहां postToSheet function है
+
+export async function postToQuotationHistory(rows: any[]) {
+  try {
+    const formData = new FormData();
+    formData.append('action', 'insertQuotation');
+    formData.append('rows', JSON.stringify(rows));
+
+    const response = await fetch(import.meta.env.VITE_APPS_SCRIPT_URL, {
+      method: 'POST',
+      body: formData,
+    });
+
+    const result = await response.json();
+    
+    if (!result.success) {
+      throw new Error(result.error || 'Failed to submit quotation');
+    }
+
+    return result;
+  } catch (error) {
+    console.error('Error posting quotation:', error);
+    throw error;
+  }
+}
+
 export async function postToSheet(
     data:
         | Partial<IndentSheet>[]
         | Partial<ReceivedSheet>[]
         | Partial<UserPermissions>[]
-        | Partial<PoMasterSheet>[],
-    action: 'insert' | 'update' | 'delete' = 'insert',
+        | Partial<PoMasterSheet>[]
+        | Partial<QuotationHistorySheet>[],
+    action: 'insert' | 'update' | 'delete' | 'insertQuotation' = 'insert', // Add insertQuotation
     sheet: Sheet = 'INDENT'
 ) {
     const form = new FormData();
@@ -120,9 +148,33 @@ export async function postToSheet(
     });
     if (!response.ok) {
         console.error(`Error in fetch: ${response.status} - ${response.statusText}`);
-        throw new Error(`Failed to ${action} data`)};
+        throw new Error(`Failed to ${action} data`);
+    }
     const res = await response.json();
     if (!res.success) {
         console.error(`Error in response: ${res.message}`);
-        throw new Error('Something went wrong in the API')};
+        throw new Error('Something went wrong in the API');
+    }
+    return res;
+}
+// Add this new function in fetchers.ts
+export async function postToMasterSheet(data: any[]) {
+    try {
+        const response = await fetch('/api/master-sheet', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(data),
+        });
+        
+        if (!response.ok) {
+            throw new Error('Failed to post to master sheet');
+        }
+        
+        return await response.json();
+    } catch (error) {
+        console.error('Error posting to master sheet:', error);
+        throw new Error('Something went wrong in the API');
+    }
 }
