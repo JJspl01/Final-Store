@@ -1,3 +1,6 @@
+
+
+
 import { ChevronsRightLeft, FilePlus2, Pencil, Save, Trash } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/card';
 import { Input } from '../ui/input';
@@ -22,7 +25,9 @@ import { pdf } from '@react-pdf/renderer';
 import POPdf, { type POPdfProps } from '../element/QuotationPdf';
 import { Checkbox } from '../ui/checkbox';
 
+
 type Mode = 'create' | 'revise';
+
 
 interface SupplierInfo {
   name: string;
@@ -31,6 +36,7 @@ interface SupplierInfo {
   email?: string;
 }
 
+
 // MASTER Sheet interface for suppliers
 interface MasterSheetSupplier {
   supplierName: string;      // Column A
@@ -38,6 +44,7 @@ interface MasterSheetSupplier {
   vendorAddress: string;     // Column C
   email?: string;
 }
+
 
 function filterUniqueQuotationNumbers(data: PoMasterSheet[]): string[] {
   const seen = new Set<string>();
@@ -52,6 +59,7 @@ function filterUniqueQuotationNumbers(data: PoMasterSheet[]): string[] {
   return result;
 }
 
+
 // Generate next quotation number based on existing numbers
 function generateNextQuotationNumber(existingNumbers: string[]): string {
   const numbers = existingNumbers
@@ -65,6 +73,7 @@ function generateNextQuotationNumber(existingNumbers: string[]): string {
   return `QT-${String(maxNumber + 1).padStart(3, '0')}`;
 }
 
+
 // Updated schema - removed mandatory validations
 const quotationSchema = z.object({
   quotationNumber: z.string().optional().default(''),
@@ -75,7 +84,9 @@ const quotationSchema = z.object({
   terms: z.array(z.string()).optional().default([]),
 });
 
+
 type QuotationForm = z.infer<typeof quotationSchema>;
+
 
 // Simple Badge component as replacement
 const Badge = ({ children, variant, className, onClick }: { 
@@ -95,6 +106,7 @@ const Badge = ({ children, variant, className, onClick }: {
   </span>
 );
 
+
 export default function QuotationPage() {
   const { indentSheet, poMasterSheet, updateIndentSheet, updatePoMasterSheet, masterSheet: details } = useSheets();
   const [mode, setMode] = useState<Mode>('create');
@@ -102,12 +114,15 @@ export default function QuotationPage() {
   const [selectedSuppliers, setSelectedSuppliers] = useState<string[]>([]);
   const [supplierInfos, setSupplierInfos] = useState<SupplierInfo[]>([]);
   const [masterSuppliers, setMasterSuppliers] = useState<MasterSheetSupplier[]>([]);
+  const [latestQuotationNumbers, setLatestQuotationNumbers] = useState<string[]>([]);
+
 
   // Editable cards: make Billing and Destination editable (last two cards)
   const [isEditingBilling, setIsEditingBilling] = useState(false);
   const [billingAddress, setBillingAddress] = useState('');
   const [isEditingDestination, setIsEditingDestination] = useState(false);
   const [destinationAddress, setDestinationAddress] = useState('');
+
 
   useEffect(() => {
     if (details) {
@@ -116,60 +131,86 @@ export default function QuotationPage() {
     }
   }, [details]);
 
+
+  // Fetch latest quotation numbers from QUOTATION HISTORY sheet
+  useEffect(() => {
+    const fetchLatestQuotationNumbers = async () => {
+      try {
+        const quotationHistory = await fetchSheet('QUOTATION HISTORY');
+        console.log('Fetched QUOTATION HISTORY:', quotationHistory);
+        
+        if (Array.isArray(quotationHistory)) {
+          const quotationNos = quotationHistory
+            .map((row: any) => row.quatationNo || row.quotationNo || '')
+            .filter((no: string) => no && no.trim() !== '');
+          
+          setLatestQuotationNumbers(quotationNos);
+          console.log('Latest quotation numbers:', quotationNos);
+        }
+      } catch (error) {
+        console.error('Error fetching quotation numbers:', error);
+      }
+    };
+
+    fetchLatestQuotationNumbers();
+  }, []);
+
+
   // Fetch suppliers from MASTER sheet using existing fetchSheet function
   useEffect(() => {
     function hasVendors(data: any): data is { vendors: any[] } {
-  return data && typeof data === 'object' && 'vendors' in data;
-}
-   const fetchMasterSuppliers = async () => {
-  try {
-    console.log('Fetching MASTER sheet data...');
-    
-    const masterData = await fetchSheet('MASTER');
-    
-    console.log('MASTER sheet raw data:', masterData);
-    
-    // Use type guard to safely access vendors
-    let vendorsArray: any[] = [];
-    
-    if (hasVendors(masterData)) {
-      vendorsArray = masterData.vendors || [];
-    } else if (Array.isArray(masterData)) {
-      vendorsArray = masterData;
+      return data && typeof data === 'object' && 'vendors' in data;
     }
     
-    // Rest of the code remains the same...
-    const suppliers: MasterSheetSupplier[] = vendorsArray
-      .map((vendor: any) => ({
-        supplierName: vendor.vendorName || vendor.supplierName || '',
-        vendorGstin: vendor.gstin || vendor.vendorGstin || '',
-        vendorAddress: vendor.address || vendor.vendorAddress || '',
-        email: vendor.email || ''
-      }))
-      .filter(supplier => {
-        const name = supplier.supplierName;
-        return name && typeof name === 'string' && name.trim() !== '';
-      });
-    
-    console.log('Processed suppliers:', suppliers);
-    setMasterSuppliers(suppliers);
-    
-    if (suppliers.length === 0) {
-      console.warn('No suppliers found in MASTER sheet');
-      toast.warning('No suppliers found in MASTER sheet');
-    } else {
-      console.log(`Successfully loaded ${suppliers.length} suppliers from MASTER sheet`);
-      toast.success(`Loaded ${suppliers.length} suppliers`);
-    }
-    
-  } catch (error) {
-    console.error('Error fetching MASTER sheet suppliers:', error);
-    toast.error('Failed to load suppliers from MASTER sheet');
-  }
-};
+    const fetchMasterSuppliers = async () => {
+      try {
+        console.log('Fetching MASTER sheet data...');
+        
+        const masterData = await fetchSheet('MASTER');
+        
+        console.log('MASTER sheet raw data:', masterData);
+        
+        // Use type guard to safely access vendors
+        let vendorsArray: any[] = [];
+        
+        if (hasVendors(masterData)) {
+          vendorsArray = masterData.vendors || [];
+        } else if (Array.isArray(masterData)) {
+          vendorsArray = masterData;
+        }
+        
+        const suppliers: MasterSheetSupplier[] = vendorsArray
+          .map((vendor: any) => ({
+            supplierName: vendor.vendorName || vendor.supplierName || '',
+            vendorGstin: vendor.gstin || vendor.vendorGstin || '',
+            vendorAddress: vendor.address || vendor.vendorAddress || '',
+            email: vendor.email || ''
+          }))
+          .filter(supplier => {
+            const name = supplier.supplierName;
+            return name && typeof name === 'string' && name.trim() !== '';
+          });
+        
+        console.log('Processed suppliers:', suppliers);
+        setMasterSuppliers(suppliers);
+        
+        if (suppliers.length === 0) {
+          console.warn('No suppliers found in MASTER sheet');
+          toast.warning('No suppliers found in MASTER sheet');
+        } else {
+          console.log(`Successfully loaded ${suppliers.length} suppliers from MASTER sheet`);
+          toast.success(`Loaded ${suppliers.length} suppliers`);
+        }
+        
+      } catch (error) {
+        console.error('Error fetching MASTER sheet suppliers:', error);
+        toast.error('Failed to load suppliers from MASTER sheet');
+      }
+    };
 
     fetchMasterSuppliers();
   }, [details]);
+
 
   // Filter eligible items - planned2 NOT NULL and actual2 NULL
   const eligibleItems = useMemo(() => {
@@ -186,6 +227,7 @@ export default function QuotationPage() {
     return filtered;
   }, [indentSheet]);
 
+
   const form = useForm<QuotationForm>({
     resolver: zodResolver(quotationSchema),
     defaultValues: {
@@ -198,20 +240,25 @@ export default function QuotationPage() {
     },
   });
 
+
   useEffect(() => {
     if (details?.defaultTerms) {
       form.setValue('terms', details.defaultTerms);
     }
   }, [details]);
 
-  // Auto-generate quotation number in create mode
+
+  // Auto-generate quotation number in create mode - FIXED
   useEffect(() => {
     if (mode === 'create') {
-      const existingNumbers = filterUniqueQuotationNumbers(poMasterSheet);
-      const nextNumber = generateNextQuotationNumber(existingNumbers);
+      // Combine both sources of quotation numbers
+      const allNumbers = [...filterUniqueQuotationNumbers(poMasterSheet), ...latestQuotationNumbers];
+      const nextNumber = generateNextQuotationNumber(allNumbers);
       form.setValue('quotationNumber', nextNumber);
+      console.log('Generated next quotation number:', nextNumber);
     }
-  }, [mode, poMasterSheet, form]);
+  }, [mode, poMasterSheet, latestQuotationNumbers, form]);
+
 
   // Handle multiple supplier selection from MASTER sheet
   const handleSupplierSelect = (supplierName: string) => {
@@ -240,6 +287,7 @@ export default function QuotationPage() {
     });
   };
 
+
   // Handle checkbox selection
   const handleItemSelection = (indentNumber: string, checked: boolean) => {
     setSelectedItems(prev => {
@@ -251,6 +299,7 @@ export default function QuotationPage() {
     });
   };
 
+
   // Handle select all checkbox
   const handleSelectAll = (checked: boolean) => {
     if (checked) {
@@ -261,16 +310,19 @@ export default function QuotationPage() {
     }
   };
 
+
   // Update form when selectedItems changes
   useEffect(() => {
     form.setValue('selectedIndents', selectedItems);
   }, [selectedItems, form]);
+
 
   // Fixed TypeScript error for useFieldArray
   const termsArray = useFieldArray({
     control: form.control as Control<FieldValues>,
     name: 'terms',
   });
+
 
   async function onSubmit(values: QuotationForm) {
     try {
@@ -298,9 +350,9 @@ export default function QuotationPage() {
 
       const allQuotationRows: QuotationHistorySheet[] = [];
 
-      // Get all existing quotation numbers to generate unique ones
-      const existingNumbers = filterUniqueQuotationNumbers(poMasterSheet);
-      let currentMaxNumber = existingNumbers
+      // Get all existing quotation numbers to generate unique ones - FIXED
+      const allNumbers = [...filterUniqueQuotationNumbers(poMasterSheet), ...latestQuotationNumbers];
+      let currentMaxNumber = allNumbers
         .map(num => {
           const match = num.match(/QT-(\d+)/);
           return match ? parseInt(match[1]) : 0;
@@ -422,8 +474,8 @@ export default function QuotationPage() {
   const quotationNumbers = useMemo(() => filterUniqueQuotationNumbers(poMasterSheet), [poMasterSheet]);
 
   return (
-    <div className="w-full bg-gradient-to-br from-blue-100 via-purple-50 to-blue-50 rounded-md h-auto">
-      <div className="flex justify-between p-5 w-full">
+    <div className="w-full h-screen overflow-hidden bg-gradient-to-br from-blue-100 via-purple-50 to-blue-50 rounded-md flex flex-col">
+      <div className="flex justify-between p-5 w-full flex-shrink-0">
         <div className="flex gap-2 items-center">
           <FilePlus2 size={50} className="text-primary" />
           <div>
@@ -434,313 +486,314 @@ export default function QuotationPage() {
         <SidebarTrigger />
       </div>
 
-      <div className="sm:p-4 max-w-6xl w-full">
-        <div className="w-full">
-          <Tabs defaultValue="create" onValueChange={(v) => setMode(v === 'create' ? 'create' as Mode : 'revise' as Mode)}>
-            <TabsList className="h-10 w-full rounded-none">
-              <TabsTrigger value="create">Create</TabsTrigger>
-              <TabsTrigger value="revise">Revise</TabsTrigger>
-            </TabsList>
-          </Tabs>
-        </div>
+      <div className="flex-1 overflow-y-auto px-4 pb-4">
+        <div className="max-w-6xl w-full mx-auto">
+          <div className="w-full">
+            <Tabs defaultValue="create" onValueChange={(v) => setMode(v === 'create' ? 'create' as Mode : 'revise' as Mode)}>
+              <TabsList className="h-10 w-full rounded-none">
+                <TabsTrigger value="create">Create</TabsTrigger>
+                <TabsTrigger value="revise">Revise</TabsTrigger>
+              </TabsList>
+            </Tabs>
+          </div>
 
-        <Form {...form}>
-          <form onSubmit={form.handleSubmit(onSubmit, onError)} className="flex flex-col items-center">
-            <div className="space-y-4 p-4 w-full bg-white shadow-md rounded-sm">
-              <div className="flex items-center justify-center gap-4 bg-blue-50 p-4 rounded">
-                <img src="/logo.png" alt="Company Logo" className="w-20 h-20 object-contain" />
-                <div className="text-center">
-                  <h1 className="text-2xl font-bold">{details?.companyName}</h1>
-                  <div>
-                    <p className="text-sm">{details?.companyAddress}</p>
-                    <p className="text-sm">Phone No: +{details?.companyPhone}</p>
+          <Form {...form}>
+            <form onSubmit={form.handleSubmit(onSubmit, onError)} className="flex flex-col items-center">
+              <div className="space-y-4 p-4 w-full bg-white shadow-md rounded-sm mt-4">
+                <div className="flex items-center justify-center gap-4 bg-blue-50 p-4 rounded">
+                  <img src="/logo.png" alt="Company Logo" className="w-20 h-20 object-contain" />
+                  <div className="text-center">
+                    <h1 className="text-2xl font-bold">{details?.companyName}</h1>
+                    <div>
+                      <p className="text-sm">{details?.companyAddress}</p>
+                      <p className="text-sm">Phone No: +{details?.companyPhone}</p>
+                    </div>
                   </div>
                 </div>
-              </div>
-              <hr />
-              <h2 className="text-center font-bold text-lg">Quotation</h2>
-              <hr />
+                <hr />
+                <h2 className="text-center font-bold text-lg">Quotation</h2>
+                <hr />
 
-              {/* Quotation meta */}
-              <div className="grid gap-5 px-4 py-2 text-foreground/80">
-                {/* Multi-Supplier Selection from MASTER sheet */}
-                <div className="space-y-3">
+                {/* Quotation meta */}
+                <div className="grid gap-5 px-4 py-2 text-foreground/80">
+                  {/* Multi-Supplier Selection from MASTER sheet */}
+                  <div className="space-y-3">
+                    <FormField
+                      control={form.control}
+                      name="suppliers"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Suppliers (From MASTER Sheet)</FormLabel>
+                          <FormControl>
+                            <div className="space-y-2">
+                              <Select onValueChange={handleSupplierSelect}>
+                                <SelectTrigger size="sm" className="w-full">
+                                  <SelectValue placeholder="Select suppliers from MASTER sheet" />
+                                </SelectTrigger>
+                                <SelectContent className="z-[100] max-h-[300px]">
+                                  {masterSuppliers.length === 0 ? (
+                                    <SelectItem value="no-suppliers" disabled>
+                                      No suppliers found in MASTER sheet
+                                    </SelectItem>
+                                  ) : (
+                                    masterSuppliers.map((supplier, k) => (
+                                      <SelectItem key={k} value={supplier.supplierName}>
+                                        {supplier.supplierName}
+                                      </SelectItem>
+                                    ))
+                                  )}
+                                </SelectContent>
+                              </Select>
+                              
+                              {/* Selected suppliers badges */}
+                              {selectedSuppliers.length > 0 && (
+                                <div className="flex flex-wrap gap-2 mt-2">
+                                  {selectedSuppliers.map((supplier, index) => (
+                                    <Badge key={index} variant="secondary" className="flex items-center gap-1 cursor-pointer hover:bg-gray-200">
+                                      {supplier}
+                                      <button
+                                        type="button"
+                                        onClick={() => handleSupplierSelect(supplier)}
+                                        className="ml-1 hover:bg-gray-300 rounded-full w-4 h-4 flex items-center justify-center text-xs"
+                                      >
+                                        ×
+                                      </button>
+                                    </Badge>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                          </FormControl>
+                        </FormItem>
+                      )}
+                    />
+
+                    {/* Display supplier details from MASTER sheet */}
+                    {supplierInfos.length > 0 && (
+                      <div className="space-y-2">
+                        <h4 className="font-medium">Selected Supplier Details (From MASTER Sheet):</h4>
+                        {supplierInfos.map((supplier, index) => (
+                          <div key={index} className="bg-gray-50 p-3 rounded border text-sm">
+                            <div className="grid grid-cols-3 gap-x-4">
+                              <div>
+                                <span className="font-medium">Name:</span> {supplier.name}
+                              </div>
+                              <div>
+                                <span className="font-medium">Address:</span> {supplier.address}
+                              </div>
+                              <div>
+                                <span className="font-medium">GSTIN:</span> {supplier.gstin}
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Cards */}
+                <div className="grid md:grid-cols-3 gap-3">
+                  <Card className="p-0 gap-0 shadow-xs rounded-[3px]">
+                    <CardHeader className="bg-muted px-5 py-2">
+                      <CardTitle className="text-center">Our Commercial Details</CardTitle>
+                    </CardHeader>
+                    <CardContent className="p-5 text-sm">
+                      <p>
+                        <span className="font-medium">GSTIN</span> {details?.companyGstin}
+                      </p>
+                      <p>
+                        <span className="font-medium">Pan No.</span> {details?.companyPan}
+                      </p>
+                    </CardContent>
+                  </Card>
+
+                  <Card className="p-0 gap-0 shadow-xs rounded-[3px]">
+                    <CardHeader className="bg-muted px-5 py-2">
+                      <CardTitle className="text-center flex items-center justify-between">
+                        Billing Address
+                        <EditIconButton
+                          editing={isEditingBilling}
+                          onClick={() => {
+                            if (isEditingBilling) toast.success('Billing address updated');
+                            setIsEditingBilling(!isEditingBilling);
+                          }}
+                        />
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent className="p-5 text-sm">
+                      <p>M/S {details?.companyName}</p>
+                      {isEditingBilling ? (
+                        <div className="flex items-center gap-2 mt-1">
+                          <Input
+                            value={billingAddress}
+                            onChange={(e) => setBillingAddress(e.target.value)}
+                            className="h-7 text-sm"
+                            placeholder="Enter billing address"
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') {
+                                setIsEditingBilling(false);
+                                toast.success('Billing address updated');
+                              }
+                            }}
+                            autoFocus
+                          />
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => setIsEditingBilling(false)}
+                            className="h-6 w-6 p-0 hover:bg-red-100"
+                          >
+                            <Trash size={12} className="text-red-500" />
+                          </Button>
+                        </div>
+                      ) : (
+                        <p>{billingAddress}</p>
+                      )}
+                    </CardContent>
+                  </Card>
+
+                  <Card className="p-0 gap-0 shadow-xs rounded-[3px]">
+                    <CardHeader className="bg-muted px-5 py-2">
+                      <CardTitle className="text-center flex items-center justify-between">
+                        Destination Address
+                        <EditIconButton
+                          editing={isEditingDestination}
+                          onClick={() => {
+                            if (isEditingDestination) toast.success('Destination address updated');
+                            setIsEditingDestination(!isEditingDestination);
+                          }}
+                        />
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent className="p-5 text-sm">
+                      <p>M/S {details?.companyName}</p>
+                      {isEditingDestination ? (
+                        <div className="flex items-center gap-2 mt-1">
+                          <Input
+                            value={destinationAddress}
+                            onChange={(e) => setDestinationAddress(e.target.value)}
+                            className="h-7 text-sm"
+                            placeholder="Enter destination address"
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') {
+                                setIsEditingDestination(false);
+                                toast.success('Destination address updated');
+                              }
+                            }}
+                            autoFocus
+                          />
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => setIsEditingDestination(false)}
+                            className="h-6 w-6 p-0 hover:bg-red-100"
+                          >
+                            <Trash size={12} className="text-red-500" />
+                          </Button>
+                        </div>
+                      ) : (
+                        <p>{destinationAddress}</p>
+                      )}
+                    </CardContent>
+                  </Card>
+                </div>
+
+                <hr />
+
+                {/* Description */}
+                <div>
                   <FormField
                     control={form.control}
-                    name="suppliers"
+                    name="description"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Suppliers (From MASTER Sheet)</FormLabel>
+                        <FormLabel>Description</FormLabel>
                         <FormControl>
-                          <div className="space-y-2">
-                            <Select onValueChange={handleSupplierSelect}>
-                              <SelectTrigger size="sm" className="w-full">
-                                <SelectValue placeholder="Select suppliers from MASTER sheet" />
-                              </SelectTrigger>
-                              <SelectContent className="z-[100] max-h-[300px]">
-                                {masterSuppliers.length === 0 ? (
-                                  <SelectItem value="no-suppliers" disabled>
-                                    No suppliers found in MASTER sheet
-                                  </SelectItem>
-                                ) : (
-                                  masterSuppliers.map((supplier, k) => (
-                                    <SelectItem key={k} value={supplier.supplierName}>
-                                      {supplier.supplierName}
-                                    </SelectItem>
-                                  ))
-                                )}
-                              </SelectContent>
-                            </Select>
-                            
-                            {/* Selected suppliers badges */}
-                            {selectedSuppliers.length > 0 && (
-                              <div className="flex flex-wrap gap-2 mt-2">
-                                {selectedSuppliers.map((supplier, index) => (
-                                  <Badge key={index} variant="secondary" className="flex items-center gap-1 cursor-pointer hover:bg-gray-200">
-                                    {supplier}
-                                    <button
-                                      type="button"
-                                      onClick={() => handleSupplierSelect(supplier)}
-                                      className="ml-1 hover:bg-gray-300 rounded-full w-4 h-4 flex items-center justify-center text-xs"
-                                    >
-                                      ×
-                                    </button>
-                                  </Badge>
-                                ))}
-                              </div>
-                            )}
-                          </div>
+                          <Textarea placeholder="Enter message" className="resize-y" {...field} />
                         </FormControl>
                       </FormItem>
                     )}
                   />
-
-                  {/* Display supplier details from MASTER sheet */}
-                  {supplierInfos.length > 0 && (
-                    <div className="space-y-2">
-                      <h4 className="font-medium">Selected Supplier Details (From MASTER Sheet):</h4>
-                      {supplierInfos.map((supplier, index) => (
-                        <div key={index} className="bg-gray-50 p-3 rounded border text-sm">
-                          <div className="grid grid-cols-3 gap-x-4">
-                            <div>
-                              <span className="font-medium">Name:</span> {supplier.name}
-                            </div>
-                            <div>
-                              <span className="font-medium">Address:</span> {supplier.address}
-                            </div>
-                            <div>
-                              <span className="font-medium">GSTIN:</span> {supplier.gstin}
-                            </div>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
                 </div>
-              </div>
 
-              {/* Cards */}
-              <div className="grid md:grid-cols-3 gap-3">
-                <Card className="p-0 gap-0 shadow-xs rounded-[3px]">
-                  <CardHeader className="bg-muted px-5 py-2">
-                    <CardTitle className="text-center">Our Commercial Details</CardTitle>
-                  </CardHeader>
-                  <CardContent className="p-5 text-sm">
-                    <p>
-                      <span className="font-medium">GSTIN</span> {details?.companyGstin}
-                    </p>
-                    <p>
-                      <span className="font-medium">Pan No.</span> {details?.companyPan}
-                    </p>
-                  </CardContent>
-                </Card>
+                <hr />
 
-                <Card className="p-0 gap-0 shadow-xs rounded-[3px]">
-                  <CardHeader className="bg-muted px-5 py-2">
-                    <CardTitle className="text-center flex items-center justify-between">
-                      Billing Address
-                      <EditIconButton
-                        editing={isEditingBilling}
-                        onClick={() => {
-                          if (isEditingBilling) toast.success('Billing address updated');
-                          setIsEditingBilling(!isEditingBilling);
-                        }}
-                      />
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent className="p-5 text-sm">
-                    <p>M/S {details?.companyName}</p>
-                    {isEditingBilling ? (
-                      <div className="flex items-center gap-2 mt-1">
-                        <Input
-                          value={billingAddress}
-                          onChange={(e) => setBillingAddress(e.target.value)}
-                          className="h-7 text-sm"
-                          placeholder="Enter billing address"
-                          onKeyDown={(e) => {
-                            if (e.key === 'Enter') {
-                              setIsEditingBilling(false);
-                              toast.success('Billing address updated');
-                            }
-                          }}
-                          autoFocus
-                        />
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => setIsEditingBilling(false)}
-                          className="h-6 w-6 p-0 hover:bg-red-100"
-                        >
-                          <Trash size={12} className="text-red-500" />
-                        </Button>
-                      </div>
-                    ) : (
-                      <p>{billingAddress}</p>
-                    )}
-                  </CardContent>
-                </Card>
-
-                <Card className="p-0 gap-0 shadow-xs rounded-[3px]">
-                  <CardHeader className="bg-muted px-5 py-2">
-                    <CardTitle className="text-center flex items-center justify-between">
-                      Destination Address
-                      <EditIconButton
-                        editing={isEditingDestination}
-                        onClick={() => {
-                          if (isEditingDestination) toast.success('Destination address updated');
-                          setIsEditingDestination(!isEditingDestination);
-                        }}
-                      />
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent className="p-5 text-sm">
-                    <p>M/S {details?.companyName}</p>
-                    {isEditingDestination ? (
-                      <div className="flex items-center gap-2 mt-1">
-                        <Input
-                          value={destinationAddress}
-                          onChange={(e) => setDestinationAddress(e.target.value)}
-                          className="h-7 text-sm"
-                          placeholder="Enter destination address"
-                          onKeyDown={(e) => {
-                            if (e.key === 'Enter') {
-                              setIsEditingDestination(false);
-                              toast.success('Destination address updated');
-                            }
-                          }}
-                          autoFocus
-                        />
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => setIsEditingDestination(false)}
-                          className="h-6 w-6 p-0 hover:bg-red-100"
-                        >
-                          <Trash size={12} className="text-red-500" />
-                        </Button>
-                      </div>
-                    ) : (
-                      <p>{destinationAddress}</p>
-                    )}
-                  </CardContent>
-                </Card>
-              </div>
-
-              <hr />
-
-              {/* Description */}
-              <div>
-                <FormField
-                  control={form.control}
-                  name="description"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Description</FormLabel>
-                      <FormControl>
-                        <Textarea placeholder="Enter message" className="resize-y" {...field} />
-                      </FormControl>
-                    </FormItem>
-                  )}
-                />
-              </div>
-
-              <hr />
-
-             
-
-              {/* Table with checkboxes and Unit column */}
-              <div className="mx-4 grid">
-                <div className="rounded-[3px] w-full min-w-full overflow-x-auto">
-                  <Table>
-                    <TableHeader className="bg-muted">
-                      <TableRow>
-                        <TableHead className="w-12">
-                          <Checkbox
-                            checked={selectedItems.length === eligibleItems.length && eligibleItems.length > 0}
-                            onCheckedChange={handleSelectAll}
-                          />
-                        </TableHead>
-                        <TableHead>S/N</TableHead>
-                        <TableHead>Internal Code</TableHead>
-                        <TableHead>Product</TableHead>
-                        <TableHead>Description</TableHead>
-                        <TableHead>Qty</TableHead>
-                        <TableHead>Unit</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {eligibleItems.length === 0 ? (
+                {/* Table with checkboxes and Unit column */}
+                <div className="mx-4 grid">
+                  <div className="rounded-[3px] w-full min-w-full overflow-x-auto">
+                    <Table>
+                      <TableHeader className="bg-muted">
                         <TableRow>
-                          <TableCell colSpan={7} className="text-center text-muted-foreground">
-                            No eligible items found (need planned2 NOT NULL and actual2 NULL)
-                          </TableCell>
+                          <TableHead className="w-12">
+                            <Checkbox
+                              checked={selectedItems.length === eligibleItems.length && eligibleItems.length > 0}
+                              onCheckedChange={handleSelectAll}
+                            />
+                          </TableHead>
+                          <TableHead>S/N</TableHead>
+                          <TableHead>Internal Code</TableHead>
+                          <TableHead>Product</TableHead>
+                          <TableHead>Description</TableHead>
+                          <TableHead>Qty</TableHead>
+                          <TableHead>Unit</TableHead>
                         </TableRow>
-                      ) : (
-                        eligibleItems.map((item, index) => (
-                          <TableRow key={item.indentNumber}>
-                            <TableCell>
-                              <Checkbox
-                                checked={selectedItems.includes(item.indentNumber)}
-                                onCheckedChange={(checked) => 
-                                  handleItemSelection(item.indentNumber, checked as boolean)
-                                }
-                              />
+                      </TableHeader>
+                      <TableBody>
+                        {eligibleItems.length === 0 ? (
+                          <TableRow>
+                            <TableCell colSpan={7} className="text-center text-muted-foreground">
+                              No eligible items found (need planned2 NOT NULL and actual2 NULL)
                             </TableCell>
-                            <TableCell>{index + 1}</TableCell>
-                            <TableCell>{item.indentNumber}</TableCell>
-                            <TableCell>{item.productName}</TableCell>
-                            <TableCell>{item.specifications || <span className="text-muted-foreground">No Description</span>}</TableCell>
-                            <TableCell>{item.quantity}</TableCell>
-                            <TableCell>{item.uom}</TableCell>
                           </TableRow>
-                        ))
-                      )}
-                    </TableBody>
-                  </Table>
+                        ) : (
+                          eligibleItems.map((item, index) => (
+                            <TableRow key={item.indentNumber}>
+                              <TableCell>
+                                <Checkbox
+                                  checked={selectedItems.includes(item.indentNumber)}
+                                  onCheckedChange={(checked) => 
+                                    handleItemSelection(item.indentNumber, checked as boolean)
+                                  }
+                                />
+                              </TableCell>
+                              <TableCell>{index + 1}</TableCell>
+                              <TableCell>{item.indentNumber}</TableCell>
+                              <TableCell>{item.productName}</TableCell>
+                              <TableCell>{item.specifications || <span className="text-muted-foreground">No Description</span>}</TableCell>
+                              <TableCell>{item.quantity}</TableCell>
+                              <TableCell>{item.uom}</TableCell>
+                            </TableRow>
+                          ))
+                        )}
+                      </TableBody>
+                    </Table>
+                  </div>
                 </div>
               </div>
-            </div>
 
-            <div className="grid grid-cols-2 gap-3 p-3 w-full max-w-6xl bg-background m-5 shadow-md rounded-md">
-              <Button type="reset" variant="outline" onClick={() => {
-                form.reset();
-                setSelectedItems([]);
-                setSelectedSuppliers([]);
-                setSupplierInfos([]);
-              }}>
-                Reset
-              </Button>
+              <div className="grid grid-cols-2 gap-3 p-3 w-full max-w-6xl bg-background my-5 shadow-md rounded-md">
+                <Button type="reset" variant="outline" onClick={() => {
+                  form.reset();
+                  setSelectedItems([]);
+                  setSelectedSuppliers([]);
+                  setSupplierInfos([]);
+                }}>
+                  Reset
+                </Button>
 
-              <Button type="submit" disabled={form.formState.isSubmitting}>
-                {form.formState.isSubmitting && <Loader size={20} color="white" aria-label="Loading Spinner" />}
-                Save And Send Quotation
-              </Button>
-            </div>
-          </form>
-        </Form>
+                <Button type="submit" disabled={form.formState.isSubmitting}>
+                  {form.formState.isSubmitting && <Loader size={20} color="white" aria-label="Loading Spinner" />}
+                  Save And Send Quotation
+                </Button>
+              </div>
+            </form>
+          </Form>
+        </div>
       </div>
     </div>
   );
 }
+
