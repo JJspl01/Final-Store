@@ -595,23 +595,23 @@ export default () => {
     });
 
 
-    // Function to generate next indent number
-    const getNextIndentNumber = () => {
-        if (indentSheet.length === 0) {
-            return 'SI-0001';
-        }
-        
-        const indentNumbers = indentSheet
-            .map(row => row.indentNumber)
-            .filter(num => num && num.startsWith('SI-'))
-            .map(num => parseInt(num.replace('SI-', ''), 10))
-            .filter(num => !isNaN(num));
-        
-        const maxNumber = Math.max(...indentNumbers, 0);
-        const nextNumber = maxNumber + 1;
-        
-        return `SI-${String(nextNumber).padStart(4, '0')}`;
-    };
+   // Function to generate next indent number
+const getNextIndentNumber = () => {
+    if (indentSheet.length === 0) {
+        return 'SI-0001';
+    }
+    
+    const indentNumbers = indentSheet
+        .map(row => row.indentNumber)
+        .filter(num => num && num.startsWith('SI-'))
+        .map(num => parseInt(num.replace('SI-', ''), 10))
+        .filter(num => !isNaN(num));
+    
+    const maxNumber = Math.max(...indentNumbers, 0);
+    const nextNumber = maxNumber + 1;
+    
+    return `SI-${String(nextNumber).padStart(4, '0')}`;
+};
 
 
 // Better approach using image tag
@@ -664,15 +664,26 @@ const addNewProductLocally = (index: number, groupHead: string) => {
     toast.success('Product added successfully');
 };
 
-    async function onSubmit(data: z.infer<typeof schema>) {
+  async function onSubmit(data: z.infer<typeof schema>) {
         try {
-            const indentNumber = getNextIndentNumber();
+            const timestamp = new Date().toISOString();
             const rows: Partial<IndentSheet>[] = [];
             
-            for (const product of data.products) {
+            // Get the starting indent number
+            let currentIndentNumber = getNextIndentNumber();
+            
+            for (let i = 0; i < data.products.length; i++) {
+                const product = data.products[i];
+                
+                // Generate unique indent number for each product
+                if (i > 0) {
+                    const lastNumber = parseInt(currentIndentNumber.replace('SI-', ''), 10);
+                    currentIndentNumber = `SI-${String(lastNumber + 1).padStart(4, '0')}`;
+                }
+                
                 const row: Partial<IndentSheet> = {
-                    timestamp: new Date().toISOString(),
-                    indentNumber: indentNumber,
+                    timestamp: timestamp,
+                    indentNumber: currentIndentNumber,
                     indenterName: data.indenterName,
                     department: product.department,
                     areaOfUse: product.areaOfUse,
@@ -696,37 +707,39 @@ const addNewProductLocally = (index: number, groupHead: string) => {
 
                 rows.push(row);
             }
-            
-            await postToSheet(rows);
-            setTimeout(() => updateIndentSheet(), 1000);
-            
-            toast.success('Indent created successfully');
-            
-           form.reset({
-    indenterName: '',
-    indentApproveBy: '',
-    indentType: '' as any, // Change from undefined to ''
-    products: [
-        {
-            attachment: undefined,
-            uom: '',
-            productName: '',
-            specifications: '',
-            quantity: 1,
-            areaOfUse: '',
-            groupHead: '',
-            department: '',
-        },
-    ],
-});
-            // Reset local products and states
-            setLocalProducts({});
-            setNewProductName({});
-            setShowAddProduct({});
-        } catch (_) {
-            toast.error('Error while creating indent! Please try again');
-        }
+        
+        await postToSheet(rows);
+        setTimeout(() => updateIndentSheet(), 1000);
+        
+        toast.success('Indent created successfully');
+        
+        form.reset({
+            indenterName: '',
+            indentApproveBy: '',
+            indentType: '' as any,
+            products: [
+                {
+                    attachment: undefined,
+                    uom: '',
+                    productName: '',
+                    specifications: '',
+                    quantity: 1,
+                    areaOfUse: '',
+                    groupHead: '',
+                    department: '',
+                },
+            ],
+        });
+        
+        // Reset local products and states
+        setLocalProducts({});
+        setNewProductName({});
+        setShowAddProduct({});
+    } catch (_) {
+        toast.error('Error while creating indent! Please try again');
     }
+}
+
 
 
     function onError(e: any) {
