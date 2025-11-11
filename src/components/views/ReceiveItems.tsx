@@ -402,16 +402,22 @@ export default () => {
             console.log('here', 3);
             await postToSheet([row], 'insert', 'RECEIVED');
 
-            console.log('here', 4);
-            await postToSheet(
-                indentSheet
-                    .filter((s) => s.indentNumber === selectedIndent?.indentNumber)
-                    .map((prev) => ({
-                        ...prev,
-                        actual5: new Date().toISOString(),
-                    })),
-                'update'
-            );
+          console.log('here', 4);
+            // Sirf actual5 (AS column - date) aur AU column (receive status) update karna hai
+            const indentToUpdate = indentSheet.find((s) => s.indentNumber === selectedIndent?.indentNumber);
+            
+            if (indentToUpdate) {
+                // Sirf wo fields bhejo jo update karni hain
+                const updatePayload: any = {
+                    rowIndex: (indentToUpdate as any).rowIndex,
+                    sheetName: 'INDENT',
+                    indentNumber: indentToUpdate.indentNumber,
+                    actual5: new Date().toISOString(), // AS column - date
+                    receiveStatus: values.status, // AU column - receive status
+                };
+                
+                await postToSheet([updatePayload], 'update', 'INDENT');
+            }
             console.log('here', 5);
             toast.success(`Approved vendor for ${selectedIndent?.indentNumber}`);
             setOpenDialog(false);
