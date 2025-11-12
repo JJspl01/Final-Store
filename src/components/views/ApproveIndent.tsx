@@ -160,17 +160,38 @@ export default () => {
         }
     };
 
-    const handleBulkUpdate = (indentNo: string, field: 'vendorType' | 'quantity', value: string | number) => {
-        setBulkUpdates(prevUpdates => {
-            const newUpdates = new Map(prevUpdates);
+   const handleBulkUpdate = (
+    indentNo: string,
+    field: 'vendorType' | 'quantity',
+    value: string | number
+) => {
+    setBulkUpdates((prevUpdates) => {
+        const newUpdates = new Map(prevUpdates);
+
+        if (field === 'vendorType') {
+            // value is string here
+            const vendorValue = value as string;
+            selectedRows.forEach((selectedIndentNo) => {
+                const currentUpdate = newUpdates.get(selectedIndentNo) || {};
+                newUpdates.set(selectedIndentNo, {
+                    ...currentUpdate,
+                    vendorType: vendorValue,
+                });
+            });
+        } else {
+            // value is number here
+            const qtyValue = value as number;
             const currentUpdate = newUpdates.get(indentNo) || {};
             newUpdates.set(indentNo, {
                 ...currentUpdate,
-                [field]: value
+                quantity: qtyValue,
             });
-            return newUpdates;
-        });
-    };
+        }
+
+        return newUpdates;
+    });
+};
+
 
     // Fixed TypeScript error with proper type assertion
     const handleSubmitBulkUpdates = async () => {
