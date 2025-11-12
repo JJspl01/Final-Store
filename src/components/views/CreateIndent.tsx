@@ -194,7 +194,7 @@ async function onSubmit(data: z.infer<typeof schema>) {
             }
             
             const row: Partial<IndentSheet> = {
-                timestamp: timestamp,
+                timestamp: `${timestamp}`,
                 indentNumber: currentIndentNumber,
                 indenterName: data.indenterName,
                 department: product.department,
