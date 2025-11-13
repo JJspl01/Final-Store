@@ -366,33 +366,48 @@ export default () => {
         ...(user.indentApprovalAction
             ? [
                 {
-                    header: 'Vendor Type',
-                    id: 'vendorTypeAction',
-                    cell: ({ row }: { row: Row<ApproveTableData> }) => {
-                        const indent = row.original;
-                        const isSelected = selectedRows.has(indent.indentNo);
-                        const currentValue = bulkUpdates.get(indent.indentNo)?.vendorType || indent.vendorType;
-                        
-                        return (
-                            <Select
-                                value={currentValue}
-                                onValueChange={(value) => handleBulkUpdate(indent.indentNo, 'vendorType', value)}
-                                disabled={!isSelected}
-                            >
-                                <SelectTrigger className={`w-full min-w-[120px] max-w-[150px] text-xs ${!isSelected ? 'opacity-50' : ''}`}>
-                                    <SelectValue placeholder="Select type" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    <SelectItem value="Pending">Pending</SelectItem>
-                                    <SelectItem value="Regular">Regular</SelectItem>
-                                    <SelectItem value="Three Party">Three Party</SelectItem>
-                                    <SelectItem value="Reject">Reject</SelectItem>
-                                </SelectContent>
-                            </Select>
-                        );
-                    },
-                    size: 150,
-                },
+  header: 'Vendor Type',
+  id: 'vendorTypeAction',
+  cell: ({ row }: { row: Row<ApproveTableData> }) => {
+    const indent = row.original;
+    const isSelected = selectedRows.has(indent.indentNo);
+    const currentValue =
+      bulkUpdates.get(indent.indentNo)?.vendorType || indent.vendorType;
+
+    const handleChange = (value: string) => {
+      // ✅ Prevent selecting "Pending" (just ignore)
+      if (value === 'Pending') {
+        toast.warning('You cannot select Pending as a Vendor Type');
+        return;
+      }
+      handleBulkUpdate(indent.indentNo, 'vendorType', value);
+    };
+
+    return (
+      <Select
+        value={currentValue === 'Pending' ? '' : currentValue}
+        onValueChange={handleChange}
+        disabled={!isSelected}
+      >
+        <SelectTrigger
+          className={`w-full min-w-[120px] max-w-[150px] text-xs ${
+            !isSelected ? 'opacity-50' : ''
+          }`}
+        >
+          <SelectValue placeholder="Select Vendor Type" />
+        </SelectTrigger>
+        <SelectContent>
+          {/* Removed Pending option */}
+          <SelectItem value="Regular">Regular</SelectItem>
+          <SelectItem value="Three Party">Three Party</SelectItem>
+          <SelectItem value="Reject">Reject</SelectItem>
+        </SelectContent>
+      </Select>
+    );
+  },
+  size: 150,
+},
+
             ]
             : []),
         { 
