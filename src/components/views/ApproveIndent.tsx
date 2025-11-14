@@ -111,6 +111,17 @@ export default () => {
         );
     }, [indentSheet]);
 
+    const getCurrentFormattedDate = () => {
+    const now = new Date();
+    const day = String(now.getDate()).padStart(2, '0');
+    const month = String(now.getMonth() + 1).padStart(2, '0');
+    const year = now.getFullYear();
+    const hours = String(now.getHours()).padStart(2, '0');
+    const minutes = String(now.getMinutes()).padStart(2, '0');
+    const seconds = String(now.getSeconds()).padStart(2, '0');
+    return `${day}/${month}/${year} ${hours}:${minutes}:${seconds}`;
+};
+
     const handleRowSelect = (indentNo: string, checked: boolean) => {
         setSelectedRows(prev => {
             const newSet = new Set(prev);
@@ -193,48 +204,68 @@ export default () => {
 };
 
 
-    // Fixed TypeScript error with proper type assertion
-    const handleSubmitBulkUpdates = async () => {
-        if (selectedRows.size === 0) {
-            toast.error('Please select at least one row to update');
-            return;
-        }
+const handleSubmitBulkUpdates = async () => {
+    if (selectedRows.size === 0) {
+        toast.error('Please select at least one row to update');
+        return;
+    }
 
-        setSubmitting(true);
-        try {
-            const updatesToProcess = Array.from(selectedRows)
-                .map(indentNo => {
-                    const update = bulkUpdates.get(indentNo);
-                    const originalSheet = indentSheet.find(s => s.indentNumber === indentNo);
-                    
-                    if (!originalSheet || !update) return null;
-
-                    return {
-                        ...originalSheet,
-                        vendorType: update.vendorType || originalSheet.vendorType,
-                        approvedQuantity: update.quantity || originalSheet.quantity,
-                        actual1: new Date().toISOString(),
-                        lastUpdated: new Date().toISOString(),
-                    };
-                })
-                .filter((item): item is NonNullable<typeof item> => item !== null); // Type assertion fix
-
-            if (updatesToProcess.length > 0) {
-                await postToSheet(updatesToProcess, 'update');
-                toast.success(`Updated ${updatesToProcess.length} indents successfully`);
+    setSubmitting(true);
+    try {
+        const updatesToProcess = Array.from(selectedRows)
+            .map(indentNo => {
+                const update = bulkUpdates.get(indentNo);
+                const originalSheet = indentSheet.find(s => s.indentNumber === indentNo);
                 
-                // Clear selections and updates
-                setSelectedRows(new Set());
-                setBulkUpdates(new Map());
+                if (!originalSheet || !update) return null;
+
+                // Current date in DD/MM/YYYY HH:mm:ss format
+                const now = new Date();
+                const day = String(now.getDate()).padStart(2, '0');
+                const month = String(now.getMonth() + 1).padStart(2, '0');
+                const year = now.getFullYear();
+                const hours = String(now.getHours()).padStart(2, '0');
+                const minutes = String(now.getMinutes()).padStart(2, '0');
+                const seconds = String(now.getSeconds()).padStart(2, '0');
+                const formattedDate = `${day}/${month}/${year} ${hours}:${minutes}:${seconds}`;
+
+                // Create dataToSend without timestamp
+                const { timestamp, ...sheetWithoutTimestamp } = originalSheet;
                 
-                setTimeout(() => updateIndentSheet(), 1000);
-            }
-        } catch (error) {
-            toast.error('Failed to update indents');
-        } finally {
-            setSubmitting(false);
+                const dataToSend = {
+                    ...sheetWithoutTimestamp, // Spread without timestamp
+                    vendorType: update.vendorType || originalSheet.vendorType,
+                    approvedQuantity: update.quantity !== undefined ? update.quantity : originalSheet.quantity,
+                    actual1: formattedDate,
+                };
+
+                console.log('🔍 After creating object:', dataToSend);
+                console.log('dataToSend.actual1:', dataToSend.actual1);
+                console.log('typeof dataToSend.actual1:', typeof dataToSend.actual1);
+                console.log('Full object:', JSON.stringify(dataToSend, null, 2));
+
+                return dataToSend;
+            })
+            .filter((item): item is NonNullable<typeof item> => item !== null);
+
+        console.log('🚀 Final data before postToSheet:', JSON.stringify(updatesToProcess, null, 2));
+        
+        if (updatesToProcess.length > 0) {
+            await postToSheet(updatesToProcess, 'update');
+            toast.success(`Updated ${updatesToProcess.length} indents successfully`);
+            
+            setSelectedRows(new Set());
+            setBulkUpdates(new Map());
+            
+            setTimeout(() => updateIndentSheet(), 1000);
         }
-    };
+    } catch (error) {
+        console.error('❌ Error:', error);
+        toast.error('Failed to update indents');
+    } finally {
+        setSubmitting(false);
+    }
+};
 
     const handleDownload = (data: any[]) => {
         if (!data || data.length === 0) {
@@ -285,50 +316,60 @@ export default () => {
         setEditValues({});
     };
 
-    const handleSaveEdit = async (indentNo: string) => {
-        try {
-            const currentRow = historyData.find(row => row.indentNo === indentNo);
-            const oldProductName = currentRow?.product;
-            const newProductName = editValues.product;
+const handleSaveEdit = async (indentNo: string) => {
+    try {
+        const currentRow = historyData.find(row => row.indentNo === indentNo);
+        const oldProductName = currentRow?.product;
+        const newProductName = editValues.product;
+        
+        // Current date in DD/MM/YYYY HH:mm:ss format
+        const now = new Date();
+        const day = String(now.getDate()).padStart(2, '0');
+        const month = String(now.getMonth() + 1).padStart(2, '0');
+        const year = now.getFullYear();
+        const hours = String(now.getHours()).padStart(2, '0');
+        const minutes = String(now.getMinutes()).padStart(2, '0');
+        const seconds = String(now.getSeconds()).padStart(2, '0');
+        const formattedDate = `${day}/${month}/${year} ${hours}:${minutes}:${seconds}`;
 
-            // If product name changed, update all rows with the same old product name
-            if (oldProductName && newProductName && oldProductName !== newProductName) {
-                const rowsToUpdate = indentSheet.filter(s => s.productName === oldProductName);
-                
-                await postToSheet(
-                    rowsToUpdate.map((prev) => ({
-                        ...prev,
-                        productName: newProductName,
-                        lastUpdated: new Date().toISOString(),
-                    })),
-                    'update'
-                );
-                toast.success(`Updated product name from "${oldProductName}" to "${newProductName}" for ${rowsToUpdate.length} records`);
-            } else {
-                // Update only the current row for other fields
-                await postToSheet(
-                    indentSheet
-                        .filter((s) => s.indentNumber === indentNo)
-                        .map((prev) => ({
-                            ...prev,
-                            approvedQuantity: editValues.approvedQuantity,
-                            uom: editValues.uom,
-                            vendorType: editValues.vendorType,
-                            productName: editValues.product,
-                            lastUpdated: new Date().toISOString(),
-                        })),
-                    'update'
-                );
-                toast.success(`Updated indent ${indentNo}`);
-            }
+        // If product name changed, update all rows with the same old product name
+        if (oldProductName && newProductName && oldProductName !== newProductName) {
+            const rowsToUpdate = indentSheet.filter(s => s.productName === oldProductName);
             
-            updateIndentSheet();
-            setEditingRow(null);
-            setEditValues({});
-        } catch {
-            toast.error('Failed to update indent');
+            await postToSheet(
+                rowsToUpdate.map((prev) => ({
+                    ...prev,
+                    productName: newProductName,
+                    timestamp: prev.timestamp, // Keep original
+                })),
+                'update'
+            );
+            toast.success(`Updated product name from "${oldProductName}" to "${newProductName}" for ${rowsToUpdate.length} records`);
+        } else {
+            // Update only the current row for other fields
+            await postToSheet(
+                indentSheet
+                    .filter((s) => s.indentNumber === indentNo)
+                    .map((prev) => ({
+                        ...prev,
+                        approvedQuantity: editValues.approvedQuantity,
+                        uom: editValues.uom,
+                        vendorType: editValues.vendorType,
+                        productName: editValues.product,
+                        timestamp: prev.timestamp, // Keep original
+                    })),
+                'update'
+            );
+            toast.success(`Updated indent ${indentNo}`);
         }
-    };
+        
+        updateIndentSheet();
+        setEditingRow(null);
+        setEditValues({});
+    } catch {
+        toast.error('Failed to update indent');
+    }
+};
 
     const handleInputChange = (field: keyof HistoryData, value: any) => {
         setEditValues(prev => ({ ...prev, [field]: value }));

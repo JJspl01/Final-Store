@@ -293,15 +293,99 @@ export default () => {
         setIsEditingDestination(false);
     };
 
-    async function onSubmit(values: FormData) {
-        try {
-            const poNumber =
-                mode === 'create'
-                    ? values.poNumber
-                    : incrementPoRevision(values.poNumber, poMasterSheet);
-            const grandTotal = calculateGrandTotal(
+   const getCurrentFormattedDateTime = () => {
+    const now = new Date();
+    const day = String(now.getDate()).padStart(2, '0');
+    const month = String(now.getMonth() + 1).padStart(2, '0');
+    const year = now.getFullYear();
+    const hours = String(now.getHours()).padStart(2, '0');
+    const minutes = String(now.getMinutes()).padStart(2, '0');
+    const seconds = String(now.getSeconds()).padStart(2, '0');
+    return `${day}/${month}/${year} ${hours}:${minutes}:${seconds}`;
+};
+
+async function onSubmit(values: FormData) {
+    try {
+        const poNumber =
+            mode === 'create'
+                ? values.poNumber
+                : incrementPoRevision(values.poNumber, poMasterSheet);
+        const grandTotal = calculateGrandTotal(
+            values.indents.map((indent) => {
+                const value = indentSheet.find((i) => i.indentNumber === indent.indentNumber);
+                return {
+                    quantity: value?.approvedQuantity || 0,
+                    rate: value?.approvedRate || 0,
+                    discountPercent: indent?.discount || 0,
+                    gstPercent: indent.gst,
+                };
+            })
+        );
+
+        // Convert logo image to base64 for PDF
+        const logoResponse = await fetch('/logo.png');
+        const logoBlob = await logoResponse.blob();
+        const logoBase64 = await new Promise<string>((resolve) => {
+            const reader = new FileReader();
+            reader.onloadend = () => resolve(reader.result as string);
+            reader.readAsDataURL(logoBlob);
+        });
+
+        const pdfProps: POPdfProps = {
+            // companyLogo: logoBase64,
+            companyName: details?.companyName || '',
+            companyPhone: details?.companyPhone || '',
+            companyGstin: details?.companyGstin || '',
+            companyPan: details?.companyPan || '',
+            companyAddress: details?.companyAddress || '',
+            billingAddress: details?.billingAddress || '',
+            destinationAddress: destinationAddress, // Use the editable destination address
+            supplierName: values.supplierName,
+            supplierAddress: values.supplierAddress,
+            supplierGstin: values.gstin,
+            orderNumber: poNumber,
+            orderDate: formatDate(values.poDate),
+            quotationNumber: values.quotationNumber,
+            quotationDate: formatDate(values.quotationDate),
+            enqNo: values.ourEnqNo,
+            enqDate: formatDate(values.enquiryDate),
+            description: values.description,
+            items: values.indents.map((item) => {
+                const indent = indentSheet.find((i) => i.indentNumber === item.indentNumber)!;
+                return {
+                    internalCode: indent.indentNumber,
+                    product: indent.productName,
+                    description: indent.specifications,
+                    quantity: indent.approvedQuantity,
+                    unit: indent.uom,
+                    rate: indent.approvedRate,
+                    gst: item.gst || 0,
+                    discount: item.discount || 0,
+                    amount: calculateTotal(
+                        indent.approvedRate,
+                        item.gst || 0,
+                        item.discount || 0,
+                        indent.approvedQuantity
+                    ),
+                };
+            }),
+            total: calculateSubtotal(
                 values.indents.map((indent) => {
-                    const value = indentSheet.find((i) => i.indentNumber === indent.indentNumber);
+                    const value = indentSheet.find(
+                        (i) => i.indentNumber === indent.indentNumber
+                    );
+                    return {
+                        quantity: value?.approvedQuantity || 0,
+                        rate: value?.approvedRate || 0,
+                        discountPercent: indent?.discount || 0,
+                    };
+                })
+            ),
+            gstAmount: calculateTotalGst(
+                values.indents.map((indent) => {
+                    const value = indentSheet.find(
+                        (i) => i.indentNumber === indent.indentNumber
+                    );
                     return {
                         quantity: value?.approvedQuantity || 0,
                         rate: value?.approvedRate || 0,
@@ -309,158 +393,85 @@ export default () => {
                         gstPercent: indent.gst,
                     };
                 })
-            );
+            ),
+            grandTotal: grandTotal,
+            terms: values.terms,
+            preparedBy: values.preparedBy,
+            approvedBy: values.approvedBy,
+        };
 
-            // Convert logo image to base64 for PDF
-            const logoResponse = await fetch('/logo.png');
-            const logoBlob = await logoResponse.blob();
-            const logoBase64 = await new Promise<string>((resolve) => {
-                const reader = new FileReader();
-                reader.onloadend = () => resolve(reader.result as string);
-                reader.readAsDataURL(logoBlob);
-            });
+        const blob = await pdf(<POPdf {...pdfProps} />).toBlob();
+        const file = new File([blob], `PO-${poNumber}.pdf`, {
+            type: 'application/pdf',
+        });
+        const email = details?.vendors.find((v) => v.vendorName === values.supplierName)?.email;
 
-            const pdfProps: POPdfProps = {
-                // companyLogo: logoBase64,
-                companyName: details?.companyName || '',
-                companyPhone: details?.companyPhone || '',
-                companyGstin: details?.companyGstin || '',
-                companyPan: details?.companyPan || '',
-                companyAddress: details?.companyAddress || '',
-                billingAddress: details?.billingAddress || '',
-                destinationAddress: destinationAddress, // Use the editable destination address
-                supplierName: values.supplierName,
-                supplierAddress: values.supplierAddress,
-                supplierGstin: values.gstin,
-                orderNumber: poNumber,
-                orderDate: formatDate(values.poDate),
-                quotationNumber: values.quotationNumber,
-                quotationDate: formatDate(values.quotationDate),
-                enqNo: values.ourEnqNo,
-                enqDate: formatDate(values.enquiryDate),
+        if (!email) {
+            toast.error("Supplier's Email was not found!");
+            return;
+        }
+        const url = await uploadFile(
+            file,
+            import.meta.env.VITE_PURCHASE_ORDERS_FOLDER,
+            'email',
+            email
+        );
+
+        const rows: PoMasterSheet[] = values.indents.map((v) => {
+            const indent = indentSheet.find((i) => i.indentNumber === v.indentNumber)!;
+            return {
+                timestamp: getCurrentFormattedDateTime(), // Updated format: DD/MM/YYYY HH:mm:ss
+                partyName: values.supplierName,
+                poNumber,
+                internalCode: v.indentNumber,
+                product: indent.productName,
                 description: values.description,
-                items: values.indents.map((item) => {
-                    const indent = indentSheet.find((i) => i.indentNumber === item.indentNumber)!;
-                    return {
-                        internalCode: indent.indentNumber,
-                        product: indent.productName,
-                        description: indent.specifications,
-                        quantity: indent.approvedQuantity,
-                        unit: indent.uom,
-                        rate: indent.approvedRate,
-                        gst: item.gst || 0,
-                        discount: item.discount || 0,
-                        amount: calculateTotal(
-                            indent.approvedRate,
-                            item.gst || 0,
-                            item.discount || 0,
-                            indent.approvedQuantity
-                        ),
-                    };
-                }),
-                total: calculateSubtotal(
-                    values.indents.map((indent) => {
-                        const value = indentSheet.find(
-                            (i) => i.indentNumber === indent.indentNumber
-                        );
-                        return {
-                            quantity: value?.approvedQuantity || 0,
-                            rate: value?.approvedRate || 0,
-                            discountPercent: indent?.discount || 0,
-                        };
-                    })
+                quantity: indent.approvedQuantity,
+                unit: indent.uom,
+                rate: indent.approvedRate,
+                gst: v.gst,
+                discount: v.discount || 0,
+                amount: calculateTotal(
+                    indent.approvedRate,
+                    v.gst,
+                    v.discount || 0,
+                    indent.approvedQuantity
                 ),
-                gstAmount: calculateTotalGst(
-                    values.indents.map((indent) => {
-                        const value = indentSheet.find(
-                            (i) => i.indentNumber === indent.indentNumber
-                        );
-                        return {
-                            quantity: value?.approvedQuantity || 0,
-                            rate: value?.approvedRate || 0,
-                            discountPercent: indent?.discount || 0,
-                            gstPercent: indent.gst,
-                        };
-                    })
-                ),
-                grandTotal: grandTotal,
-                terms: values.terms,
+                totalPoAmount: grandTotal,
+                pdf: url,
                 preparedBy: values.preparedBy,
                 approvedBy: values.approvedBy,
+                quotationNumber: values.quotationNumber,
+                quotationDate: values.quotationDate ? formatDate(values.quotationDate) : '', // Use formatDate for consistency
+                enquiryNumber: values.ourEnqNo,
+                enquiryDate: values.enquiryDate ? formatDate(values.enquiryDate) : '', // Use formatDate for consistency
+                term1: values.terms[0],
+                term2: values.terms[1],
+                term3: values.terms[2],
+                term4: values.terms[3],
+                term5: values.terms[4],
+                term6: values.terms[5],
+                term7: values.terms[6],
+                term8: values.terms[7],
+                term9: values.terms[8],
+                term10: values.terms[9],
+                discountPercent: v.discount || 0, // Add this
+                gstPercent: v.gst, // Add this
             };
+        });
 
-            const blob = await pdf(<POPdf {...pdfProps} />).toBlob();
-            const file = new File([blob], `PO-${poNumber}.pdf`, {
-                type: 'application/pdf',
-            });
-            const email = details?.vendors.find((v) => v.vendorName === values.supplierName)?.email;
-
-            if (!email) {
-                toast.error("Supplier's Email was not found!");
-                return;
-            }
-            const url = await uploadFile(
-                file,
-                import.meta.env.VITE_PURCHASE_ORDERS_FOLDER,
-                'email',
-                email
-            );
-
-            const rows: PoMasterSheet[] = values.indents.map((v) => {
-                const indent = indentSheet.find((i) => i.indentNumber === v.indentNumber)!;
-                return {
-                    timestamp: values.poDate.toISOString(),
-                    partyName: values.supplierName,
-                    poNumber,
-                    internalCode: v.indentNumber,
-                    product: indent.productName,
-                    description: values.description,
-                    quantity: indent.approvedQuantity,
-                    unit: indent.uom,
-                    rate: indent.approvedRate,
-                    gst: v.gst,
-                    discount: v.discount || 0,
-                    amount: calculateTotal(
-                        indent.approvedRate,
-                        v.gst,
-                        v.discount || 0,
-                        indent.approvedQuantity
-                    ),
-                    totalPoAmount: grandTotal,
-                    pdf: url,
-                    preparedBy: values.preparedBy,
-                    approvedBy: values.approvedBy,
-                    quotationNumber: values.quotationNumber,
-                    quotationDate: values.quotationDate.toISOString(),
-                    enquiryNumber: values.ourEnqNo,
-                    enquiryDate: values.enquiryDate.toISOString(),
-                    term1: values.terms[0],
-                    term2: values.terms[1],
-                    term3: values.terms[2],
-                    term4: values.terms[3],
-                    term5: values.terms[4],
-                    term6: values.terms[5],
-                    term7: values.terms[6],
-                    term8: values.terms[7],
-                    term9: values.terms[8],
-                    term10: values.terms[9],
-                    discountPercent: v.discount || 0, // Add this
-                    gstPercent: v.gst, // Add this
-                };
-            });
-
-            await postToSheet(rows, 'insert', 'PO MASTER');
-            toast.success(`Successfully ${mode}d purchase order`);
-            form.reset();
-            setTimeout(() => {
-                updatePoMasterSheet();
-                updateIndentSheet();
-            }, 1000);
-        } catch (e) {
-            console.log(e);
-            toast.error(`Failed to ${mode} purchase order`);
-        }
+        await postToSheet(rows, 'insert', 'PO MASTER');
+        toast.success(`Successfully ${mode}d purchase order`);
+        form.reset();
+        setTimeout(() => {
+            updatePoMasterSheet();
+            updateIndentSheet();
+        }, 1000);
+    } catch (e) {
+        console.log(e);
+        toast.error(`Failed to ${mode} purchase order`);
     }
+}
 
     function onError(e: any) {
         console.log(e);

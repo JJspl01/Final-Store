@@ -41,7 +41,7 @@ export function analyzeData(
     // Approved Indents
     const approvedIndents = indentSheet.filter(
         (i) =>
-            ["three party", "regular"].includes(i.vendorType.toLowerCase()) &&
+            ["three party", "regular"].includes((i.vendorType ?? "").toLowerCase()) &&
             isWithinDate(i.timestamp) &&
             isProductMatch(i.productName)
     );
@@ -68,13 +68,13 @@ export function analyzeData(
     );
 
     // -------------------------------
-    // Issued Items
-    const issuedIndents = indentSheet.filter(
-        (i) =>
-            i.issueStatus.toLowerCase() === 'issued' &&
-            isWithinDate(i.timestamp) &&
-            isProductMatch(i.productName)
-    );
+  const issuedIndents = indentSheet.filter(
+    (i) =>
+        ((i.issueStatus ?? "").toLowerCase() === 'issued') &&
+        isWithinDate(i.timestamp) &&
+        isProductMatch(i.productName)
+);
+
 
     const totalIssuedQuantity = issuedIndents.reduce(
         (sum, i) => sum + (i.issuedQuantity ?? 0),

@@ -119,20 +119,22 @@ export default () => {
         setEditValues({});
     };
 
-  const handleSaveEdit = async (indentNo: string) => {
+const handleSaveEdit = async (indentNo: string) => {
     try {
         await postToSheet(
             indentSheet
                 .filter((s) => s.indentNumber === indentNo)
-                .map((prev) => ({
-                    ...prev,
-                    quantity: editValues.quantity,
-                    uom: editValues.uom,
-                    vendorType: editValues.vendorType,
-                    rate1: editValues.rate?.toString(), // Add rate update
-                    approvedRate: editValues.rate, // Add approved rate update
-                    lastUpdated: new Date().toISOString(),
-                })),
+                .map((prev) => {
+                    const { timestamp, ...prevWithoutTimestamp } = prev;
+                    return {
+                        ...prevWithoutTimestamp,
+                        quantity: editValues.quantity,
+                        uom: editValues.uom,
+                        vendorType: editValues.vendorType,
+                        rate1: editValues.rate?.toString(),
+                        approvedRate: editValues.rate,
+                    };
+                }),
             'update'
         );
         toast.success(`Updated indent ${indentNo}`);
@@ -449,32 +451,56 @@ export default () => {
         },
     });
 
-    async function onSubmitRegular(values: z.infer<typeof regularSchema>) {
-        try {
-            await postToSheet(
-                indentSheet
-                    .filter((s) => s.indentNumber === selectedIndent?.indentNo)
-                    .map((prev) => ({
-                        ...prev,
-                        actual2: new Date().toISOString(),
+const getCurrentFormattedDate = () => {
+    const now = new Date();
+    const day = String(now.getDate()).padStart(2, '0');
+    const month = String(now.getMonth() + 1).padStart(2, '0');
+    const year = now.getFullYear();
+    const hours = String(now.getHours()).padStart(2, '0');
+    const minutes = String(now.getMinutes()).padStart(2, '0');
+    const seconds = String(now.getSeconds()).padStart(2, '0');
+    return `${day}/${month}/${year} ${hours}:${minutes}:${seconds}`;
+};
+
+const getCurrentFormattedDateOnly = () => {
+    const now = new Date();
+    const day = String(now.getDate()).padStart(2, '0');
+    const month = String(now.getMonth() + 1).padStart(2, '0');
+    const year = now.getFullYear();
+    return `${day}/${month}/${year}`;
+};
+
+
+
+async function onSubmitRegular(values: z.infer<typeof regularSchema>) {
+    try {
+        await postToSheet(
+            indentSheet
+                .filter((s) => s.indentNumber === selectedIndent?.indentNo)
+                .map((prev) => {
+                    const { timestamp, ...prevWithoutTimestamp } = prev;
+                    return {
+                        ...prevWithoutTimestamp,
+                        actual2: getCurrentFormattedDateOnly(), // Updated format
                         vendorName1: values.vendorName,
                         rate1: values.rate.toString(),
                         paymentTerm1: values.paymentTerm,
                         approvedVendorName: values.vendorName,
                         approvedRate: values.rate,
                         approvedPaymentTerm: values.paymentTerm,
-                        lastUpdated: new Date().toISOString(), // This ensures newly updated items appear at top
-                    })),
-                'update'
-            );
-            toast.success(`Updated vendor of ${selectedIndent?.indentNo}`);
-            setOpenDialog(false);
-            regularForm.reset();
-            setTimeout(() => updateIndentSheet(), 1000);
-        } catch {
-            toast.error('Failed to update vendor');
-        }
+                    };
+                }),
+            'update'
+        );
+        toast.success(`Updated vendor of ${selectedIndent?.indentNo}`);
+        setOpenDialog(false);
+        regularForm.reset();
+        setTimeout(() => updateIndentSheet(), 1000);
+    } catch {
+        toast.error('Failed to update vendor');
     }
+}
+
 
     // Creating Three Party Vendor form
     const threePartySchema = z.object({
@@ -516,22 +542,24 @@ export default () => {
         name: 'vendors',
     });
 
-    async function onSubmitThreeParty(values: z.infer<typeof threePartySchema>) {
-        try {
-            let url: string = '';
-            if (values.comparisonSheet) {
-                url = await uploadFile(
-                    values.comparisonSheet,
-                    import.meta.env.VITE_COMPARISON_SHEET_FOLDER
-                );
-            }
+  async function onSubmitThreeParty(values: z.infer<typeof threePartySchema>) {
+    try {
+        let url: string = '';
+        if (values.comparisonSheet) {
+            url = await uploadFile(
+                values.comparisonSheet,
+                import.meta.env.VITE_COMPARISON_SHEET_FOLDER
+            );
+        }
 
-            await postToSheet(
-                indentSheet
-                    .filter((s) => s.indentNumber === selectedIndent?.indentNo)
-                    .map((prev) => ({
-                        ...prev,
-                        actual2: new Date().toISOString(),
+        await postToSheet(
+            indentSheet
+                .filter((s) => s.indentNumber === selectedIndent?.indentNo)
+                .map((prev) => {
+                    const { timestamp, ...prevWithoutTimestamp } = prev;
+                    return {
+                        ...prevWithoutTimestamp,
+                        actual2: getCurrentFormattedDateOnly(), // Updated format
                         vendorName1: values.vendors[0].vendorName,
                         rate1: values.vendors[0].rate.toString(),
                         paymentTerm1: values.vendors[0].paymentTerm,
@@ -542,18 +570,20 @@ export default () => {
                         rate3: values.vendors[2].rate.toString(),
                         paymentTerm3: values.vendors[2].paymentTerm,
                         comparisonSheet: url,
-                        lastUpdated: new Date().toISOString(), // This ensures newly updated items appear at top
-                    })),
-                'update'
-            );
-            toast.success(`Updated vendors of ${selectedIndent?.indentNo}`);
-            setOpenDialog(false);
-            threePartyForm.reset();
-            setTimeout(() => updateIndentSheet(), 1000);
-        } catch {
-            toast.error('Failed to update vendor');
-        }
+                    };
+                }),
+            'update'
+        );
+        toast.success(`Updated vendors of ${selectedIndent?.indentNo}`);
+        setOpenDialog(false);
+        threePartyForm.reset();
+        setTimeout(() => updateIndentSheet(), 1000);
+    } catch {
+        toast.error('Failed to update vendor');
     }
+}
+
+
 
     // History Update form
     const historyUpdateSchema = z.object({
@@ -573,28 +603,30 @@ export default () => {
         }
     }, [selectedHistory])
 
-    async function onSubmitHistoryUpdate(values: z.infer<typeof historyUpdateSchema>) {
-        try {
-            await postToSheet(
-                indentSheet
-                    .filter((s) => s.indentNumber === selectedHistory?.indentNo)
-                    .map((prev) => ({
-                        ...prev,
+async function onSubmitHistoryUpdate(values: z.infer<typeof historyUpdateSchema>) {
+    try {
+        await postToSheet(
+            indentSheet
+                .filter((s) => s.indentNumber === selectedHistory?.indentNo)
+                .map((prev) => {
+                    const { timestamp, ...prevWithoutTimestamp } = prev;
+                    return {
+                        ...prevWithoutTimestamp,
+                        actual2: getCurrentFormattedDateOnly(), // Updated format
                         rate1: values.rate.toString(),
                         approvedRate: values.rate,
-                        lastUpdated: new Date().toISOString(), // This ensures updated items appear at top
-                    })),
-                'update'
-            );
-            toast.success(`Updated rate of ${selectedHistory?.indentNo}`);
-            setOpenDialog(false);
-            historyUpdateForm.reset({ rate: undefined });
-            setTimeout(() => updateIndentSheet(), 1000);
-        } catch {
-            toast.error('Failed to update vendor');
-        }
+                    };
+                }),
+            'update'
+        );
+        toast.success(`Updated rate of ${selectedHistory?.indentNo}`);
+        setOpenDialog(false);
+        historyUpdateForm.reset({ rate: undefined });
+        setTimeout(() => updateIndentSheet(), 1000);
+    } catch {
+        toast.error('Failed to update vendor');
     }
-
+}
     function onError(e: any) {
         console.log(e);
         toast.error('Please fill all required fields');

@@ -124,54 +124,63 @@ export default () => {
         });
     };
 
-    const handleSubmitBulkUpdates = async () => {
-        if (selectedRows.size === 0) {
-            toast.error('Please select at least one row to update');
-            return;
-        }
+ const handleSubmitBulkUpdates = async () => {
+    if (selectedRows.size === 0) {
+        toast.error('Please select at least one row to update');
+        return;
+    }
 
-        setSubmitting(true);
-        try {
-            const updatesToProcess = Array.from(selectedRows)
-                .map(id => {
-                    const update = bulkUpdates.get(id);
-                    const originalSheet = indentSheet.find(s => `${s.indentNumber}_${indentSheet.indexOf(s)}` === id);
-                    
-                    if (!originalSheet || !update) return null;
-
-                    return {
-                        ...originalSheet,
-                        indenterName: update.indenterName || originalSheet.indenterName,
-                        indentApprovedBy: update.indentApproveBy || originalSheet.indentApprovedBy,
-                        indentType: update.indentType || originalSheet.indentType,
-                        department: update.department || originalSheet.department,
-                        groupHead: update.groupHead || originalSheet.groupHead,
-                        productName: update.productName || originalSheet.productName,
-                        quantity: update.quantity || originalSheet.quantity,
-                        uom: update.uom || originalSheet.uom,
-                        areaOfUse: update.areaOfUse || originalSheet.areaOfUse,
-                        specifications: update.specifications || originalSheet.specifications,
-                        lastUpdated: new Date().toISOString(),
-                    };
-                })
-                .filter((item): item is NonNullable<typeof item> => item !== null);
-
-            if (updatesToProcess.length > 0) {
-                await postToSheet(updatesToProcess, 'update');
-                toast.success(`Updated ${updatesToProcess.length} indents successfully`);
+    setSubmitting(true);
+    try {
+        const updatesToProcess = Array.from(selectedRows)
+            .map(id => {
+                const update = bulkUpdates.get(id);
+                const originalSheet = indentSheet.find(s => `${s.indentNumber}_${indentSheet.indexOf(s)}` === id);
                 
-                // Clear selections and updates
-                setSelectedRows(new Set());
-                setBulkUpdates(new Map());
-                
-                setTimeout(() => updateIndentSheet(), 1000);
-            }
-        } catch (error) {
-            toast.error('Failed to update indents');
-        } finally {
-            setSubmitting(false);
+                if (!originalSheet || !update) return null;
+
+                // Current date in DD/MM/YYYY HH:mm:ss format
+                const now = new Date();
+                const day = String(now.getDate()).padStart(2, '0');
+                const month = String(now.getMonth() + 1).padStart(2, '0');
+                const year = now.getFullYear();
+                const hours = String(now.getHours()).padStart(2, '0');
+                const minutes = String(now.getMinutes()).padStart(2, '0');
+                const seconds = String(now.getSeconds()).padStart(2, '0');
+                const formattedTimestamp = `${day}/${month}/${year} ${hours}:${minutes}:${seconds}`;
+
+                return {
+                    ...originalSheet,
+                    indenterName: update.indenterName || originalSheet.indenterName,
+                    indentApprovedBy: update.indentApproveBy || originalSheet.indentApprovedBy,
+                    indentType: update.indentType || originalSheet.indentType,
+                    department: update.department || originalSheet.department,
+                    groupHead: update.groupHead || originalSheet.groupHead,
+                    productName: update.productName || originalSheet.productName,
+                    quantity: update.quantity || originalSheet.quantity,
+                    uom: update.uom || originalSheet.uom,
+                    areaOfUse: update.areaOfUse || originalSheet.areaOfUse,
+                    specifications: update.specifications || originalSheet.specifications,
+                    timestamp: formattedTimestamp, // lastUpdated ke bajay timestamp use karo
+                };
+            })
+            .filter((item): item is NonNullable<typeof item> => item !== null);
+
+        if (updatesToProcess.length > 0) {
+            await postToSheet(updatesToProcess, 'update');
+            toast.success(`Updated ${updatesToProcess.length} indents successfully`);
+            
+            setSelectedRows(new Set());
+            setBulkUpdates(new Map());
+            
+            setTimeout(() => updateIndentSheet(), 1000);
         }
-    };
+    } catch (error) {
+        toast.error('Failed to update indents');
+    } finally {
+        setSubmitting(false);
+    }
+};
 
     const handleDownload = (data: AllIndentTableData[]) => {
         if (!data || data.length === 0) {
@@ -555,14 +564,14 @@ export default () => {
             },
             size: 80,
         },
-        {
+{
     accessorKey: 'vendorType',
     header: 'Vendor Type',
     cell: ({ getValue }) => {
         const value = getValue() as string;
         return (
-            <div className={`text-xs sm:text-sm ${value === 'Pending' ? 'text-gray-400' : 'font-medium'}`}>
-                {value || 'Pending'}
+            <div className={`text-xs sm:text-sm ${!value || value === '' ? 'text-gray-400' : 'font-medium'}`}>
+                {value || '-'}
             </div>
         );
     },
