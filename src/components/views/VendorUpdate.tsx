@@ -66,53 +66,55 @@ export default () => {
     const [editValues, setEditValues] = useState<Partial<HistoryData>>({});
     const [vendorSearch, setVendorSearch] = useState('');
 
-    // Fetching table data
-    useEffect(() => {
-        setTableData(
-            indentSheet
-                .filter((sheet) => sheet.planned2 !== '' && sheet.actual2 === '')
-                .map((sheet) => ({
-                    indentNo: sheet.indentNumber,
-                    indenter: sheet.indenterName,
-                    department: sheet.department,
-                    product: sheet.productName,
-                    quantity: sheet.approvedQuantity,
-                    uom: sheet.uom,
-                    vendorType: sheet.vendorType as VendorUpdateData['vendorType'],
-                    vendorName: sheet.approvedVendorName || sheet.vendorName1 || '',
-                }))
-        );
-        setHistoryData(
-            indentSheet
-                .filter((sheet) => sheet.planned2 !== '' && sheet.actual2 !== '')
-                .map((sheet) => ({
-                    date: formatDate(new Date(sheet.actual2)),
-                    indentNo: sheet.indentNumber,
-                    indenter: sheet.indenterName,
-                    department: sheet.department,
-                    product: sheet.productName,
-                    quantity: sheet.quantity,
-                    uom: sheet.uom,
-                    rate: sheet.approvedRate || 0,
-                    vendorType: sheet.vendorType as HistoryData['vendorType'],
-                    vendorName: sheet.approvedVendorName || sheet.vendorName1 || '',
-                }))
-                // Sort by indentNo in descending order (newest first)
-                .sort((a, b) => {
-                    return b.indentNo.localeCompare(a.indentNo);
-                })
-        );
-    }, [indentSheet]);
+   // Fetching table data
+useEffect(() => {
+    setTableData(
+        indentSheet
+            .filter((sheet) => sheet.planned2 !== '' && sheet.actual2 === '')
+            .map((sheet) => ({
+                indentNo: sheet.indentNumber,
+                indenter: sheet.indenterName,
+                department: sheet.department,
+                product: sheet.productName,
+                quantity: sheet.approvedQuantity,
+                uom: sheet.uom,
+                vendorType: sheet.vendorType as VendorUpdateData['vendorType'],
+                vendorName: sheet.approvedVendorName || sheet.vendorName1 || '',
+            }))
+            .reverse()
+    );
+    setHistoryData(
+        indentSheet
+            .filter((sheet) => sheet.planned2 !== '' && sheet.actual2 !== '')
+            .map((sheet) => ({
+                date: formatDate(new Date(sheet.actual2)),
+                indentNo: sheet.indentNumber,
+                indenter: sheet.indenterName,
+                department: sheet.department,
+                product: sheet.productName,
+                quantity: sheet.quantity,
+                uom: sheet.uom,
+                rate: sheet.approvedRate || 0,
+                vendorType: sheet.vendorType as HistoryData['vendorType'],
+                vendorName: sheet.approvedVendorName || sheet.vendorName1 || '',
+            }))
+            .reverse()
+    );
+}, [indentSheet]);
 
-  const handleEditClick = (row: HistoryData) => {
+
+ const handleEditClick = (row: HistoryData) => {
     setEditingRow(row.indentNo);
     setEditValues({
         quantity: row.quantity,
         uom: row.uom,
         vendorType: row.vendorType,
-        rate: row.rate, // Add rate to edit values
+        rate: row.rate,
+        product: row.product,
+        vendorName: row.vendorName,
     });
 };
+
 
     const handleCancelEdit = () => {
         setEditingRow(null);
@@ -133,6 +135,9 @@ const handleSaveEdit = async (indentNo: string) => {
                         vendorType: editValues.vendorType,
                         rate1: editValues.rate?.toString(),
                         approvedRate: editValues.rate,
+                        productName: editValues.product,
+                        approvedVendorName: editValues.vendorName,
+                        vendorName1: editValues.vendorName,
                     };
                 }),
             'update'
@@ -145,6 +150,7 @@ const handleSaveEdit = async (indentNo: string) => {
         toast.error('Failed to update indent');
     }
 };
+
 
     const handleInputChange = (field: keyof HistoryData, value: any) => {
         setEditValues(prev => ({ ...prev, [field]: value }));
@@ -259,14 +265,34 @@ const handleSaveEdit = async (indentNo: string) => {
             header: 'Department',
         },
         {
-            accessorKey: 'product',
-            header: 'Product',
-            cell: ({ getValue }) => (
-                <div className="max-w-[150px] break-words whitespace-normal">
-                    {getValue() as string}
-                </div>
-            ),
-        },
+    accessorKey: 'product',
+    header: 'Product',
+    cell: ({ row }) => {
+        const isEditing = editingRow === row.original.indentNo;
+        return isEditing ? (
+            <Input
+                value={editValues.product ?? row.original.product}
+                onChange={(e) => handleInputChange('product', e.target.value)}
+                className="w-[150px]"
+            />
+        ) : (
+            <div className="max-w-[150px] break-words whitespace-normal flex items-center gap-2">
+                {row.original.product}
+                {user.updateVendorAction && (
+                    <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-4 w-4"
+                        onClick={() => handleEditClick(row.original)}
+                    >
+                        <PenSquare className="h-3 w-3" />
+                    </Button>
+                )}
+            </div>
+        );
+    },
+},
+
         {
             accessorKey: 'quantity',
             header: 'Quantity',
@@ -363,10 +389,35 @@ const handleSaveEdit = async (indentNo: string) => {
                 );
             },
         },
-        {
-            accessorKey: 'vendorName',
-            header: 'Vendor Name',
-        },
+       {
+    accessorKey: 'vendorName',
+    header: 'Vendor Name',
+    cell: ({ row }) => {
+        const isEditing = editingRow === row.original.indentNo;
+        return isEditing ? (
+            <Input
+                value={editValues.vendorName ?? row.original.vendorName}
+                onChange={(e) => handleInputChange('vendorName', e.target.value)}
+                className="w-[150px]"
+            />
+        ) : (
+            <div className="flex items-center gap-2">
+                {row.original.vendorName}
+                {user.updateVendorAction && (
+                    <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-4 w-4"
+                        onClick={() => handleEditClick(row.original)}
+                    >
+                        <PenSquare className="h-3 w-3" />
+                    </Button>
+                )}
+            </div>
+        );
+    },
+},
+
         {
             accessorKey: 'vendorType',
             header: 'Vendor Type',

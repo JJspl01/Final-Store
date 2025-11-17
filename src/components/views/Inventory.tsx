@@ -44,6 +44,7 @@ export default () => {
                 approved: i.approved,
                 outQuantity: i.outQuantity,
             }))
+            .reverse()
         );
     }, [inventorySheet]);
     const columns: ColumnDef<InventoryTable>[] = [

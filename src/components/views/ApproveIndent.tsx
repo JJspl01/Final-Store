@@ -84,6 +84,7 @@ export default () => {
                         : 'Pending',
                     date: formatDate(new Date(sheet.timestamp)),
                 }))
+                .reverse()
         );
         setHistoryData(
             indentSheet

@@ -971,6 +971,7 @@ export default () => {
                     poDate: i.actual4,
                     product: i.productName,
                 }))
+                .reverse()
         );
     }, [indentSheet]);
 
@@ -1000,6 +1001,7 @@ export default () => {
                     transportingAmount: r.transportingAmount,
                 };
             })
+            .reverse()
         );
     }, [receivedSheet, indentSheet]);
 

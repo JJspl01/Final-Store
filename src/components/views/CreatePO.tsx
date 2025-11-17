@@ -104,29 +104,30 @@ export default () => {
         }
     }, [details]);
 
-    const schema = z.object({
-        poNumber: z.string().nonempty(),
-        poDate: z.coerce.date(),
-        supplierName: z.string().nonempty(),
-        supplierAddress: z.string().nonempty(),
-        gstin: z.string().nonempty(),
-        quotationNumber: z.string().nonempty(),
-        quotationDate: z.coerce.date(),
-        ourEnqNo: z.string(),
-        enquiryDate: z.coerce.date(),
-        description: z.string(),
-        indents: z
-            .array(
-                z.object({
-                    indentNumber: z.string().nonempty(),
-                    gst: z.coerce.number(),
-                    discount: z.coerce.number().default(0).optional(),
-                })
-            ),
-        terms: z.array(z.string().nonempty()).max(10),
-        preparedBy: z.string().nonempty(),
-        approvedBy: z.string().nonempty(),
-    });
+   const schema = z.object({
+  poNumber: z.string().nonempty(),
+  poDate: z.coerce.date(),
+  supplierName: z.string().nonempty(),
+  supplierAddress: z.string().nonempty(),
+  gstin: z.string().nonempty(),
+  quotationNumber: z.string().nonempty(),
+  quotationDate: z.coerce.date(),
+  ourEnqNo: z.string(),
+  enquiryDate: z.coerce.date(),
+  description: z.string().optional().default(''), // Made optional
+  indents: z
+    .array(
+      z.object({
+        indentNumber: z.string().nonempty(),
+        gst: z.coerce.number(),
+        discount: z.coerce.number().default(0).optional(),
+      })
+    ),
+  terms: z.array(z.string().nonempty()).max(10),
+  preparedBy: z.string().nonempty(),
+  approvedBy: z.string().nonempty(),
+});
+
 
     type FormData = z.infer<typeof schema>;
     const form = useForm<FormData>({

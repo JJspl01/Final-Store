@@ -79,6 +79,7 @@ export default () => {
                         [sheet.vendorName3, sheet.rate3.toString(), sheet.paymentTerm3],
                     ],
                 }))
+                
         );
         setHistoryData(
             indentSheet
@@ -96,6 +97,7 @@ export default () => {
                     date: new Date(sheet.timestamp).toDateString(),
                     vendor: [sheet.approvedVendorName, sheet.approvedRate.toString()],
                 }))
+                
         );
     }, [indentSheet]);
 

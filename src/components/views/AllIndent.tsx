@@ -67,6 +67,7 @@ export default () => {
                 attachment: sheet.attachment || '',
                 vendorType: sheet.vendorType || 'Pending',
             }))
+            .reverse()
         );
     }, [indentSheet]);
 

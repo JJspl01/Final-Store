@@ -75,6 +75,7 @@ export default () => {
                     uom: sheet.uom,
                     poNumber: sheet.poNumber,
                 }))
+                .reverse()
         );
 
         // History: both planned7 and actual7 are not null

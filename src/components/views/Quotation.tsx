@@ -221,7 +221,7 @@ export default function QuotationPage() {
       const actual2IsNull = item.actual2 === null || item.actual2 === undefined || item.actual2 === '';
       
       return planned2NotNull && actual2IsNull;
-    });
+    }).reverse();
     
     console.log('Filtered eligible items:', filtered.length);
     return filtered;
