@@ -128,6 +128,20 @@ export async function postToQuotationHistory(rows: any[]) {
   }
 }
 
+
+export async function fetchVendors() {
+  try {
+    const response = await fetch(
+      `${import.meta.env.VITE_APP_SCRIPT_URL}?sheetName=MASTER&fetchType=vendors`
+    );
+    const data = await response.json();
+    return data.vendors || [];
+  } catch (error) {
+    console.error('Error fetching vendors:', error);
+    return [];
+  }
+}
+
 export async function postToSheet(
     data:
         | Partial<IndentSheet>[]

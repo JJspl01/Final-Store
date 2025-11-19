@@ -13,7 +13,7 @@ import {
     DialogFooter,
     DialogClose,
 } from '../ui/dialog';
-import { postToSheet, uploadFile } from '@/lib/fetchers';
+import { postToSheet, uploadFile,fetchVendors  } from '@/lib/fetchers';
 import { z } from 'zod';
 import { useFieldArray, useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -65,55 +65,65 @@ export default () => {
     const [editingRow, setEditingRow] = useState<string | null>(null);
     const [editValues, setEditValues] = useState<Partial<HistoryData>>({});
     const [vendorSearch, setVendorSearch] = useState('');
+      const [vendors, setVendors] = useState([]);
+    const [vendorsLoading, setVendorsLoading] = useState(true);
+ useEffect(() => {
+        const loadVendors = async () => {
+            setVendorsLoading(true);
+            const vendorsList = await fetchVendors();
+            setVendors(vendorsList);
+            setVendorsLoading(false);
+        };
+        loadVendors();
+    }, []);
+    // Fetching table data
+    useEffect(() => {
+        setTableData(
+            indentSheet
+                .filter((sheet) => sheet.planned2 !== '' && sheet.actual2 === '')
+                .map((sheet) => ({
+                    indentNo: sheet.indentNumber,
+                    indenter: sheet.indenterName,
+                    department: sheet.department,
+                    product: sheet.productName,
+                    quantity: sheet.approvedQuantity,
+                    uom: sheet.uom,
+                    vendorType: sheet.vendorType as VendorUpdateData['vendorType'],
+                    vendorName: sheet.approvedVendorName || sheet.vendorName1 || '',
+                }))
+                .reverse()
+        );
+        setHistoryData(
+            indentSheet
+                .filter((sheet) => sheet.planned2 !== '' && sheet.actual2 !== '')
+                .map((sheet) => ({
+                    date: formatDate(new Date(sheet.actual2)),
+                    indentNo: sheet.indentNumber,
+                    indenter: sheet.indenterName,
+                    department: sheet.department,
+                    product: sheet.productName,
+                    quantity: sheet.quantity,
+                    uom: sheet.uom,
+                    rate: sheet.approvedRate || 0,
+                    vendorType: sheet.vendorType as HistoryData['vendorType'],
+                    vendorName: sheet.approvedVendorName || sheet.vendorName1 || '',
+                }))
+                .reverse()
+        );
+    }, [indentSheet]);
 
-   // Fetching table data
-useEffect(() => {
-    setTableData(
-        indentSheet
-            .filter((sheet) => sheet.planned2 !== '' && sheet.actual2 === '')
-            .map((sheet) => ({
-                indentNo: sheet.indentNumber,
-                indenter: sheet.indenterName,
-                department: sheet.department,
-                product: sheet.productName,
-                quantity: sheet.approvedQuantity,
-                uom: sheet.uom,
-                vendorType: sheet.vendorType as VendorUpdateData['vendorType'],
-                vendorName: sheet.approvedVendorName || sheet.vendorName1 || '',
-            }))
-            .reverse()
-    );
-    setHistoryData(
-        indentSheet
-            .filter((sheet) => sheet.planned2 !== '' && sheet.actual2 !== '')
-            .map((sheet) => ({
-                date: formatDate(new Date(sheet.actual2)),
-                indentNo: sheet.indentNumber,
-                indenter: sheet.indenterName,
-                department: sheet.department,
-                product: sheet.productName,
-                quantity: sheet.quantity,
-                uom: sheet.uom,
-                rate: sheet.approvedRate || 0,
-                vendorType: sheet.vendorType as HistoryData['vendorType'],
-                vendorName: sheet.approvedVendorName || sheet.vendorName1 || '',
-            }))
-            .reverse()
-    );
-}, [indentSheet]);
 
-
- const handleEditClick = (row: HistoryData) => {
-    setEditingRow(row.indentNo);
-    setEditValues({
-        quantity: row.quantity,
-        uom: row.uom,
-        vendorType: row.vendorType,
-        rate: row.rate,
-        product: row.product,
-        vendorName: row.vendorName,
-    });
-};
+    const handleEditClick = (row: HistoryData) => {
+        setEditingRow(row.indentNo);
+        setEditValues({
+            quantity: row.quantity,
+            uom: row.uom,
+            vendorType: row.vendorType,
+            rate: row.rate,
+            product: row.product,
+            vendorName: row.vendorName,
+        });
+    };
 
 
     const handleCancelEdit = () => {
@@ -121,35 +131,35 @@ useEffect(() => {
         setEditValues({});
     };
 
-const handleSaveEdit = async (indentNo: string) => {
-    try {
-        await postToSheet(
-            indentSheet
-                .filter((s) => s.indentNumber === indentNo)
-                .map((prev) => {
-                    const { timestamp, ...prevWithoutTimestamp } = prev;
-                    return {
-                        ...prevWithoutTimestamp,
-                        quantity: editValues.quantity,
-                        uom: editValues.uom,
-                        vendorType: editValues.vendorType,
-                        rate1: editValues.rate?.toString(),
-                        approvedRate: editValues.rate,
-                        productName: editValues.product,
-                        approvedVendorName: editValues.vendorName,
-                        vendorName1: editValues.vendorName,
-                    };
-                }),
-            'update'
-        );
-        toast.success(`Updated indent ${indentNo}`);
-        updateIndentSheet();
-        setEditingRow(null);
-        setEditValues({});
-    } catch {
-        toast.error('Failed to update indent');
-    }
-};
+    const handleSaveEdit = async (indentNo: string) => {
+        try {
+            await postToSheet(
+                indentSheet
+                    .filter((s) => s.indentNumber === indentNo)
+                    .map((prev) => {
+                        const { timestamp, ...prevWithoutTimestamp } = prev;
+                        return {
+                            ...prevWithoutTimestamp,
+                            quantity: editValues.quantity,
+                            uom: editValues.uom,
+                            vendorType: editValues.vendorType,
+                            rate1: editValues.rate?.toString(),
+                            approvedRate: editValues.rate,
+                            productName: editValues.product,
+                            approvedVendorName: editValues.vendorName,
+                            vendorName1: editValues.vendorName,
+                        };
+                    }),
+                'update'
+            );
+            toast.success(`Updated indent ${indentNo}`);
+            updateIndentSheet();
+            setEditingRow(null);
+            setEditValues({});
+        } catch {
+            toast.error('Failed to update indent');
+        }
+    };
 
 
     const handleInputChange = (field: keyof HistoryData, value: any) => {
@@ -265,33 +275,33 @@ const handleSaveEdit = async (indentNo: string) => {
             header: 'Department',
         },
         {
-    accessorKey: 'product',
-    header: 'Product',
-    cell: ({ row }) => {
-        const isEditing = editingRow === row.original.indentNo;
-        return isEditing ? (
-            <Input
-                value={editValues.product ?? row.original.product}
-                onChange={(e) => handleInputChange('product', e.target.value)}
-                className="w-[150px]"
-            />
-        ) : (
-            <div className="max-w-[150px] break-words whitespace-normal flex items-center gap-2">
-                {row.original.product}
-                {user.updateVendorAction && (
-                    <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-4 w-4"
-                        onClick={() => handleEditClick(row.original)}
-                    >
-                        <PenSquare className="h-3 w-3" />
-                    </Button>
-                )}
-            </div>
-        );
-    },
-},
+            accessorKey: 'product',
+            header: 'Product',
+            cell: ({ row }) => {
+                const isEditing = editingRow === row.original.indentNo;
+                return isEditing ? (
+                    <Input
+                        value={editValues.product ?? row.original.product}
+                        onChange={(e) => handleInputChange('product', e.target.value)}
+                        className="w-[150px]"
+                    />
+                ) : (
+                    <div className="max-w-[150px] break-words whitespace-normal flex items-center gap-2">
+                        {row.original.product}
+                        {user.updateVendorAction && (
+                            <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-4 w-4"
+                                onClick={() => handleEditClick(row.original)}
+                            >
+                                <PenSquare className="h-3 w-3" />
+                            </Button>
+                        )}
+                    </div>
+                );
+            },
+        },
 
         {
             accessorKey: 'quantity',
@@ -322,44 +332,44 @@ const handleSaveEdit = async (indentNo: string) => {
                 );
             },
         },
-      {
-    accessorKey: "rate",
-    header: "Rate",
-    cell: ({ row }) => {
-        const isEditing = editingRow === row.original.indentNo;
-        const rate = row.original.rate;
-        const vendorType = row.original.vendorType;
+        {
+            accessorKey: "rate",
+            header: "Rate",
+            cell: ({ row }) => {
+                const isEditing = editingRow === row.original.indentNo;
+                const rate = row.original.rate;
+                const vendorType = row.original.vendorType;
 
-        if (!rate && vendorType === "Three Party") {
-            return (
-                <span className="text-muted-foreground">Not Decided</span>
-            )
-        }
-        
-        return isEditing ? (
-            <Input
-                type="number"
-                value={editValues.rate ?? rate}
-                onChange={(e) => handleInputChange('rate', Number(e.target.value))}
-                className="w-20"
-            />
-        ) : (
-            <div className="flex items-center gap-2">
-                &#8377;{rate}
-                {user.updateVendorAction && (
-                    <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-4 w-4"
-                        onClick={() => handleEditClick(row.original)}
-                    >
-                        <PenSquare className="h-3 w-3" />
-                    </Button>
-                )}
-            </div>
-        );
-    },
-},
+                if (!rate && vendorType === "Three Party") {
+                    return (
+                        <span className="text-muted-foreground">Not Decided</span>
+                    )
+                }
+
+                return isEditing ? (
+                    <Input
+                        type="number"
+                        value={editValues.rate ?? rate}
+                        onChange={(e) => handleInputChange('rate', Number(e.target.value))}
+                        className="w-20"
+                    />
+                ) : (
+                    <div className="flex items-center gap-2">
+                        &#8377;{rate}
+                        {user.updateVendorAction && (
+                            <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-4 w-4"
+                                onClick={() => handleEditClick(row.original)}
+                            >
+                                <PenSquare className="h-3 w-3" />
+                            </Button>
+                        )}
+                    </div>
+                );
+            },
+        },
 
         {
             accessorKey: 'uom',
@@ -389,34 +399,34 @@ const handleSaveEdit = async (indentNo: string) => {
                 );
             },
         },
-       {
-    accessorKey: 'vendorName',
-    header: 'Vendor Name',
-    cell: ({ row }) => {
-        const isEditing = editingRow === row.original.indentNo;
-        return isEditing ? (
-            <Input
-                value={editValues.vendorName ?? row.original.vendorName}
-                onChange={(e) => handleInputChange('vendorName', e.target.value)}
-                className="w-[150px]"
-            />
-        ) : (
-            <div className="flex items-center gap-2">
-                {row.original.vendorName}
-                {user.updateVendorAction && (
-                    <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-4 w-4"
-                        onClick={() => handleEditClick(row.original)}
-                    >
-                        <PenSquare className="h-3 w-3" />
-                    </Button>
-                )}
-            </div>
-        );
-    },
-},
+        {
+            accessorKey: 'vendorName',
+            header: 'Vendor Name',
+            cell: ({ row }) => {
+                const isEditing = editingRow === row.original.indentNo;
+                return isEditing ? (
+                    <Input
+                        value={editValues.vendorName ?? row.original.vendorName}
+                        onChange={(e) => handleInputChange('vendorName', e.target.value)}
+                        className="w-[150px]"
+                    />
+                ) : (
+                    <div className="flex items-center gap-2">
+                        {row.original.vendorName}
+                        {user.updateVendorAction && (
+                            <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-4 w-4"
+                                onClick={() => handleEditClick(row.original)}
+                            >
+                                <PenSquare className="h-3 w-3" />
+                            </Button>
+                        )}
+                    </div>
+                );
+            },
+        },
 
         {
             accessorKey: 'vendorType',
@@ -502,55 +512,55 @@ const handleSaveEdit = async (indentNo: string) => {
         },
     });
 
-const getCurrentFormattedDate = () => {
-    const now = new Date();
-    const day = String(now.getDate()).padStart(2, '0');
-    const month = String(now.getMonth() + 1).padStart(2, '0');
-    const year = now.getFullYear();
-    const hours = String(now.getHours()).padStart(2, '0');
-    const minutes = String(now.getMinutes()).padStart(2, '0');
-    const seconds = String(now.getSeconds()).padStart(2, '0');
-    return `${day}/${month}/${year} ${hours}:${minutes}:${seconds}`;
-};
+    const getCurrentFormattedDate = () => {
+        const now = new Date();
+        const day = String(now.getDate()).padStart(2, '0');
+        const month = String(now.getMonth() + 1).padStart(2, '0');
+        const year = now.getFullYear();
+        const hours = String(now.getHours()).padStart(2, '0');
+        const minutes = String(now.getMinutes()).padStart(2, '0');
+        const seconds = String(now.getSeconds()).padStart(2, '0');
+        return `${day}/${month}/${year} ${hours}:${minutes}:${seconds}`;
+    };
 
-const getCurrentFormattedDateOnly = () => {
-    const now = new Date();
-    const day = String(now.getDate()).padStart(2, '0');
-    const month = String(now.getMonth() + 1).padStart(2, '0');
-    const year = now.getFullYear();
-    return `${day}/${month}/${year}`;
-};
+    const getCurrentFormattedDateOnly = () => {
+        const now = new Date();
+        const day = String(now.getDate()).padStart(2, '0');
+        const month = String(now.getMonth() + 1).padStart(2, '0');
+        const year = now.getFullYear();
+        return `${day}/${month}/${year}`;
+    };
 
 
 
-async function onSubmitRegular(values: z.infer<typeof regularSchema>) {
-    try {
-        await postToSheet(
-            indentSheet
-                .filter((s) => s.indentNumber === selectedIndent?.indentNo)
-                .map((prev) => {
-                    const { timestamp, ...prevWithoutTimestamp } = prev;
-                    return {
-                        ...prevWithoutTimestamp,
-                        actual2: getCurrentFormattedDateOnly(), // Updated format
-                        vendorName1: values.vendorName,
-                        rate1: values.rate.toString(),
-                        paymentTerm1: values.paymentTerm,
-                        approvedVendorName: values.vendorName,
-                        approvedRate: values.rate,
-                        approvedPaymentTerm: values.paymentTerm,
-                    };
-                }),
-            'update'
-        );
-        toast.success(`Updated vendor of ${selectedIndent?.indentNo}`);
-        setOpenDialog(false);
-        regularForm.reset();
-        setTimeout(() => updateIndentSheet(), 1000);
-    } catch {
-        toast.error('Failed to update vendor');
+    async function onSubmitRegular(values: z.infer<typeof regularSchema>) {
+        try {
+            await postToSheet(
+                indentSheet
+                    .filter((s) => s.indentNumber === selectedIndent?.indentNo)
+                    .map((prev) => {
+                        const { timestamp, ...prevWithoutTimestamp } = prev;
+                        return {
+                            ...prevWithoutTimestamp,
+                            actual2: getCurrentFormattedDateOnly(), // Updated format
+                            vendorName1: values.vendorName,
+                            rate1: values.rate.toString(),
+                            paymentTerm1: values.paymentTerm,
+                            approvedVendorName: values.vendorName,
+                            approvedRate: values.rate,
+                            approvedPaymentTerm: values.paymentTerm,
+                        };
+                    }),
+                'update'
+            );
+            toast.success(`Updated vendor of ${selectedIndent?.indentNo}`);
+            setOpenDialog(false);
+            regularForm.reset();
+            setTimeout(() => updateIndentSheet(), 1000);
+        } catch {
+            toast.error('Failed to update vendor');
+        }
     }
-}
 
 
     // Creating Three Party Vendor form
@@ -593,46 +603,46 @@ async function onSubmitRegular(values: z.infer<typeof regularSchema>) {
         name: 'vendors',
     });
 
-  async function onSubmitThreeParty(values: z.infer<typeof threePartySchema>) {
-    try {
-        let url: string = '';
-        if (values.comparisonSheet) {
-            url = await uploadFile(
-                values.comparisonSheet,
-                import.meta.env.VITE_COMPARISON_SHEET_FOLDER
-            );
-        }
+    async function onSubmitThreeParty(values: z.infer<typeof threePartySchema>) {
+        try {
+            let url: string = '';
+            if (values.comparisonSheet) {
+                url = await uploadFile(
+                    values.comparisonSheet,
+                    import.meta.env.VITE_COMPARISON_SHEET_FOLDER
+                );
+            }
 
-        await postToSheet(
-            indentSheet
-                .filter((s) => s.indentNumber === selectedIndent?.indentNo)
-                .map((prev) => {
-                    const { timestamp, ...prevWithoutTimestamp } = prev;
-                    return {
-                        ...prevWithoutTimestamp,
-                        actual2: getCurrentFormattedDateOnly(), // Updated format
-                        vendorName1: values.vendors[0].vendorName,
-                        rate1: values.vendors[0].rate.toString(),
-                        paymentTerm1: values.vendors[0].paymentTerm,
-                        vendorName2: values.vendors[1].vendorName,
-                        rate2: values.vendors[1].rate.toString(),
-                        paymentTerm2: values.vendors[1].paymentTerm,
-                        vendorName3: values.vendors[2].vendorName,
-                        rate3: values.vendors[2].rate.toString(),
-                        paymentTerm3: values.vendors[2].paymentTerm,
-                        comparisonSheet: url,
-                    };
-                }),
-            'update'
-        );
-        toast.success(`Updated vendors of ${selectedIndent?.indentNo}`);
-        setOpenDialog(false);
-        threePartyForm.reset();
-        setTimeout(() => updateIndentSheet(), 1000);
-    } catch {
-        toast.error('Failed to update vendor');
+            await postToSheet(
+                indentSheet
+                    .filter((s) => s.indentNumber === selectedIndent?.indentNo)
+                    .map((prev) => {
+                        const { timestamp, ...prevWithoutTimestamp } = prev;
+                        return {
+                            ...prevWithoutTimestamp,
+                            actual2: getCurrentFormattedDateOnly(), // Updated format
+                            vendorName1: values.vendors[0].vendorName,
+                            rate1: values.vendors[0].rate.toString(),
+                            paymentTerm1: values.vendors[0].paymentTerm,
+                            vendorName2: values.vendors[1].vendorName,
+                            rate2: values.vendors[1].rate.toString(),
+                            paymentTerm2: values.vendors[1].paymentTerm,
+                            vendorName3: values.vendors[2].vendorName,
+                            rate3: values.vendors[2].rate.toString(),
+                            paymentTerm3: values.vendors[2].paymentTerm,
+                            comparisonSheet: url,
+                        };
+                    }),
+                'update'
+            );
+            toast.success(`Updated vendors of ${selectedIndent?.indentNo}`);
+            setOpenDialog(false);
+            threePartyForm.reset();
+            setTimeout(() => updateIndentSheet(), 1000);
+        } catch {
+            toast.error('Failed to update vendor');
+        }
     }
-}
 
 
 
@@ -654,30 +664,30 @@ async function onSubmitRegular(values: z.infer<typeof regularSchema>) {
         }
     }, [selectedHistory])
 
-async function onSubmitHistoryUpdate(values: z.infer<typeof historyUpdateSchema>) {
-    try {
-        await postToSheet(
-            indentSheet
-                .filter((s) => s.indentNumber === selectedHistory?.indentNo)
-                .map((prev) => {
-                    const { timestamp, ...prevWithoutTimestamp } = prev;
-                    return {
-                        ...prevWithoutTimestamp,
-                        actual2: getCurrentFormattedDateOnly(), // Updated format
-                        rate1: values.rate.toString(),
-                        approvedRate: values.rate,
-                    };
-                }),
-            'update'
-        );
-        toast.success(`Updated rate of ${selectedHistory?.indentNo}`);
-        setOpenDialog(false);
-        historyUpdateForm.reset({ rate: undefined });
-        setTimeout(() => updateIndentSheet(), 1000);
-    } catch {
-        toast.error('Failed to update vendor');
+    async function onSubmitHistoryUpdate(values: z.infer<typeof historyUpdateSchema>) {
+        try {
+            await postToSheet(
+                indentSheet
+                    .filter((s) => s.indentNumber === selectedHistory?.indentNo)
+                    .map((prev) => {
+                        const { timestamp, ...prevWithoutTimestamp } = prev;
+                        return {
+                            ...prevWithoutTimestamp,
+                            actual2: getCurrentFormattedDateOnly(), // Updated format
+                            rate1: values.rate.toString(),
+                            approvedRate: values.rate,
+                        };
+                    }),
+                'update'
+            );
+            toast.success(`Updated rate of ${selectedHistory?.indentNo}`);
+            setOpenDialog(false);
+            historyUpdateForm.reset({ rate: undefined });
+            setTimeout(() => updateIndentSheet(), 1000);
+        } catch {
+            toast.error('Failed to update vendor');
+        }
     }
-}
     function onError(e: any) {
         console.log(e);
         toast.error('Please fill all required fields');
@@ -695,21 +705,21 @@ async function onSubmitHistoryUpdate(values: z.infer<typeof historyUpdateSchema>
                         <UserCheck size={50} className="text-primary" />
                     </Heading>
                     <TabsContent value="pending">
-    <DataTable
-        data={tableData}
-        columns={columns}
-        searchFields={['product', 'department', 'indenter', 'vendorType', 'vendorName']}
-        dataLoading={indentLoading}
-    />
-</TabsContent>
-<TabsContent value="history">
-    <DataTable
-        data={historyData}
-        columns={historyColumns}
-        searchFields={['product', 'department', 'indenter', 'vendorType', 'vendorName']}
-        dataLoading={indentLoading}
-    />
-</TabsContent>
+                        <DataTable
+                            data={tableData}
+                            columns={columns}
+                            searchFields={['product', 'department', 'indenter', 'vendorType', 'vendorName']}
+                            dataLoading={indentLoading}
+                        />
+                    </TabsContent>
+                    <TabsContent value="history">
+                        <DataTable
+                            data={historyData}
+                            columns={historyColumns}
+                            searchFields={['product', 'department', 'indenter', 'vendorType', 'vendorName']}
+                            dataLoading={indentLoading}
+                        />
+                    </TabsContent>
 
                 </Tabs>
                 {selectedIndent &&
@@ -765,43 +775,45 @@ async function onSubmitHistoryUpdate(values: z.infer<typeof historyUpdateSchema>
                                         {fields.map((field, index) => (
                                             <TabsContent value={`${index}`} key={field.id}>
                                                 <div className="grid gap-3">
-                                                 <FormField
-    control={regularForm.control}
-    name="vendorName"
-    render={({ field }) => {
-        const allVendors = options?.vendors || [];
-
-        return (
-            <FormItem>
-                <FormLabel>Vendor Name</FormLabel>
-                <Select
-                    onValueChange={field.onChange}
-                    value={field.value}
-                >
-                    <FormControl>
-                        <SelectTrigger className="w-full">
-                            <SelectValue placeholder="Select vendor" />
-                        </SelectTrigger>
-                    </FormControl>
-                    <SelectContent>
-                        <div className="max-h-[300px] overflow-y-auto">
-                            {allVendors.map((vendor, i) => (
-                                <SelectItem key={i} value={vendor.vendorName}>
-                                    {vendor.vendorName}
-                                </SelectItem>
-                            ))}
-                            {allVendors.length === 0 && (
-                                <div className="py-6 text-center text-sm text-muted-foreground">
-                                    No vendors available
-                                </div>
-                            )}
-                        </div>
-                    </SelectContent>
-                </Select>
-            </FormItem>
-        );
-    }}
+                                                   <FormField
+  control={threePartyForm.control}
+  name={`vendors.${index}.vendorName`}
+  render={({ field }) => (
+    <FormItem>
+      <FormLabel>Vendor Name</FormLabel>
+      <Select
+        onValueChange={field.onChange}
+        value={field.value}
+      >
+        <FormControl>
+          <SelectTrigger className="w-full">
+            <SelectValue placeholder="Select vendor" />
+          </SelectTrigger>
+        </FormControl>
+        <SelectContent>
+          <div className="max-h-[300px] overflow-y-auto">
+            {vendorsLoading ? (
+              <div className="py-6 text-center text-sm text-muted-foreground">
+                Loading vendors...
+              </div>
+            ) : vendors?.length > 0 ? (
+              vendors.map((vendor, i) => (
+                <SelectItem key={i} value={vendor.vendorName}>
+                  {vendor.vendorName}
+                </SelectItem>
+              ))
+            ) : (
+              <div className="py-6 text-center text-sm text-muted-foreground">
+                No vendors available
+              </div>
+            )}
+          </div>
+        </SelectContent>
+      </Select>
+    </FormItem>
+  )}
 />
+
                                                     <FormField
                                                         control={threePartyForm.control}
                                                         name={`vendors.${index}.rate`}
@@ -818,6 +830,7 @@ async function onSubmitHistoryUpdate(values: z.infer<typeof historyUpdateSchema>
                                                             </FormItem>
                                                         )}
                                                     />
+
                                                     <FormField
                                                         control={threePartyForm.control}
                                                         name={`vendors.${index}.paymentTerm`}
@@ -913,57 +926,115 @@ async function onSubmitHistoryUpdate(values: z.infer<typeof historyUpdateSchema>
                                         </div>
                                     </div>
                                     <div className="grid gap-3">
-                                 <FormField
-    control={regularForm.control}
-    name="vendorName"
-    render={({ field }) => {
-        const filteredVendors = options?.vendors?.filter(({ vendorName }) =>
-            vendorName.toLowerCase().includes(vendorSearch.toLowerCase())
-        ) || [];
+                                        {/* <FormField
+                                            control={regularForm.control}
+                                            name="vendorName"
+                                            render={({ field }) => {
+                                                const filteredVendors = options?.vendors?.filter(vendor =>
+                                                    vendor.vendorName.toLowerCase().includes(vendorSearch.toLowerCase())
+                                                );
 
-        return (
-            <FormItem>
-                <FormLabel>Vendor Name</FormLabel>
-                <Select
-                    onValueChange={field.onChange}
-                    value={field.value}
-                    onOpenChange={(open) => {
-                        if (!open) setVendorSearch(''); // Close hone pe search clear karo
-                    }}
-                >
-                    <FormControl>
-                        <SelectTrigger className="w-full">
-                            <SelectValue placeholder="Select vendor" />
-                        </SelectTrigger>
-                    </FormControl>
-                    <SelectContent>
-                        <div className="flex items-center border-b px-3 pb-2">
-                            <Input
-                                placeholder="Search vendors..."
-                                className="h-8 border-0 focus-visible:ring-0 focus-visible:ring-offset-0"
-                                value={vendorSearch}
-                                onChange={(e) => setVendorSearch(e.target.value)}
-                                onClick={(e) => e.stopPropagation()}
-                                onKeyDown={(e) => e.stopPropagation()} // Ye add karo
-                            />
-                        </div>
-                        <div className="max-h-[200px] overflow-y-auto">
-                            {filteredVendors.map(({ vendorName }, i) => (
-                                <SelectItem key={i} value={vendorName}>
-                                    {vendorName}
-                                </SelectItem>
-                            ))}
-                            {filteredVendors.length === 0 && (
-                                <div className="py-6 text-center text-sm text-muted-foreground">
-                                    No vendors found
-                                </div>
-                            )}
-                        </div>
-                    </SelectContent>
-                </Select>
-            </FormItem>
-        );
-    }}
+                                                return (
+                                                    <FormItem>
+                                                        <FormLabel>Vendor Name</FormLabel>
+                                                        <Select
+                                                            onValueChange={field.onChange}
+                                                            value={field.value}
+                                                            onOpenChange={(open) => {
+                                                                if (!open) setVendorSearch(""); // Close hone pe search clear karo
+                                                            }}
+                                                        >
+                                                            <FormControl>
+                                                                <SelectTrigger className="w-full">
+                                                                    <SelectValue placeholder="Select vendor" />
+                                                                </SelectTrigger>
+                                                            </FormControl>
+                                                            <SelectContent>
+                                                                <div className="flex items-center border-b px-3 pb-2">
+                                                                    <Input
+                                                                        placeholder="Search vendors..."
+                                                                        className="h-8 border-0 focus-visible:ring-0 focus-visible:ring-offset-0"
+                                                                        value={vendorSearch}
+                                                                        onChange={(e) => setVendorSearch(e.target.value)}
+                                                                        onClick={(e) => e.stopPropagation()}
+                                                                        onKeyDown={(e) => e.stopPropagation()}
+                                                                    />
+                                                                </div>
+                                                                <div className="max-h-[200px] overflow-y-auto">
+                                                                    {filteredVendors?.map((vendor, i) => (
+                                                                        <SelectItem key={i} value={vendor.vendorName}>
+                                                                            {vendor.vendorName}
+                                                                        </SelectItem>
+                                                                    ))}
+                                                                    {filteredVendors?.length === 0 && (
+                                                                        <div className="py-6 text-center text-sm text-muted-foreground">
+                                                                            No vendors found
+                                                                        </div>
+                                                                    )}
+                                                                </div>
+                                                            </SelectContent>
+                                                        </Select>
+                                                    </FormItem>
+                                                );
+                                            }}
+                                        /> */}
+
+ <FormField
+  control={regularForm.control}
+  name="vendorName"
+  render={({ field }) => {
+    const filteredVendors = vendors?.filter(vendor =>
+      vendor.vendorName.toLowerCase().includes(vendorSearch.toLowerCase())
+    );
+    
+    return (
+      <FormItem>
+        <FormLabel>Vendor Name</FormLabel>
+        <Select 
+          onValueChange={field.onChange} 
+          value={field.value}
+          onOpenChange={(open) => {
+            if (!open) setVendorSearch("");
+          }}
+        >
+          <FormControl>
+            <SelectTrigger className="w-full">
+              <SelectValue placeholder="Select vendor" />
+            </SelectTrigger>
+          </FormControl>
+          <SelectContent>
+            <div className="flex items-center border-b px-3 pb-2">
+              <Input
+                placeholder="Search vendors..."
+                className="h-8 border-0 focus-visible:ring-0 focus-visible:ring-offset-0"
+                value={vendorSearch}
+                onChange={(e) => setVendorSearch(e.target.value)}
+                onClick={(e) => e.stopPropagation()}
+                onKeyDown={(e) => e.stopPropagation()}
+              />
+            </div>
+            <div className="max-h-[200px] overflow-y-auto">
+              {vendorsLoading ? (
+                <div className="py-6 text-center text-sm text-muted-foreground">
+                  Loading vendors...
+                </div>
+              ) : filteredVendors?.length > 0 ? (
+                filteredVendors.map((vendor, i) => (
+                  <SelectItem key={i} value={vendor.vendorName}>
+                    {vendor.vendorName}
+                  </SelectItem>
+                ))
+              ) : (
+                <div className="py-6 text-center text-sm text-muted-foreground">
+                  No vendors found
+                </div>
+              )}
+            </div>
+          </SelectContent>
+        </Select>
+      </FormItem>
+    );
+  }}
 />
 
                                         <FormField
