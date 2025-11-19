@@ -67,6 +67,7 @@ export type IndentSheet = {
     paymentType: string;
     advanceAmountIfAny: number;
     photoOfBill: string;
+    rate:number;
 };
 
 export type ReceivedSheet = {

@@ -765,21 +765,43 @@ async function onSubmitHistoryUpdate(values: z.infer<typeof historyUpdateSchema>
                                         {fields.map((field, index) => (
                                             <TabsContent value={`${index}`} key={field.id}>
                                                 <div className="grid gap-3">
-                                                    <FormField
-                                                        control={threePartyForm.control}
-                                                        name={`vendors.${index}.vendorName`}
-                                                        render={({ field }) => (
-                                                            <FormItem>
-                                                                <FormLabel>Vendor Name</FormLabel>
-                                                                <FormControl>
-                                                                    <Input
-                                                                        placeholder="Enter vendor name"
-                                                                        {...field}
-                                                                    />
-                                                                </FormControl>
-                                                            </FormItem>
-                                                        )}
-                                                    />
+                                                 <FormField
+    control={regularForm.control}
+    name="vendorName"
+    render={({ field }) => {
+        const allVendors = options?.vendors || [];
+
+        return (
+            <FormItem>
+                <FormLabel>Vendor Name</FormLabel>
+                <Select
+                    onValueChange={field.onChange}
+                    value={field.value}
+                >
+                    <FormControl>
+                        <SelectTrigger className="w-full">
+                            <SelectValue placeholder="Select vendor" />
+                        </SelectTrigger>
+                    </FormControl>
+                    <SelectContent>
+                        <div className="max-h-[300px] overflow-y-auto">
+                            {allVendors.map((vendor, i) => (
+                                <SelectItem key={i} value={vendor.vendorName}>
+                                    {vendor.vendorName}
+                                </SelectItem>
+                            ))}
+                            {allVendors.length === 0 && (
+                                <div className="py-6 text-center text-sm text-muted-foreground">
+                                    No vendors available
+                                </div>
+                            )}
+                        </div>
+                    </SelectContent>
+                </Select>
+            </FormItem>
+        );
+    }}
+/>
                                                     <FormField
                                                         control={threePartyForm.control}
                                                         name={`vendors.${index}.rate`}
