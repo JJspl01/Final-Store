@@ -964,27 +964,31 @@ if (email) {
                                                         <TableCell>
                                                             {indent?.approvedRate}
                                                         </TableCell>
-                                                        <TableCell>
-                                                            <FormField
-                                                                control={form.control}
-                                                                name={`indents.${index}.gst`} // Assuming productName is in your schema
-                                                                render={({
-                                                                    field: indentField,
-                                                                }) => (
-                                                                    <FormItem className="flex justify-center items-center">
-                                                                        <FormControl>
-                                                                            <Input
-                                                                                type="number"
-                                                                                max="100"
-                                                                                className="rounded-sm h-9 max-w-15 p-0 text-center"
-                                                                                {...indentField}
-                                                                            />
-                                                                        </FormControl>{' '}
-                                                                        %
-                                                                    </FormItem>
-                                                                )}
-                                                            />
-                                                        </TableCell>
+                                                       <TableCell>
+    <FormField
+        control={form.control}
+        name={`indents.${index}.gst`}
+        render={({ field: indentField }) => (
+            <FormItem>
+                <Select
+                    onValueChange={(value) => indentField.onChange(Number(value))}
+                    value={indentField.value?.toString()}
+                >
+                    <FormControl>
+                        <SelectTrigger className="h-9 w-20">
+                            <SelectValue placeholder="GST%" />
+                        </SelectTrigger>
+                    </FormControl>
+                    <SelectContent>
+                        <SelectItem value="18">18%</SelectItem>
+                        <SelectItem value="5">5%</SelectItem>
+                        <SelectItem value="0">0%</SelectItem>
+                    </SelectContent>
+                </Select>
+            </FormItem>
+        )}
+    />
+</TableCell>
                                                         <TableCell>
                                                             <FormField
                                                                 control={form.control}

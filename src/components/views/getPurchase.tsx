@@ -642,6 +642,7 @@ interface GetPurchaseData {
     quantity: number;
     uom: string;
     poNumber: string;
+    approvedRate: number;
 }
 
 
@@ -681,48 +682,43 @@ export default () => {
 const [productRates, setProductRates] = useState<{ [indentNo: string]: number }>({});
 
     // Fetching table data
-    useEffect(() => {
-        // Group by PO Number to show unique PO Numbers in table
-        const uniquePoMap = new Map<string, GetPurchaseData>();
-        
+   // Fetching table data - isme change karo
+useEffect(() => {
+    setTableData(
         indentSheet
             .filter((sheet) => sheet.planned7 !== '' && sheet.actual7 == '')
-            .forEach((sheet) => {
-                const poNumber = sheet.poNumber;
-                // Only add if this PO Number hasn't been added yet
-                if (!uniquePoMap.has(poNumber)) {
-                    uniquePoMap.set(poNumber, {
-                        indentNo: sheet.indentNumber,
-                        indenter: sheet.indenterName,
-                        department: sheet.department,
-                        product: sheet.productName,
-                        quantity: sheet.approvedQuantity,
-                        uom: sheet.uom,
-                        poNumber: sheet.poNumber,
-                    });
-                }
-            });
+            .map((sheet) => ({
+                indentNo: sheet.indentNumber,
+                indenter: sheet.indenterName,
+                department: sheet.department,
+                product: sheet.productName,
+                quantity: sheet.approvedQuantity,
+                uom: sheet.uom,
+                poNumber: sheet.poNumber,
+                approvedRate: sheet.approvedRate // ✅ AJ column se rate le rahe hain
+            }))
+            .reverse()
+    );
 
-        setTableData(Array.from(uniquePoMap.values()).reverse());
-
-        // History: both planned7 and actual7 are not null
-        setHistoryData(
-            indentSheet
-                .filter((sheet) => sheet.planned7 !== '' && sheet.actual7 !== '')
-                .map((sheet) => ({
-                    date: formatDate(new Date(sheet.actual5)),
-                    indentNo: sheet.indentNumber,
-                    indenter: sheet.indenterName,
-                    department: sheet.department,
-                    product: sheet.productName,
-                    quantity: sheet.approvedQuantity,
-                    uom: sheet.uom,
-                    poNumber: sheet.poNumber,
-                    billStatus: sheet.billStatus || 'Not Updated',
-                }))
-                .sort((a, b) => b.indentNo.localeCompare(a.indentNo))
-        );
-    }, [indentSheet]);
+    // History data me bhi same add karo
+    setHistoryData(
+        indentSheet
+            .filter((sheet) => sheet.planned7 !== '' && sheet.actual7 !== '')
+            .map((sheet) => ({
+                date: formatDate(new Date(sheet.actual5)),
+                indentNo: sheet.indentNumber,
+                indenter: sheet.indenterName,
+                department: sheet.department,
+                product: sheet.productName,
+                quantity: sheet.approvedQuantity,
+                uom: sheet.uom,
+                poNumber: sheet.poNumber,
+                billStatus: sheet.billStatus || 'Not Updated',
+                approvedRate: sheet.approvedRate // ✅ History me bhi add kiya
+            }))
+            .sort((a, b) => b.indentNo.localeCompare(a.indentNo))
+    );
+}, [indentSheet]);
 
   // Fetch related products when dialog opens
 useEffect(() => {
@@ -736,7 +732,7 @@ useEffect(() => {
             product: sheet.productName,
             quantity: sheet.approvedQuantity,
             uom: sheet.uom,
-            rate: sheet.rate || 0, // Include existing rate
+             rate: sheet.approvedRate, // Include existing rate
         }));
         
         setRelatedProducts(products);
@@ -816,6 +812,11 @@ const handleRateChange = (indentNo: string, value: string) => {
             accessorKey: 'poNumber',
             header: 'PO Number',
         },
+         {
+        accessorKey: 'approvedRate', // ✅ Naya column add kiya
+        header: 'Approved Rate',
+        cell: ({ getValue }) => `₹${getValue()}`,
+    },
     ];
 
 
@@ -866,6 +867,11 @@ const handleRateChange = (indentNo: string, value: string) => {
                 return <Pill variant={variant}>{status}</Pill>;
             },
         },
+         {
+        accessorKey: 'approvedRate', // ✅ History me bhi add kiya
+        header: 'Approved Rate',
+        cell: ({ getValue }) => `₹${getValue()}`,
+    },
     ];
 
 
@@ -891,7 +897,7 @@ const handleRateChange = (indentNo: string, value: string) => {
             billStatus: '',
           
             billNo: '',
-            qty: 0,
+            qty: undefined,
             leadTime: '',
             typeOfBill: '',
             billAmount: 0,
@@ -938,7 +944,7 @@ const handleRateChange = (indentNo: string, value: string) => {
                         paymentType: values.paymentType || '',
                         advanceAmountIfAny: values.advanceAmount || 0,
                         photoOfBill: photoUrl,
-                        rate: productRates[prev.indentNumber] || prev.rate || 0,
+                        // rate: productRates[prev.indentNumber] || prev.approvedRate || 0,
                     };
                 }),
             'update'
@@ -996,9 +1002,12 @@ const handleRateChange = (indentNo: string, value: string) => {
                     <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
                         <Form {...form}>
                             <form
-                                onSubmit={form.handleSubmit(onSubmit, onError)}
-                                className="space-y-5"
-                            >
+    onSubmit={(e) => {
+        e.preventDefault(); // ✅ Form automatic submit hone se rokta hai
+        form.handleSubmit(onSubmit, onError)(e);
+    }}
+    className="space-y-5"
+>
                                 <DialogHeader className="space-y-1">
                                     <DialogTitle>Update Purchase Details</DialogTitle>
                                     <DialogDescription>
@@ -1009,22 +1018,21 @@ const handleRateChange = (indentNo: string, value: string) => {
                                     </DialogDescription>
                                 </DialogHeader>
 
-
 <div className="space-y-2 bg-muted p-4 rounded-md">
     <p className="font-semibold text-sm">Products in this PO:</p>
     <div className="space-y-2">
         {relatedProducts.map((product, index) => (
             <div
                 key={index}
-                className="grid grid-cols-2 md:grid-cols-5 gap-3 bg-background py-2 px-3 rounded-md items-center"
+                className="grid grid-cols-2 md:grid-cols-6 gap-4 bg-background py-3 px-4 rounded-md items-start" // ✅ gap-4 aur items-start
             >
                 <div className="space-y-1">
                     <p className="font-medium text-xs">Indent No.</p>
-                    <p className="text-sm font-light">{product.indentNo}</p>
+                    <p className="text-sm font-light break-all">{product.indentNo}</p> {/* ✅ break-all */}
                 </div>
                 <div className="space-y-1">
                     <p className="font-medium text-xs">Product</p>
-                    <p className="text-sm font-light">{product.product}</p>
+                    <p className="text-sm font-light break-words line-clamp-2">{product.product}</p> {/* ✅ line-clamp-2 */}
                 </div>
                 <div className="space-y-1">
                     <p className="font-medium text-xs">Quantity</p>
@@ -1034,22 +1042,19 @@ const handleRateChange = (indentNo: string, value: string) => {
                     <p className="font-medium text-xs">UOM</p>
                     <p className="text-sm font-light">{product.uom}</p>
                 </div>
-                <div className="space-y-1">
-                    <p className="font-medium text-xs">Rate</p>
-                    {/* Direct Input - NOT FormField */}
+                <div className="space-y-1 col-span-2">
+                    <p className="font-medium text-xs">Approved Rate</p>
                     <Input
-                        type="number"
-                        placeholder="Enter rate"
-                        value={productRates[product.indentNo] || 0}
-                        onChange={(e) => handleRateChange(product.indentNo, e.target.value)}
-                        className="h-8 text-sm"
+                        type="text"
+                        value={product.rate || 0}
+                        readOnly
+                        className="h-9 text-sm bg-gray-100 w-full min-w-[140px] font-mono" // ✅ h-9, min-w-[140px], font-mono
                     />
                 </div>
             </div>
         ))}
     </div>
 </div>
-
 
 
                                 <div className="grid gap-4">
@@ -1107,22 +1112,23 @@ const handleRateChange = (indentNo: string, value: string) => {
 
                                     {billStatus && (
                                         <>
-                                            <FormField
-                                                control={form.control}
-                                                name="qty"
-                                                render={({ field }) => (
-                                                    <FormItem>
-                                                        <FormLabel>Qty</FormLabel>
-                                                        <FormControl>
-                                                            <Input
-                                                                type="number"
-                                                                placeholder="Enter quantity"
-                                                                {...field}
-                                                            />
-                                                        </FormControl>
-                                                    </FormItem>
-                                                )}
-                                            />
+                                           <FormField
+    control={form.control}
+    name="qty"
+    render={({ field }) => (
+        <FormItem>
+            <FormLabel>Qty</FormLabel>
+            <FormControl>
+                <Input
+                    type="number"
+                    placeholder="Enter quantity" // ✅ Placeholder dikhega, 0 nahi
+                    {...field}
+                    value={field.value || ''} // ✅ Empty string display hoga agar value undefined hai
+                />
+            </FormControl>
+        </FormItem>
+    )}
+/>
 
 
                                             <FormField
