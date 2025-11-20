@@ -405,18 +405,29 @@ async function onSubmit(values: FormData) {
         const file = new File([blob], `PO-${poNumber}.pdf`, {
             type: 'application/pdf',
         });
-        const email = details?.vendors.find((v) => v.vendorName === values.supplierName)?.email;
+      const email = details?.vendors.find((v) => v.vendorName === values.supplierName)?.email;
 
-        if (!email) {
-            toast.error("Supplier's Email was not found!");
-            return;
-        }
-        const url = await uploadFile(
-            file,
-            import.meta.env.VITE_PURCHASE_ORDERS_FOLDER,
-            'email',
-            email
-        );
+let url = '';
+
+if (email) {
+    // Email hai to PDF upload + email send
+    url = await uploadFile(
+        file,
+        import.meta.env.VITE_PURCHASE_ORDERS_FOLDER,
+        'email',
+        email
+    );
+    toast.success('PO created and email sent successfully');
+} else {
+    // Email nahi hai to sirf PDF upload (without email)
+    url = await uploadFile(
+        file,
+        import.meta.env.VITE_PURCHASE_ORDERS_FOLDER,
+        'upload', // ← Use 'upload' instead of 'email'
+        '' // Empty email parameter
+    );
+    toast.warning("PO created but email not sent (vendor email not found)");
+}
 
         const rows: PoMasterSheet[] = values.indents.map((v) => {
             const indent = indentSheet.find((i) => i.indentNumber === v.indentNumber)!;

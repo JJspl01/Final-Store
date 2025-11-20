@@ -50,7 +50,8 @@ function filterUniqueQuotationNumbers(data: PoMasterSheet[]): string[] {
   const seen = new Set<string>();
   const result: string[] = [];
   for (const row of data) {
-    const q = row.quotationNumber?.trim();
+    // Convert to string first, then trim
+    const q = row.quotationNumber ? String(row.quotationNumber).trim() : '';
     if (q && !seen.has(q)) {
       seen.add(q);
       result.push(q);
