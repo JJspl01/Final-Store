@@ -665,6 +665,7 @@ interface ProductDetail {
     quantity: number;
     uom: string;
     rate: number;
+    qty?: number;
 }
 
 
@@ -680,6 +681,8 @@ export default () => {
     const [rateOptions, setRateOptions] = useState<string[]>([]);
     const [relatedProducts, setRelatedProducts] = useState<ProductDetail[]>([]);
 const [productRates, setProductRates] = useState<{ [indentNo: string]: number }>({});
+const [productQty, setProductQty] = useState<{ [indentNo: string]: number }>({});
+
 
   // Fetching table data - updated
 useEffect(() => {
@@ -742,6 +745,7 @@ useEffect(() => {
             quantity: sheet.approvedQuantity,
             uom: sheet.uom,
              rate: sheet.approvedRate, // Include existing rate
+             qty: sheet.qty || 0,
         }));
         
         setRelatedProducts(products);
@@ -754,13 +758,15 @@ useEffect(() => {
         setProductRates(ratesMap);
     }
 }, [selectedIndent, openDialog, indentSheet]);
-
-const handleRateChange = (indentNo: string, value: string) => {
-    setProductRates(prev => ({
+const handleQtyChange = (indentNo: string, value: string) => {
+    setProductQty((prev) => ({
         ...prev,
-        [indentNo]: parseFloat(value) || 0
+        [indentNo]: parseFloat(value) || 0,
     }));
 };
+
+
+
     // Creating table columns
     const columns: ColumnDef<GetPurchaseData>[] = [
         ...(user.receiveItemAction
@@ -890,7 +896,7 @@ const handleRateChange = (indentNo: string, value: string) => {
         billStatus: z.string().nonempty('Bill status is required'),
         
         billNo: z.string().optional(),
-        qty: z.coerce.number().optional(),
+        // qty: z.coerce.number().optional(),
         leadTime: z.string().optional(),
         typeOfBill: z.string().optional(),
         billAmount: z.coerce.number().optional(),
@@ -907,7 +913,7 @@ const handleRateChange = (indentNo: string, value: string) => {
             billStatus: '',
           
             billNo: '',
-            qty: undefined,
+            // qty: undefined,
             leadTime: '',
             typeOfBill: '',
             billAmount: 0,
@@ -921,10 +927,9 @@ const handleRateChange = (indentNo: string, value: string) => {
     const billStatus = form.watch('billStatus');
     const typeOfBill = form.watch('typeOfBill');
 
-
-   async function onSubmit(values: z.infer<typeof formSchema>) {
+async function onSubmit(values: z.infer<typeof formSchema>) {
     try {
-        let photoUrl = '';
+        let photoUrl: string | undefined;
         if (values.photoOfBill) {
             photoUrl = await uploadFile(
                 values.photoOfBill,
@@ -937,16 +942,13 @@ const handleRateChange = (indentNo: string, value: string) => {
             indentSheet
                 .filter((s) => s.poNumber === selectedIndent?.poNumber)
                 .map((prev) => {
-                    // Exclude timestamp along with other fields
                     const { timestamp, actual4, poNumber, poCopy, ...safeData } = prev;
-
                     return {
-                        ...safeData, // timestamp is now excluded
-                        // Only update these specific fields:
+                        ...safeData,
                         actual7: new Date().toISOString(),
                         billStatus: values.billStatus,
                         billNumber: values.billNo || '',
-                        qty: values.qty || prev.approvedQuantity,
+                        qty: productQty[prev.indentNumber] || prev.approvedQuantity, // Updated line
                         leadTimeToLiftMaterial: values.leadTime || prev.leadTimeToLiftMaterial,
                         typeOfBill: values.typeOfBill || '',
                         billAmount: values.billAmount || 0,
@@ -954,16 +956,17 @@ const handleRateChange = (indentNo: string, value: string) => {
                         paymentType: values.paymentType || '',
                         advanceAmountIfAny: values.advanceAmount || 0,
                         photoOfBill: photoUrl,
-                        // rate: productRates[prev.indentNumber] || prev.approvedRate || 0,
+                        rate: productRates[prev.indentNumber] || prev.approvedRate || 0,
                     };
                 }),
             'update'
         );
-        
-        toast.success(`Updated purchase details for PO: ${selectedIndent?.poNumber}`);
+
+        toast.success(`Updated purchase details for PO ${selectedIndent?.poNumber}`);
         setOpenDialog(false);
         form.reset();
         setProductRates({});
+        setProductQty({}); // Add this line to reset qty
         setTimeout(() => updateIndentSheet(), 1000);
     } catch {
         toast.error('Failed to update purchase details');
@@ -1027,43 +1030,63 @@ const handleRateChange = (indentNo: string, value: string) => {
             </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-2 bg-muted p-4 rounded-md">
-            <p className="font-semibold text-sm">Products in this PO:</p>
-            <div className="space-y-2">
-                {relatedProducts.map((product, index) => (
-                    <div
-                        key={index}
-                        className="grid grid-cols-2 md:grid-cols-6 gap-4 bg-background py-3 px-4 rounded-md items-start"
-                    >
-                        <div className="space-y-1">
-                            <p className="font-medium text-xs">Indent No.</p>
-                            <p className="text-sm font-light break-all">{product.indentNo}</p>
-                        </div>
-                        <div className="space-y-1">
-                            <p className="font-medium text-xs">Product</p>
-                            <p className="text-sm font-light break-words line-clamp-2">{product.product}</p>
-                        </div>
-                        <div className="space-y-1">
-                            <p className="font-medium text-xs">Quantity</p>
-                            <p className="text-sm font-light">{product.quantity}</p>
-                        </div>
-                        <div className="space-y-1">
-                            <p className="font-medium text-xs">UOM</p>
-                            <p className="text-sm font-light">{product.uom}</p>
-                        </div>
-                        <div className="space-y-1 col-span-2">
-                            <p className="font-medium text-xs">Approved Rate</p>
-                            <Input
-                                type="text"
-                                value={product.rate || 0}
-                                readOnly
-                                className="h-9 text-sm bg-gray-100 w-full min-w-[140px] font-mono"
-                            />
-                        </div>
+      <div className="space-y-2 bg-muted p-4 rounded-md">
+    <p className="font-semibold text-sm">Products in this PO</p>
+    <div className="space-y-3 max-h-[300px] overflow-y-auto pr-2">
+        {relatedProducts.map((product, index) => (
+            <div
+                key={index}
+                className="bg-background p-4 rounded-md space-y-3"
+            >
+                {/* Mobile: Stack vertically */}
+                <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+                    <div className="space-y-1">
+                        <p className="font-medium text-xs text-muted-foreground">Indent No.</p>
+                        <p className="text-sm font-light break-all">{product.indentNo}</p>
                     </div>
-                ))}
+                    <div className="space-y-1">
+                        <p className="font-medium text-xs text-muted-foreground">Quantity</p>
+                        <p className="text-sm font-light">{product.quantity}</p>
+                    </div>
+                    <div className="space-y-1">
+                        <p className="font-medium text-xs text-muted-foreground">UOM</p>
+                        <p className="text-sm font-light">{product.uom}</p>
+                    </div>
+                </div>
+                
+                {/* Product name - full width */}
+                <div className="space-y-1">
+                    <p className="font-medium text-xs text-muted-foreground">Product</p>
+                    <p className="text-sm font-light break-words">{product.product}</p>
+                </div>
+
+                {/* Rate and Qty - side by side */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <div className="space-y-1">
+                        <p className="font-medium text-xs text-muted-foreground">Approved Rate</p>
+                        <Input
+                            type="text"
+                            value={product.rate || 0}
+                            readOnly
+                            className="h-9 text-sm bg-gray-100 w-full font-mono"
+                        />
+                    </div>
+                    <div className="space-y-1">
+                        <p className="font-medium text-xs text-muted-foreground">Qty</p>
+                        <Input
+                            type="number"
+                            placeholder="Enter qty"
+                            value={productQty[product.indentNo] || ''}
+                            onChange={(e) => handleQtyChange(product.indentNo, e.target.value)}
+                            className="h-9 text-sm w-full"
+                        />
+                    </div>
+                </div>
             </div>
-        </div>
+        ))}
+    </div>
+</div>
+
 
         <div className="grid gap-4">
             <FormField
@@ -1116,23 +1139,7 @@ const handleRateChange = (indentNo: string, value: string) => {
 
             {billStatus && (
                 <>
-                    <FormField
-                        control={form.control}
-                        name="qty"
-                        render={({ field }) => (
-                            <FormItem>
-                                <FormLabel>Qty</FormLabel>
-                                <FormControl>
-                                    <Input
-                                        type="number"
-                                        placeholder="Enter quantity"
-                                        {...field}
-                                        value={field.value || ''}
-                                    />
-                                </FormControl>
-                            </FormItem>
-                        )}
-                    />
+                    
 
                     <FormField
                         control={form.control}
