@@ -13,7 +13,7 @@ import {
     DialogFooter,
     DialogClose,
 } from '../ui/dialog';
-import { postToSheet, uploadFile,fetchVendors  } from '@/lib/fetchers';
+import { postToSheet, uploadFile, fetchVendors } from '@/lib/fetchers';
 import { z } from 'zod';
 import { useFieldArray, useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -65,9 +65,9 @@ export default () => {
     const [editingRow, setEditingRow] = useState<string | null>(null);
     const [editValues, setEditValues] = useState<Partial<HistoryData>>({});
     const [vendorSearch, setVendorSearch] = useState('');
-      const [vendors, setVendors] = useState([]);
+    const [vendors, setVendors] = useState([]);
     const [vendorsLoading, setVendorsLoading] = useState(true);
- useEffect(() => {
+    useEffect(() => {
         const loadVendors = async () => {
             setVendorsLoading(true);
             const vendorsList = await fetchVendors();
@@ -507,21 +507,21 @@ export default () => {
         resolver: zodResolver(regularSchema),
         defaultValues: {
             vendorName: '',
-            rate: 0,
+            rate: undefined,
             paymentTerm: '',
         },
     });
 
-    const getCurrentFormattedDate = () => {
-        const now = new Date();
-        const day = String(now.getDate()).padStart(2, '0');
-        const month = String(now.getMonth() + 1).padStart(2, '0');
-        const year = now.getFullYear();
-        const hours = String(now.getHours()).padStart(2, '0');
-        const minutes = String(now.getMinutes()).padStart(2, '0');
-        const seconds = String(now.getSeconds()).padStart(2, '0');
-        return `${day}/${month}/${year} ${hours}:${minutes}:${seconds}`;
-    };
+    // const getCurrentFormattedDate = () => {
+    //     const now = new Date();
+    //     const day = String(now.getDate()).padStart(2, '0');
+    //     const month = String(now.getMonth() + 1).padStart(2, '0');
+    //     const year = now.getFullYear();
+    //     const hours = String(now.getHours()).padStart(2, '0');
+    //     const minutes = String(now.getMinutes()).padStart(2, '0');
+    //     const seconds = String(now.getSeconds()).padStart(2, '0');
+    //     return `${day}/${month}/${year} ${hours}:${minutes}:${seconds}`;
+    // };
 
     const getCurrentFormattedDateOnly = () => {
         const now = new Date();
@@ -775,44 +775,44 @@ export default () => {
                                         {fields.map((field, index) => (
                                             <TabsContent value={`${index}`} key={field.id}>
                                                 <div className="grid gap-3">
-                                                   <FormField
-  control={threePartyForm.control}
-  name={`vendors.${index}.vendorName`}
-  render={({ field }) => (
-    <FormItem>
-      <FormLabel>Vendor Name</FormLabel>
-      <Select
-        onValueChange={field.onChange}
-        value={field.value}
-      >
-        <FormControl>
-          <SelectTrigger className="w-full">
-            <SelectValue placeholder="Select vendor" />
-          </SelectTrigger>
-        </FormControl>
-        <SelectContent>
-          <div className="max-h-[300px] overflow-y-auto">
-            {vendorsLoading ? (
-              <div className="py-6 text-center text-sm text-muted-foreground">
-                Loading vendors...
-              </div>
-            ) : vendors?.length > 0 ? (
-              vendors.map((vendor, i) => (
-                <SelectItem key={i} value={vendor.vendorName}>
-                  {vendor.vendorName}
-                </SelectItem>
-              ))
-            ) : (
-              <div className="py-6 text-center text-sm text-muted-foreground">
-                No vendors available
-              </div>
-            )}
-          </div>
-        </SelectContent>
-      </Select>
-    </FormItem>
-  )}
-/>
+                                                    <FormField
+                                                        control={threePartyForm.control}
+                                                        name={`vendors.${index}.vendorName`}
+                                                        render={({ field }) => (
+                                                            <FormItem>
+                                                                <FormLabel>Vendor Name</FormLabel>
+                                                                <Select
+                                                                    onValueChange={field.onChange}
+                                                                    value={field.value}
+                                                                >
+                                                                    <FormControl>
+                                                                        <SelectTrigger className="w-full">
+                                                                            <SelectValue placeholder="Select vendor" />
+                                                                        </SelectTrigger>
+                                                                    </FormControl>
+                                                                    <SelectContent>
+                                                                        <div className="max-h-[300px] overflow-y-auto">
+                                                                            {vendorsLoading ? (
+                                                                                <div className="py-6 text-center text-sm text-muted-foreground">
+                                                                                    Loading vendors...
+                                                                                </div>
+                                                                            ) : vendors?.length > 0 ? (
+                                                                                vendors.map((vendor, i) => (
+                                                                                    <SelectItem key={i} value={vendor.vendorName}>
+                                                                                        {vendor.vendorName}
+                                                                                    </SelectItem>
+                                                                                ))
+                                                                            ) : (
+                                                                                <div className="py-6 text-center text-sm text-muted-foreground">
+                                                                                    No vendors available
+                                                                                </div>
+                                                                            )}
+                                                                        </div>
+                                                                    </SelectContent>
+                                                                </Select>
+                                                            </FormItem>
+                                                        )}
+                                                    />
 
                                                     <FormField
                                                         control={threePartyForm.control}
@@ -979,63 +979,63 @@ export default () => {
                                             }}
                                         /> */}
 
- <FormField
-  control={regularForm.control}
-  name="vendorName"
-  render={({ field }) => {
-    const filteredVendors = vendors?.filter(vendor =>
-      vendor.vendorName.toLowerCase().includes(vendorSearch.toLowerCase())
-    );
-    
-    return (
-      <FormItem>
-        <FormLabel>Vendor Name</FormLabel>
-        <Select 
-          onValueChange={field.onChange} 
-          value={field.value}
-          onOpenChange={(open) => {
-            if (!open) setVendorSearch("");
-          }}
-        >
-          <FormControl>
-            <SelectTrigger className="w-full">
-              <SelectValue placeholder="Select vendor" />
-            </SelectTrigger>
-          </FormControl>
-          <SelectContent>
-            <div className="flex items-center border-b px-3 pb-2">
-              <Input
-                placeholder="Search vendors..."
-                className="h-8 border-0 focus-visible:ring-0 focus-visible:ring-offset-0"
-                value={vendorSearch}
-                onChange={(e) => setVendorSearch(e.target.value)}
-                onClick={(e) => e.stopPropagation()}
-                onKeyDown={(e) => e.stopPropagation()}
-              />
-            </div>
-            <div className="max-h-[200px] overflow-y-auto">
-              {vendorsLoading ? (
-                <div className="py-6 text-center text-sm text-muted-foreground">
-                  Loading vendors...
-                </div>
-              ) : filteredVendors?.length > 0 ? (
-                filteredVendors.map((vendor, i) => (
-                  <SelectItem key={i} value={vendor.vendorName}>
-                    {vendor.vendorName}
-                  </SelectItem>
-                ))
-              ) : (
-                <div className="py-6 text-center text-sm text-muted-foreground">
-                  No vendors found
-                </div>
-              )}
-            </div>
-          </SelectContent>
-        </Select>
-      </FormItem>
-    );
-  }}
-/>
+                                        <FormField
+                                            control={regularForm.control}
+                                            name="vendorName"
+                                            render={({ field }) => {
+                                                const filteredVendors = vendors?.filter(vendor =>
+                                                    vendor.vendorName.toLowerCase().includes(vendorSearch.toLowerCase())
+                                                );
+
+                                                return (
+                                                    <FormItem>
+                                                        <FormLabel>Vendor Name</FormLabel>
+                                                        <Select
+                                                            onValueChange={field.onChange}
+                                                            value={field.value}
+                                                            onOpenChange={(open) => {
+                                                                if (!open) setVendorSearch("");
+                                                            }}
+                                                        >
+                                                            <FormControl>
+                                                                <SelectTrigger className="w-full">
+                                                                    <SelectValue placeholder="Select vendor" />
+                                                                </SelectTrigger>
+                                                            </FormControl>
+                                                            <SelectContent>
+                                                                <div className="flex items-center border-b px-3 pb-2">
+                                                                    <Input
+                                                                        placeholder="Search vendors..."
+                                                                        className="h-8 border-0 focus-visible:ring-0 focus-visible:ring-offset-0"
+                                                                        value={vendorSearch}
+                                                                        onChange={(e) => setVendorSearch(e.target.value)}
+                                                                        onClick={(e) => e.stopPropagation()}
+                                                                        onKeyDown={(e) => e.stopPropagation()}
+                                                                    />
+                                                                </div>
+                                                                <div className="max-h-[200px] overflow-y-auto">
+                                                                    {vendorsLoading ? (
+                                                                        <div className="py-6 text-center text-sm text-muted-foreground">
+                                                                            Loading vendors...
+                                                                        </div>
+                                                                    ) : filteredVendors?.length > 0 ? (
+                                                                        filteredVendors.map((vendor, i) => (
+                                                                            <SelectItem key={i} value={vendor.vendorName}>
+                                                                                {vendor.vendorName}
+                                                                            </SelectItem>
+                                                                        ))
+                                                                    ) : (
+                                                                        <div className="py-6 text-center text-sm text-muted-foreground">
+                                                                            No vendors found
+                                                                        </div>
+                                                                    )}
+                                                                </div>
+                                                            </SelectContent>
+                                                        </Select>
+                                                    </FormItem>
+                                                );
+                                            }}
+                                        />
 
                                         <FormField
                                             control={regularForm.control}

@@ -59,7 +59,7 @@ export default () => {
     const [selectedRows, setSelectedRows] = useState<Set<string>>(new Set());
     const [bulkUpdates, setBulkUpdates] = useState<Map<string, { vendorType?: string; quantity?: number }>>(new Map());
     const [submitting, setSubmitting] = useState(false);
-    
+
     // Fetching table data
     useEffect(() => {
         setTableData(
@@ -113,15 +113,15 @@ export default () => {
     }, [indentSheet]);
 
     const getCurrentFormattedDate = () => {
-    const now = new Date();
-    const day = String(now.getDate()).padStart(2, '0');
-    const month = String(now.getMonth() + 1).padStart(2, '0');
-    const year = now.getFullYear();
-    const hours = String(now.getHours()).padStart(2, '0');
-    const minutes = String(now.getMinutes()).padStart(2, '0');
-    const seconds = String(now.getSeconds()).padStart(2, '0');
-    return `${day}/${month}/${year} ${hours}:${minutes}:${seconds}`;
-};
+        const now = new Date();
+        const day = String(now.getDate()).padStart(2, '0');
+        const month = String(now.getMonth() + 1).padStart(2, '0');
+        const year = now.getFullYear();
+        const hours = String(now.getHours()).padStart(2, '0');
+        const minutes = String(now.getMinutes()).padStart(2, '0');
+        const seconds = String(now.getSeconds()).padStart(2, '0');
+        return `${day}/${month}/${year} ${hours}:${minutes}:${seconds}`;
+    };
 
     const handleRowSelect = (indentNo: string, checked: boolean) => {
         setSelectedRows(prev => {
@@ -172,101 +172,103 @@ export default () => {
         }
     };
 
-   const handleBulkUpdate = (
-    indentNo: string,
-    field: 'vendorType' | 'quantity',
-    value: string | number
-) => {
-    setBulkUpdates((prevUpdates) => {
-        const newUpdates = new Map(prevUpdates);
+    const handleBulkUpdate = (
+        indentNo: string,
+        field: 'vendorType' | 'quantity',
+        value: string | number
+    ) => {
+        setBulkUpdates((prevUpdates) => {
+            const newUpdates = new Map(prevUpdates);
 
-        if (field === 'vendorType') {
-            // value is string here
-            const vendorValue = value as string;
-            selectedRows.forEach((selectedIndentNo) => {
-                const currentUpdate = newUpdates.get(selectedIndentNo) || {};
-                newUpdates.set(selectedIndentNo, {
-                    ...currentUpdate,
-                    vendorType: vendorValue,
+            if (field === 'vendorType') {
+                // value is string here
+                const vendorValue = value as string;
+                selectedRows.forEach((selectedIndentNo) => {
+                    const currentUpdate = newUpdates.get(selectedIndentNo) || {};
+                    newUpdates.set(selectedIndentNo, {
+                        ...currentUpdate,
+                        vendorType: vendorValue,
+                    });
                 });
-            });
-        } else {
-            // value is number here
-            const qtyValue = value as number;
-            const currentUpdate = newUpdates.get(indentNo) || {};
-            newUpdates.set(indentNo, {
-                ...currentUpdate,
-                quantity: qtyValue,
-            });
+            } else {
+                // value is number here
+                const qtyValue = value as number;
+                const currentUpdate = newUpdates.get(indentNo) || {};
+                newUpdates.set(indentNo, {
+                    ...currentUpdate,
+                    quantity: qtyValue,
+                });
+            }
+
+            return newUpdates;
+        });
+    };
+
+
+    const handleSubmitBulkUpdates = async () => {
+        if (selectedRows.size === 0) {
+            toast.error('Please select at least one row to update');
+            return;
         }
 
-        return newUpdates;
-    });
-};
+        setSubmitting(true);
+        try {
+            const updatesToProcess = Array.from(selectedRows)
+                .map(indentNo => {
+                    const update = bulkUpdates.get(indentNo);
+                    const originalSheet = indentSheet.find(s => s.indentNumber === indentNo);
 
+                    if (!originalSheet || !update) return null;
 
-const handleSubmitBulkUpdates = async () => {
-    if (selectedRows.size === 0) {
-        toast.error('Please select at least one row to update');
-        return;
-    }
+                    // Current date in DD/MM/YYYY HH:mm:ss format
+                    const now = new Date();
+                    const day = String(now.getDate()).padStart(2, '0');
+                    const month = String(now.getMonth() + 1).padStart(2, '0');
+                    const year = now.getFullYear();
+                    const hours = String(now.getHours()).padStart(2, '0');
+                    const minutes = String(now.getMinutes()).padStart(2, '0');
+                    const seconds = String(now.getSeconds()).padStart(2, '0');
+                    const formattedDate = `${day}/${month}/${year} ${hours}:${minutes}:${seconds}`;
 
-    setSubmitting(true);
-    try {
-        const updatesToProcess = Array.from(selectedRows)
-            .map(indentNo => {
-                const update = bulkUpdates.get(indentNo);
-                const originalSheet = indentSheet.find(s => s.indentNumber === indentNo);
-                
-                if (!originalSheet || !update) return null;
+                    // Create dataToSend without timestamp
+                    const { timestamp, ...sheetWithoutTimestamp } = originalSheet;
 
-                // Current date in DD/MM/YYYY HH:mm:ss format
-                const now = new Date();
-                const day = String(now.getDate()).padStart(2, '0');
-                const month = String(now.getMonth() + 1).padStart(2, '0');
-                const year = now.getFullYear();
-                const hours = String(now.getHours()).padStart(2, '0');
-                const minutes = String(now.getMinutes()).padStart(2, '0');
-                const seconds = String(now.getSeconds()).padStart(2, '0');
-                const formattedDate = `${day}/${month}/${year} ${hours}:${minutes}:${seconds}`;
+                    const dataToSend = {
+                        ...sheetWithoutTimestamp, // Spread without timestamp
+                        vendorType: update.vendorType || originalSheet.vendorType,
+                        approvedQuantity: update.quantity !== undefined ? update.quantity : originalSheet.quantity,
+                        // H column (quantity) bhi approved ke equal
+                        quantity: update.quantity !== undefined ? update.quantity : originalSheet.quantity,
+                        actual1: formattedDate,
+                    };
 
-                // Create dataToSend without timestamp
-                const { timestamp, ...sheetWithoutTimestamp } = originalSheet;
-                
-                const dataToSend = {
-                    ...sheetWithoutTimestamp, // Spread without timestamp
-                    vendorType: update.vendorType || originalSheet.vendorType,
-                    approvedQuantity: update.quantity !== undefined ? update.quantity : originalSheet.quantity,
-                    actual1: formattedDate,
-                };
+                    console.log('🔍 After creating object:', dataToSend);
+                    console.log('dataToSend.actual1:', dataToSend.actual1);
+                    console.log('typeof dataToSend.actual1:', typeof dataToSend.actual1);
+                    console.log('Full object:', JSON.stringify(dataToSend, null, 2));
 
-                console.log('🔍 After creating object:', dataToSend);
-                console.log('dataToSend.actual1:', dataToSend.actual1);
-                console.log('typeof dataToSend.actual1:', typeof dataToSend.actual1);
-                console.log('Full object:', JSON.stringify(dataToSend, null, 2));
+                    return dataToSend;
+                })
+                .filter((item): item is NonNullable<typeof item> => item !== null);
 
-                return dataToSend;
-            })
-            .filter((item): item is NonNullable<typeof item> => item !== null);
+            console.log('🚀 Final data before postToSheet:', JSON.stringify(updatesToProcess, null, 2));
 
-        console.log('🚀 Final data before postToSheet:', JSON.stringify(updatesToProcess, null, 2));
-        
-        if (updatesToProcess.length > 0) {
-            await postToSheet(updatesToProcess, 'update');
-            toast.success(`Updated ${updatesToProcess.length} indents successfully`);
-            
-            setSelectedRows(new Set());
-            setBulkUpdates(new Map());
-            
-            setTimeout(() => updateIndentSheet(), 1000);
+            if (updatesToProcess.length > 0) {
+                await postToSheet(updatesToProcess, 'update');
+                toast.success(`Updated ${updatesToProcess.length} indents successfully`);
+
+                setSelectedRows(new Set());
+                setBulkUpdates(new Map());
+
+                setTimeout(() => updateIndentSheet(), 1000);
+            }
+        } catch (error) {
+            console.error('❌ Error:', error);
+            toast.error('Failed to update indents');
+        } finally {
+            setSubmitting(false);
         }
-    } catch (error) {
-        console.error('❌ Error:', error);
-        toast.error('Failed to update indents');
-    } finally {
-        setSubmitting(false);
-    }
-};
+    };
 
     const handleDownload = (data: any[]) => {
         if (!data || data.length === 0) {
@@ -317,60 +319,60 @@ const handleSubmitBulkUpdates = async () => {
         setEditValues({});
     };
 
-const handleSaveEdit = async (indentNo: string) => {
-    try {
-        const currentRow = historyData.find(row => row.indentNo === indentNo);
-        const oldProductName = currentRow?.product;
-        const newProductName = editValues.product;
-        
-        // Current date in DD/MM/YYYY HH:mm:ss format
-        const now = new Date();
-        const day = String(now.getDate()).padStart(2, '0');
-        const month = String(now.getMonth() + 1).padStart(2, '0');
-        const year = now.getFullYear();
-        const hours = String(now.getHours()).padStart(2, '0');
-        const minutes = String(now.getMinutes()).padStart(2, '0');
-        const seconds = String(now.getSeconds()).padStart(2, '0');
-        const formattedDate = `${day}/${month}/${year} ${hours}:${minutes}:${seconds}`;
+    const handleSaveEdit = async (indentNo: string) => {
+        try {
+            const currentRow = historyData.find(row => row.indentNo === indentNo);
+            const oldProductName = currentRow?.product;
+            const newProductName = editValues.product;
 
-        // If product name changed, update all rows with the same old product name
-        if (oldProductName && newProductName && oldProductName !== newProductName) {
-            const rowsToUpdate = indentSheet.filter(s => s.productName === oldProductName);
-            
-            await postToSheet(
-                rowsToUpdate.map((prev) => ({
-                    ...prev,
-                    productName: newProductName,
-                    timestamp: prev.timestamp, // Keep original
-                })),
-                'update'
-            );
-            toast.success(`Updated product name from "${oldProductName}" to "${newProductName}" for ${rowsToUpdate.length} records`);
-        } else {
-            // Update only the current row for other fields
-            await postToSheet(
-                indentSheet
-                    .filter((s) => s.indentNumber === indentNo)
-                    .map((prev) => ({
+            // Current date in DD/MM/YYYY HH:mm:ss format
+            const now = new Date();
+            const day = String(now.getDate()).padStart(2, '0');
+            const month = String(now.getMonth() + 1).padStart(2, '0');
+            const year = now.getFullYear();
+            const hours = String(now.getHours()).padStart(2, '0');
+            const minutes = String(now.getMinutes()).padStart(2, '0');
+            const seconds = String(now.getSeconds()).padStart(2, '0');
+            const formattedDate = `${day}/${month}/${year} ${hours}:${minutes}:${seconds}`;
+
+            // If product name changed, update all rows with the same old product name
+            if (oldProductName && newProductName && oldProductName !== newProductName) {
+                const rowsToUpdate = indentSheet.filter(s => s.productName === oldProductName);
+
+                await postToSheet(
+                    rowsToUpdate.map((prev) => ({
                         ...prev,
-                        approvedQuantity: editValues.approvedQuantity,
-                        uom: editValues.uom,
-                        vendorType: editValues.vendorType,
-                        productName: editValues.product,
+                        productName: newProductName,
                         timestamp: prev.timestamp, // Keep original
                     })),
-                'update'
-            );
-            toast.success(`Updated indent ${indentNo}`);
+                    'update'
+                );
+                toast.success(`Updated product name from "${oldProductName}" to "${newProductName}" for ${rowsToUpdate.length} records`);
+            } else {
+                // Update only the current row for other fields
+                await postToSheet(
+                    indentSheet
+                        .filter((s) => s.indentNumber === indentNo)
+                        .map((prev) => ({
+                            ...prev,
+                            approvedQuantity: editValues.approvedQuantity,
+                            uom: editValues.uom,
+                            vendorType: editValues.vendorType,
+                            productName: editValues.product,
+                            timestamp: prev.timestamp, // Keep original
+                        })),
+                    'update'
+                );
+                toast.success(`Updated indent ${indentNo}`);
+            }
+
+            updateIndentSheet();
+            setEditingRow(null);
+            setEditValues({});
+        } catch {
+            toast.error('Failed to update indent');
         }
-        
-        updateIndentSheet();
-        setEditingRow(null);
-        setEditValues({});
-    } catch {
-        toast.error('Failed to update indent');
-    }
-};
+    };
 
     const handleInputChange = (field: keyof HistoryData, value: any) => {
         setEditValues(prev => ({ ...prev, [field]: value }));
@@ -408,52 +410,51 @@ const handleSaveEdit = async (indentNo: string) => {
         ...(user.indentApprovalAction
             ? [
                 {
-  header: 'Vendor Type',
-  id: 'vendorTypeAction',
-  cell: ({ row }: { row: Row<ApproveTableData> }) => {
-    const indent = row.original;
-    const isSelected = selectedRows.has(indent.indentNo);
-    const currentValue =
-      bulkUpdates.get(indent.indentNo)?.vendorType || indent.vendorType;
+                    header: 'Vendor Type',
+                    id: 'vendorTypeAction',
+                    cell: ({ row }: { row: Row<ApproveTableData> }) => {
+                        const indent = row.original;
+                        const isSelected = selectedRows.has(indent.indentNo);
+                        const currentValue =
+                            bulkUpdates.get(indent.indentNo)?.vendorType || indent.vendorType;
 
-    const handleChange = (value: string) => {
-      // ✅ Prevent selecting "Pending" (just ignore)
-      if (value === 'Pending') {
-        toast.warning('You cannot select Pending as a Vendor Type');
-        return;
-      }
-      handleBulkUpdate(indent.indentNo, 'vendorType', value);
-    };
+                        const handleChange = (value: string) => {
+                            // ✅ Prevent selecting "Pending" (just ignore)
+                            if (value === 'Pending') {
+                                toast.warning('You cannot select Pending as a Vendor Type');
+                                return;
+                            }
+                            handleBulkUpdate(indent.indentNo, 'vendorType', value);
+                        };
 
-    return (
-      <Select
-        value={currentValue === 'Pending' ? '' : currentValue}
-        onValueChange={handleChange}
-        disabled={!isSelected}
-      >
-        <SelectTrigger
-          className={`w-full min-w-[120px] max-w-[150px] text-xs ${
-            !isSelected ? 'opacity-50' : ''
-          }`}
-        >
-          <SelectValue placeholder="Select Vendor Type" />
-        </SelectTrigger>
-        <SelectContent>
-          {/* Removed Pending option */}
-          <SelectItem value="Regular">Regular</SelectItem>
-          <SelectItem value="Three Party">Three Party</SelectItem>
-          <SelectItem value="Reject">Reject</SelectItem>
-        </SelectContent>
-      </Select>
-    );
-  },
-  size: 150,
-},
+                        return (
+                            <Select
+                                value={currentValue === 'Pending' ? '' : currentValue}
+                                onValueChange={handleChange}
+                                disabled={!isSelected}
+                            >
+                                <SelectTrigger
+                                    className={`w-full min-w-[120px] max-w-[150px] text-xs ${!isSelected ? 'opacity-50' : ''
+                                        }`}
+                                >
+                                    <SelectValue placeholder="Select Vendor Type" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    {/* Removed Pending option */}
+                                    <SelectItem value="Regular">Regular</SelectItem>
+                                    <SelectItem value="Three Party">Three Party</SelectItem>
+                                    <SelectItem value="Reject">Reject</SelectItem>
+                                </SelectContent>
+                            </Select>
+                        );
+                    },
+                    size: 150,
+                },
 
             ]
             : []),
-        { 
-            accessorKey: 'indentNo', 
+        {
+            accessorKey: 'indentNo',
             header: 'Indent No.',
             cell: ({ getValue }) => (
                 <div className="font-medium text-xs sm:text-sm">
@@ -462,8 +463,8 @@ const handleSaveEdit = async (indentNo: string) => {
             ),
             size: 100,
         },
-        { 
-            accessorKey: 'indenter', 
+        {
+            accessorKey: 'indenter',
             header: 'Indenter',
             cell: ({ getValue }) => (
                 <div className="text-xs sm:text-sm truncate max-w-[100px]">
@@ -472,8 +473,8 @@ const handleSaveEdit = async (indentNo: string) => {
             ),
             size: 120,
         },
-        { 
-            accessorKey: 'department', 
+        {
+            accessorKey: 'department',
             header: 'Department',
             cell: ({ getValue }) => (
                 <div className="text-xs sm:text-sm truncate max-w-[100px]">
@@ -492,48 +493,48 @@ const handleSaveEdit = async (indentNo: string) => {
             ),
             size: 150,
         },
-       {
-    accessorKey: 'quantity',
-    header: 'Quantity',
-    cell: ({ row }: { row: Row<ApproveTableData> }) => {
-        const indent = row.original;
-        const isSelected = selectedRows.has(indent.indentNo);
-        const currentValue = bulkUpdates.get(indent.indentNo)?.quantity || indent.quantity;
-        
-        // Local state for input value
-        const [localValue, setLocalValue] = useState(String(currentValue));
-        
-        // Update local value when currentValue changes
-        useEffect(() => {
-            setLocalValue(String(currentValue));
-        }, [currentValue]);
-        
-        return (
-            <Input
-                type="number"
-                value={localValue}
-                onChange={(e) => {
-                    setLocalValue(e.target.value); // Only update local state
-                }}
-                onBlur={(e) => {
-                    // Update bulk updates only on blur
-                    const value = e.target.value;
-                    if (value === '' || !isNaN(Number(value))) {
-                        handleBulkUpdate(indent.indentNo, 'quantity', Number(value) || 0);
-                    }
-                }}
-                disabled={!isSelected}
-                className={`w-16 sm:w-20 text-xs sm:text-sm ${!isSelected ? 'opacity-50' : ''}`}
-                min="0"
-                step="1"
-            />
-        );
-    },
-    size: 80,
-},
+        {
+            accessorKey: 'quantity',
+            header: 'Quantity',
+            cell: ({ row }: { row: Row<ApproveTableData> }) => {
+                const indent = row.original;
+                const isSelected = selectedRows.has(indent.indentNo);
+                const currentValue = bulkUpdates.get(indent.indentNo)?.quantity || indent.quantity;
 
-        { 
-            accessorKey: 'uom', 
+                // Local state for input value
+                const [localValue, setLocalValue] = useState(String(currentValue));
+
+                // Update local value when currentValue changes
+                useEffect(() => {
+                    setLocalValue(String(currentValue));
+                }, [currentValue]);
+
+                return (
+                    <Input
+                        type="number"
+                        value={localValue}
+                        onChange={(e) => {
+                            setLocalValue(e.target.value); // Only update local state
+                        }}
+                        onBlur={(e) => {
+                            // Update bulk updates only on blur
+                            const value = e.target.value;
+                            if (value === '' || !isNaN(Number(value))) {
+                                handleBulkUpdate(indent.indentNo, 'quantity', Number(value) || 0);
+                            }
+                        }}
+                        disabled={!isSelected}
+                        className={`w-16 sm:w-20 text-xs sm:text-sm ${!isSelected ? 'opacity-50' : ''}`}
+                        min="0"
+                        step="1"
+                    />
+                );
+            },
+            size: 80,
+        },
+
+        {
+            accessorKey: 'uom',
             header: 'UOM',
             cell: ({ getValue }) => (
                 <div className="text-xs sm:text-sm">
@@ -587,9 +588,9 @@ const handleSaveEdit = async (indentNo: string) => {
             cell: ({ row }: { row: Row<ApproveTableData> }) => {
                 const attachment = row.original.attachment;
                 return attachment ? (
-                    <a 
-                        href={attachment} 
-                        target="_blank" 
+                    <a
+                        href={attachment}
+                        target="_blank"
                         rel="noopener noreferrer"
                         className="text-blue-600 hover:text-blue-800 text-xs sm:text-sm underline"
                     >
@@ -601,8 +602,8 @@ const handleSaveEdit = async (indentNo: string) => {
             },
             size: 80,
         },
-        { 
-            accessorKey: 'date', 
+        {
+            accessorKey: 'date',
             header: 'Date',
             cell: ({ getValue }) => (
                 <div className="text-xs sm:text-sm whitespace-nowrap">
@@ -615,8 +616,8 @@ const handleSaveEdit = async (indentNo: string) => {
 
     // History columns with mobile responsiveness
     const historyColumns: ColumnDef<HistoryData>[] = [
-        { 
-            accessorKey: 'indentNo', 
+        {
+            accessorKey: 'indentNo',
             header: 'Indent No.',
             cell: ({ getValue }) => (
                 <div className="font-medium text-xs sm:text-sm">
@@ -625,8 +626,8 @@ const handleSaveEdit = async (indentNo: string) => {
             ),
             size: 100,
         },
-        { 
-            accessorKey: 'indenter', 
+        {
+            accessorKey: 'indenter',
             header: 'Indenter',
             cell: ({ getValue }) => (
                 <div className="text-xs sm:text-sm truncate max-w-[100px]">
@@ -635,8 +636,8 @@ const handleSaveEdit = async (indentNo: string) => {
             ),
             size: 120,
         },
-        { 
-            accessorKey: 'department', 
+        {
+            accessorKey: 'department',
             header: 'Department',
             cell: ({ getValue }) => (
                 <div className="text-xs sm:text-sm truncate max-w-[100px]">
@@ -790,8 +791,8 @@ const handleSaveEdit = async (indentNo: string) => {
             },
             size: 150,
         },
-        { 
-            accessorKey: 'date', 
+        {
+            accessorKey: 'date',
             header: 'Request Date',
             cell: ({ getValue }) => (
                 <div className="text-xs sm:text-sm whitespace-nowrap">
@@ -800,8 +801,8 @@ const handleSaveEdit = async (indentNo: string) => {
             ),
             size: 100,
         },
-        { 
-            accessorKey: 'approvedDate', 
+        {
+            accessorKey: 'approvedDate',
             header: 'Approval Date',
             cell: ({ getValue }) => (
                 <div className="text-xs sm:text-sm whitespace-nowrap">
@@ -876,7 +877,7 @@ const handleSaveEdit = async (indentNo: string) => {
                                 </Button>
                             </div>
                         )}
-                        
+
                         <div className="w-full overflow-x-auto">
                             <DataTable
                                 data={tableData}
