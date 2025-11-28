@@ -47,30 +47,45 @@ export default () => {
     const [searchTermGroupHead, setSearchTermGroupHead] = useState('');
     const [searchTermProduct, setSearchTermProduct] = useState('');
 
-    // Fetch and process table data
     useEffect(() => {
+        console.log('Original indentSheet:', indentSheet); // pehle yeh dekho data kya hai
+        
         setTableData(
-            indentSheet.map((sheet, index) => ({
-                id: `${sheet.indentNumber}_${index}`, // Unique identifier
-                timestamp: formatDate(new Date(sheet.timestamp)),
-                indentNumber: sheet.indentNumber,
-                indenterName: sheet.indenterName,
-                indentApproveBy: sheet.indentApprovedBy || '',
-                indentType: sheet.indentType as 'Purchase' | 'Store Out',
-                department: sheet.department,
-                groupHead: sheet.groupHead,
-                productName: sheet.productName,
-                quantity: sheet.quantity,
-                uom: sheet.uom,
-                areaOfUse: sheet.areaOfUse,
-                specifications: sheet.specifications || '',
-                attachment: sheet.attachment || '',
-                vendorType: sheet.vendorType || 'Pending',
-            }))
-            .reverse()
+            indentSheet
+                .map((sheet, index) => {
+                    console.log(`Row ${index}:`, {
+                        timestamp: sheet.timestamp,
+                        vendorType: sheet.vendorType,
+                        vendorTypeType: typeof sheet.vendorType
+                    }); // har row ka vendorType check karo
+                    return { sheet, originalIndex: index };
+                })
+                .filter(({ sheet }) => {
+                    const hasTimestamp = !!sheet.timestamp;
+                    const isactual4Null = sheet.actual4 === null || sheet.actual4 === undefined || sheet.actual4 === '';
+                    console.log('Filter check:', { hasTimestamp, isactual4Null, actual4: sheet.actual4 });
+                    return hasTimestamp && isactual4Null;
+                })
+                .map(({ sheet, originalIndex }) => ({
+                    id: `${sheet.indentNumber}_${originalIndex}`,
+                    timestamp: formatDate(new Date(sheet.timestamp)),
+                    indentNumber: sheet.indentNumber,
+                    indenterName: sheet.indenterName,
+                    indentApproveBy: sheet.indentApprovedBy || '',
+                    indentType: sheet.indentType as 'Purchase' | 'Store Out',
+                    department: sheet.department,
+                    groupHead: sheet.groupHead,
+                    productName: sheet.productName,
+                    quantity: sheet.quantity,
+                    uom: sheet.uom,
+                    areaOfUse: sheet.areaOfUse,
+                    specifications: sheet.specifications || '',
+                    attachment: sheet.attachment || '',
+                    vendorType: sheet.vendorType || 'Pending',
+                }))
+                .reverse()
         );
     }, [indentSheet]);
-
     const handleRowSelect = (id: string, checked: boolean) => {
         setSelectedRows(prev => {
             const newSet = new Set(prev);
@@ -434,20 +449,20 @@ export default () => {
                         onValueChange={(value) => handleBulkUpdate(indent.id, 'productName', value)}
                         disabled={!isSelected || !groupHead}
                     >
-                        <SelectTrigger className={`w-40 text-xs sm:text-sm ${!isSelected ? 'opacity-50' : ''}`}>
+                        <SelectTrigger className={`w-52 text-xs sm:text-sm ${!isSelected ? 'opacity-50' : ''}`}>
                             <SelectValue placeholder="Select product" />
                         </SelectTrigger>
-                        <SelectContent>
-                            <div className="flex items-center border-b px-3 pb-3">
-                                <Search className="mr-2 h-4 w-4 shrink-0 opacity-50" />
-                                <input
-                                    placeholder="Search products..."
-                                    value={searchTermProduct}
-                                    onChange={(e) => setSearchTermProduct(e.target.value)}
-                                    onKeyDown={(e) => e.stopPropagation()}
-                                    className="flex h-10 w-full rounded-md border-0 bg-transparent py-3 text-sm outline-none placeholder:text-muted-foreground"
-                                />
-                            </div>
+                        <SelectContent className="w-auto min-w-[300px] max-w-[600px]">
+    <div className="flex items-center border-b px-3 pb-3">
+        <Search className="mr-2 h-4 w-4 shrink-0 opacity-50" />
+        <input
+            placeholder="Search products..."
+            value={searchTermProduct}
+            onChange={(e) => setSearchTermProduct(e.target.value)}
+            onKeyDown={(e) => e.stopPropagation()}
+            className="flex h-10 w-full rounded-md border-0 bg-transparent py-3 text-sm outline-none placeholder:text-muted-foreground"
+        />
+    </div>
                             {productOptions
                                 .filter((dep) =>
                                     dep.toLowerCase().includes(searchTermProduct.toLowerCase())
@@ -461,7 +476,7 @@ export default () => {
                     </Select>
                 );
             },
-            size: 180,
+            size: 220,
         },
         {
             accessorKey: 'quantity',
