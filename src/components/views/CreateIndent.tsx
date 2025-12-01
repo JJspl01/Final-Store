@@ -103,6 +103,7 @@ const getNextIndentNumber = () => {
         .filter(num => num && num.startsWith('SI-'))
         .map(num => parseInt(num.replace('SI-', ''), 10))
         .filter(num => !isNaN(num));
+
     
     const maxNumber = Math.max(...indentNumbers, 0);
     const nextNumber = maxNumber + 1;

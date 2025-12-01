@@ -4,6 +4,7 @@ import type { ColumnDef, Row } from '@tanstack/react-table';
 import { useEffect, useState } from 'react';
 import DataTable from '../element/DataTable';
 import { Button } from '../ui/button';
+import { useRef } from 'react';
 import {
     Dialog,
     DialogContent,
@@ -29,6 +30,9 @@ import { useAuth } from '@/context/AuthContext';
 import Heading from '../element/Heading';
 import { Pill } from '../ui/pill';
 import { formatDate } from '@/lib/utils';
+
+import { useCallback } from 'react';
+
 
 
 interface GetPurchaseData {
@@ -64,6 +68,23 @@ interface ProductDetail {
     rate: number;
     qty?: number;
 }
+interface EditedData {
+    product?: string;
+    quantity?: number;
+    uom?: string;
+    qty?: number;
+    billNumber?: string;
+    leadTime?: string;
+    typeOfBill?: string;
+    billAmount?: number;
+    discountAmount?: number;
+    paymentType?: string;
+    advanceAmount?: number;
+    rate?: number;
+    photoOfBillFile?: File | null; // File support
+}
+
+
 
 
 export default () => {
@@ -80,8 +101,16 @@ export default () => {
 const [productRates, setProductRates] = useState<{ [indentNo: string]: number }>({});
 const [productQty, setProductQty] = useState<{ [indentNo: string]: number }>({});
 const [editingRow, setEditingRow] = useState<string | null>(null);
-const [editedData, setEditedData] = useState<{ product?: string; quantity?: number; uom?: string }>({});
 
+
+
+
+
+const inputRefs = useRef<{[key: string]: HTMLInputElement | null}>({});
+
+
+// const [editedData, setEditedData] = useState<{ product?: string; quantity?: number; uom?: string }>({});
+const [editedData, setEditedData] = useState<{ [indentNo: string]: { product?: string; quantity?: number; uom?: string; qty?: number; billNumber?: string; leadTime?: string; typeOfBill?: string; billAmount?: number; discountAmount?: number; paymentType?: string; advanceAmount?: number; rate?: number; photoOfBill?: string } }>({});
   // Fetching table data - updated
 useEffect(() => {
     // Unique PO numbers ke liye Set use karo
@@ -241,70 +270,103 @@ const handleQtyChange = (indentNo: string, value: string) => {
                 const isEditing = editingRow === row.original.indentNo;
                 return (
                     <div className="flex gap-2">
-                        {isEditing ? (
-                            <>
-                                <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    onClick={async () => {
-                                        try {
-                                            const sheetRow = indentSheet.find(s => s.indentNumber === row.original.indentNo);
-                                            if (sheetRow) {
-                                                const { timestamp, actual4, poNumber, poCopy, ...safeData } = sheetRow;
-                                                const currentEdit = editedData[row.original.indentNo];
-                                                const updatedQty = currentEdit?.quantity || row.original.quantity;
-                                                
-                                                await postToSheet([{
-                                                    ...safeData,
-                                                    productName: currentEdit?.product || row.original.product,
-                                                    quantity: updatedQty,
-                                                    approvedQuantity: updatedQty,
-                                                    uom: currentEdit?.uom || row.original.uom,
-                                                    qty: updatedQty,
-                                                }], 'update');
-                                                
-                                                toast.success('Updated successfully');
-                                                setTimeout(() => updateIndentSheet(), 1000);
+                    {isEditing ? (
+                        <>
+                            <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={async () => {
+                                    try {
+                                        const sheetRow = indentSheet.find(s => s.indentNumber === row.original.indentNo);
+                                        if (sheetRow) {
+                                            const { timestamp, actual4, poNumber, poCopy, ...safeData } = sheetRow;
+                                            const currentEdit = editedData[row.original.indentNo];
+                                
+                                            let photoUrl = sheetRow.photoOfBill || '';
+                                
+                                            // agar naya file select hua hai to upload karo
+                                            if (currentEdit?.photoOfBillFile) {
+                                                photoUrl = await uploadFile(
+                                                    currentEdit.photoOfBillFile,
+                                                    import.meta.env.VITE_BILL_PHOTO_FOLDER || 'bill-photos'
+                                                );
                                             }
-                                        } catch {
-                                            toast.error('Failed to update');
+                                
+                                            await postToSheet(
+                                                [
+                                                    {
+                                                        ...safeData,
+                                                        productName: currentEdit?.product || row.original.product,
+                                                        quantity: currentEdit?.quantity || row.original.quantity,
+                                                        approvedQuantity: currentEdit?.quantity || row.original.quantity,
+                                                        uom: currentEdit?.uom || row.original.uom,
+                                                        qty: currentEdit?.qty || row.original.quantity,
+                                                        billNumber: currentEdit?.billNumber || sheetRow.billNumber || '',
+                                                        leadTimeToLiftMaterial: currentEdit?.leadTime || sheetRow.leadTimeToLiftMaterial || '',
+                                                        typeOfBill: currentEdit?.typeOfBill || sheetRow.typeOfBill || '',
+                                                        billAmount: currentEdit?.billAmount || sheetRow.billAmount || 0,
+                                                        discountAmount: currentEdit?.discountAmount || sheetRow.discountAmount || 0,
+                                                        paymentType: currentEdit?.paymentType || sheetRow.paymentType || '',
+                                                        advanceAmountIfAny: currentEdit?.advanceAmount || sheetRow.advanceAmountIfAny || 0,
+                                                        rate: currentEdit?.rate || sheetRow.rate || sheetRow.approvedRate || 0,
+                                                        photoOfBill: photoUrl, // 👈 yahan updated URL save hoga
+                                                    },
+                                                ],
+                                                'update'
+                                            );
+                                
+                                            toast.success('Updated successfully');
+                                            setTimeout(() => updateIndentSheet(), 1000);
                                         }
-                                        setEditingRow(null);
-                                        setEditedData({});
-                                    }}
-                                >
-                                    💾 Save
-                                </Button>
-                                <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    onClick={() => {
-                                        setEditingRow(null);
-                                        setEditedData({});
-                                    }}
-                                >
-                                    ❌ Cancel
-                                </Button>
-                            </>
-                        ) : (
+                                    } catch {
+                                        toast.error('Failed to update');
+                                    }
+                                    setEditingRow(null);
+                                    setEditedData({});
+                                }}
+                                
+                            >
+                                💾 Save
+                            </Button>
                             <Button
                                 variant="ghost"
                                 size="sm"
                                 onClick={() => {
-                                    setEditingRow(row.original.indentNo);
-                                    setEditedData(prev => ({
-                                        ...prev,
-                                        [row.original.indentNo]: {
-                                            product: row.original.product,
-                                            quantity: row.original.quantity,
-                                            uom: row.original.uom
-                                        }
-                                    }));
+                                    setEditingRow(null);
+                                    setEditedData({});
                                 }}
                             >
-                                ✏️ Edit
+                                ❌ Cancel
                             </Button>
-                        )}
+                        </>
+                    ) : (
+                        <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => {
+                                setEditingRow(row.original.indentNo);
+                                setEditedData(prev => ({
+                                    ...prev,
+                                    [row.original.indentNo]: {
+                                        product: row.original.product,
+                                        quantity: row.original.quantity,
+                                        uom: row.original.uom,
+                                        qty: row.original.quantity,
+                                        billNumber: indentSheet.find(s => s.indentNumber === row.original.indentNo)?.billNumber || '',
+                                        leadTime: indentSheet.find(s => s.indentNumber === row.original.indentNo)?.leadTimeToLiftMaterial || '',
+                                        typeOfBill: indentSheet.find(s => s.indentNumber === row.original.indentNo)?.typeOfBill || '',
+                                        billAmount: indentSheet.find(s => s.indentNumber === row.original.indentNo)?.billAmount || 0,
+                                        discountAmount: indentSheet.find(s => s.indentNumber === row.original.indentNo)?.discountAmount || 0,
+                                        paymentType: indentSheet.find(s => s.indentNumber === row.original.indentNo)?.paymentType || '',
+                                        advanceAmount: indentSheet.find(s => s.indentNumber === row.original.indentNo)?.advanceAmountIfAny || 0,
+                                        rate: indentSheet.find(s => s.indentNumber === row.original.indentNo)?.approvedRate || 0,
+                                    }
+                                }));
+                            }}
+                        >
+                            ✏️ Edit
+                        </Button>
+                    )}
                     </div>
                 );
             },
@@ -330,26 +392,26 @@ const handleQtyChange = (indentNo: string, value: string) => {
             header: 'Product',
             cell: ({ row }) => {
                 const isEditing = editingRow === row.original.indentNo;
-                
                 return (
                     <div className="flex items-center gap-2 max-w-[150px]">
-                        {isEditing ? (
-                            <Input
-                                value={editedData[row.original.indentNo]?.product || ''}
-                                onChange={(e) => {
-                                    setEditedData(prev => ({
-                                        ...prev,
-                                        [row.original.indentNo]: {
-                                            ...prev[row.original.indentNo],
-                                            product: e.target.value,
-                                        }
-                                    }));
-                                }}
-                                className="h-8"
-                            />
-                        ) : (
-                            <div className="break-words whitespace-normal">{row.original.product}</div>
-                        )}
+                    {isEditing ? (
+                        <Input
+                        key={row.original.indentNo}
+                            value={editedData[row.original.indentNo]?.product || ''}
+                            onChange={(e) => {
+                                setEditedData(prev => ({
+                                    ...prev,
+                                    [row.original.indentNo]: {
+                                        ...prev[row.original.indentNo],
+                                        product: e.target.value,
+                                    }
+                                }));
+                            }}
+                            className="h-8"
+                        />
+                    ) : (
+                        <div className="break-words whitespace-normal">{row.original.product}</div>
+                    )}
                     </div>
                 );
             },
@@ -359,7 +421,6 @@ const handleQtyChange = (indentNo: string, value: string) => {
             header: 'Quantity',
             cell: ({ row }) => {
                 const isEditing = editingRow === row.original.indentNo;
-                
                 return isEditing ? (
                     <Input
                         type="number"
@@ -385,7 +446,6 @@ const handleQtyChange = (indentNo: string, value: string) => {
             header: 'UOM',
             cell: ({ row }) => {
                 const isEditing = editingRow === row.original.indentNo;
-                
                 return isEditing ? (
                     <Input
                         value={editedData[row.original.indentNo]?.uom || ''}
@@ -409,6 +469,299 @@ const handleQtyChange = (indentNo: string, value: string) => {
             accessorKey: 'poNumber',
             header: 'PO Number',
         },
+        // Editable columns BF to BO
+        {
+            id: 'billNumber',
+            header: 'Bill Number',
+            cell: ({ row }) => {
+                const isEditing = editingRow === row.original.indentNo;
+                const sheetRow = indentSheet.find(s => s.indentNumber === row.original.indentNo);
+                return isEditing ? (
+                    <Input
+                        value={editedData[row.original.indentNo]?.billNumber || ''}
+                        onChange={(e) => {
+                            setEditedData(prev => ({
+                                ...prev,
+                                [row.original.indentNo]: {
+                                    ...prev[row.original.indentNo],
+                                    billNumber: e.target.value,
+                                }
+                            }));
+                        }}
+                        className="h-8 w-full"
+                    />
+                ) : (
+                    sheetRow?.billNumber || '-'
+                );
+            },
+        },
+        {
+            id: 'qty',
+            header: 'Qty',
+            cell: ({ row }) => {
+                const isEditing = editingRow === row.original.indentNo;
+                const sheetRow = indentSheet.find(s => s.indentNumber === row.original.indentNo);
+                return isEditing ? (
+                    <Input
+                        type="number"
+                        value={editedData[row.original.indentNo]?.qty || ''}
+                        onChange={(e) => {
+                            setEditedData(prev => ({
+                                ...prev,
+                                [row.original.indentNo]: {
+                                    ...prev[row.original.indentNo],
+                                    qty: parseFloat(e.target.value) || 0,
+                                }
+                            }));
+                        }}
+                        className="h-8 w-20"
+                    />
+                ) : (
+                    sheetRow?.qty || row.original.quantity
+                );
+            },
+        },
+        {
+            id: 'leadTime',
+            header: 'Lead Time',
+            cell: ({ row }) => {
+                const isEditing = editingRow === row.original.indentNo;
+                const sheetRow = indentSheet.find(s => s.indentNumber === row.original.indentNo);
+                return isEditing ? (
+                    <Input
+                        value={editedData[row.original.indentNo]?.leadTime || ''}
+                        onChange={(e) => {
+                            setEditedData(prev => ({
+                                ...prev,
+                                [row.original.indentNo]: {
+                                    ...prev[row.original.indentNo],
+                                    leadTime: e.target.value,
+                                }
+                            }));
+                        }}
+                        className="h-8 w-full"
+                    />
+                ) : (
+                    sheetRow?.leadTimeToLiftMaterial || '-'
+                );
+            },
+        },
+        {
+            id: 'typeOfBill',
+            header: 'Type Of Bill',
+            cell: ({ row }) => {
+                const isEditing = editingRow === row.original.indentNo;
+                const sheetRow = indentSheet.find(s => s.indentNumber === row.original.indentNo);
+                return isEditing ? (
+                    <Input
+                        value={editedData[row.original.indentNo]?.typeOfBill || ''}
+                        onChange={(e) => {
+                            setEditedData(prev => ({
+                                ...prev,
+                                [row.original.indentNo]: {
+                                    ...prev[row.original.indentNo],
+                                    typeOfBill: e.target.value,
+                                }
+                            }));
+                        }}
+                        className="h-8 w-full"
+                    />
+                ) : (
+                    sheetRow?.typeOfBill || '-'
+                );
+            },
+        },
+        {
+            id: 'billAmount',
+            header: 'Bill Amount',
+            cell: ({ row }) => {
+                const isEditing = editingRow === row.original.indentNo;
+                const sheetRow = indentSheet.find(s => s.indentNumber === row.original.indentNo);
+                return isEditing ? (
+                    <Input
+                        type="number"
+                        value={editedData[row.original.indentNo]?.billAmount || ''}
+                        onChange={(e) => {
+                            setEditedData(prev => ({
+                                ...prev,
+                                [row.original.indentNo]: {
+                                    ...prev[row.original.indentNo],
+                                    billAmount: parseFloat(e.target.value) || 0,
+                                }
+                            }));
+                        }}
+                        className="h-8 w-24"
+                    />
+                ) : (
+                    sheetRow?.billAmount ? `₹${sheetRow.billAmount}` : '-'
+                );
+            },
+        },
+        {
+            id: 'discountAmount',
+            header: 'Discount Amt',
+            cell: ({ row }) => {
+                const isEditing = editingRow === row.original.indentNo;
+                const sheetRow = indentSheet.find(s => s.indentNumber === row.original.indentNo);
+                return isEditing ? (
+                    <Input
+                        type="number"
+                        value={editedData[row.original.indentNo]?.discountAmount || ''}
+                        onChange={(e) => {
+                            setEditedData(prev => ({
+                                ...prev,
+                                [row.original.indentNo]: {
+                                    ...prev[row.original.indentNo],
+                                    discountAmount: parseFloat(e.target.value) || 0,
+                                }
+                            }));
+                        }}
+                        className="h-8 w-24"
+                    />
+                ) : (
+                    sheetRow?.discountAmount ? `₹${sheetRow.discountAmount}` : '-'
+                );
+            },
+        },
+        {
+            id: 'paymentType',
+            header: 'Payment Type',
+            cell: ({ row }) => {
+                const isEditing = editingRow === row.original.indentNo;
+                const sheetRow = indentSheet.find(s => s.indentNumber === row.original.indentNo);
+                return isEditing ? (
+                    <Input
+                        value={editedData[row.original.indentNo]?.paymentType || ''}
+                        onChange={(e) => {
+                            setEditedData(prev => ({
+                                ...prev,
+                                [row.original.indentNo]: {
+                                    ...prev[row.original.indentNo],
+                                    paymentType: e.target.value,
+                                }
+                            }));
+                        }}
+                        className="h-8 w-full"
+                    />
+                ) : (
+                    sheetRow?.paymentType || '-'
+                );
+            },
+        },
+        {
+            id: 'advanceAmount',
+            header: 'Advance Amt',
+            cell: ({ row }) => {
+                const isEditing = editingRow === row.original.indentNo;
+                const sheetRow = indentSheet.find(s => s.indentNumber === row.original.indentNo);
+                return isEditing ? (
+                    <Input
+                        type="number"
+                        value={editedData[row.original.indentNo]?.advanceAmount || ''}
+                        onChange={(e) => {
+                            setEditedData(prev => ({
+                                ...prev,
+                                [row.original.indentNo]: {
+                                    ...prev[row.original.indentNo],
+                                    advanceAmount: parseFloat(e.target.value) || 0,
+                                }
+                            }));
+                        }}
+                        className="h-8 w-24"
+                    />
+                ) : (
+                    sheetRow?.advanceAmountIfAny ? `₹${sheetRow.advanceAmountIfAny}` : '-'
+                );
+            },
+        },
+        {
+            id: 'photoOfBill',
+            header: 'Bill Photo',
+            cell: ({ row }) => {
+                const isEditing = editingRow === row.original.indentNo;
+                const sheetRow = indentSheet.find(
+                    (s) => s.indentNumber === row.original.indentNo
+                );
+        
+                if (isEditing) {
+                    return (
+                        <div className="flex items-center gap-2">
+                            {/* Nice compact upload button */}
+                            <label className="inline-flex items-center px-2 py-1 text-xs font-medium border border-dashed border-primary/50 rounded-md bg-primary/5 text-primary cursor-pointer hover:bg-primary/10">
+                                Choose image
+                                <input
+                                    type="file"
+                                    accept="image/*"
+                                    className="hidden"
+                                    onChange={(e) => {
+                                        const file = e.target.files?.[0] || null;
+                                        setEditedData((prev) => ({
+                                            ...prev,
+                                            [row.original.indentNo]: {
+                                                ...prev[row.original.indentNo],
+                                                photoOfBillFile: file,
+                                            },
+                                        }));
+                                    }}
+                                />
+                            </label>
+        
+                            {/* Existing image link */}
+                            {sheetRow?.photoOfBill && (
+                                <a
+                                    href={sheetRow.photoOfBill}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="text-xs text-blue-600 hover:underline"
+                                >
+                                    View
+                                </a>
+                            )}
+                        </div>
+                    );
+                }
+        
+                return sheetRow?.photoOfBill ? (
+                    <a
+                        href={sheetRow.photoOfBill}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-xs text-blue-600 hover:underline"
+                    >
+                        View
+                    </a>
+                ) : (
+                    '-'
+                );
+            },
+        },
+        
+        {
+            id: 'approvedRate',
+            header: 'Rate',
+            cell: ({ row }) => {
+                const isEditing = editingRow === row.original.indentNo;
+                const sheetRow = indentSheet.find(s => s.indentNumber === row.original.indentNo);
+                return isEditing ? (
+                    <Input
+                        type="number"
+                        value={editedData[row.original.indentNo]?.rate || ''}
+                        onChange={(e) => {
+                            setEditedData(prev => ({
+                                ...prev,
+                                [row.original.indentNo]: {
+                                    ...prev[row.original.indentNo],
+                                    rate: parseFloat(e.target.value) || 0,
+                                }
+                            }));
+                        }}
+                        className="h-8 w-24"
+                    />
+                ) : (
+                    `₹${sheetRow?.approvedRate || sheetRow?.rate || 0}`
+                );
+            },
+        },
         {
             accessorKey: 'billStatus',
             header: 'Bill Status',
@@ -418,12 +771,8 @@ const handleQtyChange = (indentNo: string, value: string) => {
                 return <Pill variant={variant}>{status}</Pill>;
             },
         },
-        {
-            accessorKey: 'approvedRate',
-            header: 'Approved Rate',
-            cell: ({ getValue }) => `₹${getValue()}`,
-        },
     ];
+    
 
     // Creating form schema
     const formSchema = z.object({
