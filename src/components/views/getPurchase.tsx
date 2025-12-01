@@ -33,6 +33,25 @@ import { formatDate } from '@/lib/utils';
 
 import { useCallback } from 'react';
 
+interface EditedData {
+    product?: string;
+    quantity?: number;
+    uom?: string;
+    qty?: number;
+    billNumber?: string;
+    leadTime?: string;
+    typeOfBill?: string;
+    billAmount?: number;
+    discountAmount?: number;
+    paymentType?: string;
+    advanceAmount?: number;
+    rate?: number;
+    photoOfBill?: string; // For storing the URL string
+    photoOfBillFile?: File | null; // For handling file uploads
+}
+
+
+
 
 
 interface GetPurchaseData {
@@ -101,7 +120,7 @@ export default () => {
 const [productRates, setProductRates] = useState<{ [indentNo: string]: number }>({});
 const [productQty, setProductQty] = useState<{ [indentNo: string]: number }>({});
 const [editingRow, setEditingRow] = useState<string | null>(null);
-
+const [editedData, setEditedData] = useState<{ [indentNo: string]: EditedData }>({});
 
 
 
@@ -110,7 +129,7 @@ const inputRefs = useRef<{[key: string]: HTMLInputElement | null}>({});
 
 
 // const [editedData, setEditedData] = useState<{ product?: string; quantity?: number; uom?: string }>({});
-const [editedData, setEditedData] = useState<{ [indentNo: string]: { product?: string; quantity?: number; uom?: string; qty?: number; billNumber?: string; leadTime?: string; typeOfBill?: string; billAmount?: number; discountAmount?: number; paymentType?: string; advanceAmount?: number; rate?: number; photoOfBill?: string } }>({});
+// const [editedData, setEditedData] = useState<{ [indentNo: string]: { product?: string; quantity?: number; uom?: string; qty?: number; billNumber?: string; leadTime?: string; typeOfBill?: string; billAmount?: number; discountAmount?: number; paymentType?: string; advanceAmount?: number; rate?: number; photoOfBill?: string } }>({});
   // Fetching table data - updated
 useEffect(() => {
     // Unique PO numbers ke liye Set use karo
