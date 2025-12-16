@@ -18,7 +18,7 @@ import Heading from '../element/Heading';
 import { Pill } from '../ui/pill';
 import { Input } from '../ui/input';
 
-const statuses = ['Pending', 'Reject', 'Three Party', 'Regular'];
+const statuses = ['Reject', 'Three Party', 'Regular'];
 
 interface ApproveTableData {
     indentNo: string;
@@ -27,7 +27,7 @@ interface ApproveTableData {
     product: string;
     quantity: number;
     uom: string;
-    vendorType: 'Pending' | 'Reject' | 'Three Party' | 'Regular';
+    vendorType: 'Reject' | 'Three Party' | 'Regular';
     date: string;
     attachment: string;
     specifications: string;
@@ -420,7 +420,7 @@ export default () => {
 
                         const handleChange = (value: string) => {
                             // ✅ Prevent selecting "Pending" (just ignore)
-                            if (value === 'Pending') {
+                            if (value === '') {
                                 toast.warning('You cannot select Pending as a Vendor Type');
                                 return;
                             }
@@ -429,7 +429,7 @@ export default () => {
 
                         return (
                             <Select
-                                value={currentValue === 'Pending' ? '' : currentValue}
+                                value={currentValue === '' ? '' : currentValue}
                                 onValueChange={handleChange}
                                 disabled={!isSelected}
                             >
@@ -846,7 +846,7 @@ export default () => {
 
     return (
         <div className="w-full overflow-hidden">
-            <Tabs defaultValue="pending" className="w-full">
+            <Tabs defaultValue="" className="w-full">
                 <Heading
                     heading="Approve Indent"
                     subtext="Update Indent status to Approve or Reject them"
@@ -854,7 +854,7 @@ export default () => {
                 >
                     <ClipboardCheck size={50} className="text-primary" />
                 </Heading>
-                <TabsContent value="pending" className="w-full">
+                <TabsContent value="" className="w-full">
                     <div className="space-y-4">
                         {selectedRows.size > 0 && (
                             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center p-3 sm:p-4 bg-blue-50 rounded-lg gap-2 sm:gap-0">
