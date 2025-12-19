@@ -81,7 +81,7 @@ export default () => {
                     specifications: sheet.specifications || '',
                     vendorType: statuses.includes(sheet.vendorType)
                         ? (sheet.vendorType as ApproveTableData['vendorType'])
-                        : 'Pending',
+                        : '',
                     date: formatDate(new Date(sheet.timestamp)),
                 }))
                 .reverse()
@@ -419,7 +419,7 @@ export default () => {
                             bulkUpdates.get(indent.indentNo)?.vendorType || indent.vendorType;
 
                         const handleChange = (value: string) => {
-                            // ✅ Prevent selecting "Pending" (just ignore)
+                            // ✅ Prevent selecting "" (just ignore)
                             if (value === '') {
                                 toast.warning('You cannot select Pending as a Vendor Type');
                                 return;
