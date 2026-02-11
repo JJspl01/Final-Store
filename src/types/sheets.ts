@@ -67,7 +67,22 @@ export type IndentSheet = {
     paymentType: string;
     advanceAmountIfAny: number;
     photoOfBill: string;
-    rate:number;
+    rate: number;
+
+    // Snake case equivalents for Supabase
+    indent_number?: string;
+    actual_7?: string;
+    bill_status?: string;
+    bill_number?: string;
+    lead_time_to_lift_material?: string;
+    type_of_bill?: string;
+    bill_amount?: number;
+    discount_amount?: number;
+    payment_type?: string;
+    advance_amount_if_any?: number;
+    photo_of_bill?: string;
+    product_name?: string;
+    approved_quantity?: number;
 };
 
 export type ReceivedSheet = {
@@ -108,38 +123,40 @@ export type InventorySheet = {
 };
 
 export type PoMasterSheet = {
-    discountPercent: number;
-    gstPercent: number;
-    timestamp: string;
-    partyName: string;
-    poNumber: string;
-    internalCode: string;
-    product: string;
-    description: string;
-    quantity: number;
-    unit: string;
-    rate: number;
-    gst: number;
-    discount: number;
-    amount: number;
-    totalPoAmount: number;
-    preparedBy: string;
-    approvedBy: string;
-    pdf: string;
-    quotationNumber: string;
-    quotationDate: string;
-    enquiryNumber: string;
-    enquiryDate: string;
-    term1: string;
-    term2: string;
-    term3: string;
-    term4: string;
-    term5: string;
-    term6: string;
-    term7: string;
-    term8: string;
-    term9: string;
-    term10: string;
+    id?: number;
+    timestamp: string | null;
+    party_name: string;
+    po_number: string | null;
+    quotation_number: string | null;
+    quotation_date: string | null;
+    enquiry_number: string | null;
+    enquiry_date: string | null;
+    internal_code: string | null;
+    product: string | null;
+    description: string | null;
+    quantity: number | null;
+    unit: string | null;
+    rate: number | null;
+    gst_percent: number | null;
+    discount_percent: number | null;
+    amount: number | null;
+    total_po_amount: number | null;
+    prepared_by: string | null;
+    approved_by: string | null;
+    pdf_url: string | null;
+    term_1: string | null;
+    term_2: string | null;
+    term_3: string | null;
+    term_4: string | null;
+    term_5: string | null;
+    term_6: string | null;
+    term_7: string | null;
+    term_8: string | null;
+    term_9: string | null;
+    term_10: string | null;
+    email_send_status?: boolean | null;
+    created_at?: string | null;
+    updated_at?: string | null;
 };
 
 export type Vendor = {
@@ -189,7 +206,7 @@ export type UserPermissions = {
     ordersView: boolean;
     poMaster: boolean;
     getPurchase: boolean;
-    
+
     // New permissions for Dashboard and Inventory
     dashboard: boolean;
     inventory: boolean;
@@ -232,5 +249,5 @@ export type QuotationHistorySheet = {
     qty: string;
     unit: string;
     pdfLink: string;
-    
+
 };

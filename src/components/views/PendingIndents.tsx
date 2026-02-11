@@ -1,10 +1,10 @@
 import { ListTodo } from 'lucide-react';
 import Heading from '../element/Heading';
-import { useSheets } from '@/context/SheetsContext';
 import { useEffect, useState } from 'react';
 import type { ColumnDef } from '@tanstack/react-table';
 import { formatDate } from '@/lib/utils';
 import DataTable from '../element/DataTable';
+import { supabase } from '@/lib/supabaseClient';
 
 interface PendingIndentsData {
     date: string;
@@ -19,30 +19,47 @@ interface PendingIndentsData {
 }
 
 export default () => {
-    const { indentSheet, indentLoading } = useSheets();
-
     const [tableData, setTableData] = useState<PendingIndentsData[]>([]);
+    const [dataLoading, setDataLoading] = useState(true);
 
     // Fetching table data
     useEffect(() => {
-        setTableData(
-            indentSheet
-                .filter((sheet) => sheet.planned4 !== '' && sheet.actual4 === '')
-                .map((sheet) => ({
-                    date: formatDate(new Date(sheet.timestamp)),
-                    indentNo: sheet.indentNumber,
-                    product: sheet.productName,
-                    quantity: sheet.approvedQuantity,
-                    rate: sheet.approvedRate,
-                    uom: sheet.uom,
-                    vendorName: sheet.approvedVendorName,
-                    paymentTerm: sheet.approvedPaymentTerm,
-                    specifications: sheet.specifications || '',
-                }))
-                // Sort by indentNo in descending order
-                .sort((a, b) => b.indentNo.localeCompare(a.indentNo))
-        );
-    }, [indentSheet]);
+        const fetchData = async () => {
+            setDataLoading(true);
+            try {
+                const { data, error } = await supabase
+                    .from('indent')
+                    .select('*')
+                    .not('planned_4', 'is', null)
+                    .is('actual_4', null)
+                    .order('created_at', { ascending: false });
+
+                if (error) throw error;
+
+                if (data) {
+                    const tableData = data.map((record: any) => ({
+                        date: formatDate(new Date(record.created_at)),
+                        indentNo: record.indent_number || '',
+                        product: record.product_name || '',
+                        quantity: record.approved_quantity || 0,
+                        rate: record.approved_rate || 0,
+                        uom: record.uom || '',
+                        vendorName: record.approved_vendor_name || '',
+                        paymentTerm: record.approved_payment_term || '',
+                        specifications: record.specifications || '',
+                    }));
+
+                    setTableData(tableData);
+                }
+            } catch (error: any) {
+                console.error('Error fetching data from Supabase:', error);
+            } finally {
+                setDataLoading(false);
+            }
+        };
+
+        fetchData();
+    }, []);
 
     // Creating table columns with compact Product column
     const columns: ColumnDef<PendingIndentsData>[] = [
@@ -114,7 +131,7 @@ export default () => {
                 data={tableData}
                 columns={columns}
                 searchFields={['product', 'vendorName', 'paymentTerm', 'specifications']}
-                dataLoading={indentLoading}
+                dataLoading={dataLoading}
                 className="h-[80dvh]"
             />
         </div>

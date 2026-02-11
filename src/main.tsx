@@ -225,14 +225,6 @@ const routes: RouteAttributes[] = [
         notifications: () => 0,
     },
     {
-        path: 'get-purchase',
-        gateKey: 'getPurchase',
-        name: 'Get Purchase',
-        icon: <Package2 size={20} />,
-        element: <GetPurchase />,
-        notifications: () => 0,
-    },
-    {
         path: 'receive-items',
         gateKey: 'receiveItemView',
         name: 'Receive Items',
@@ -240,6 +232,14 @@ const routes: RouteAttributes[] = [
         element: <ReceiveItems />,
         notifications: (sheets) =>
             sheets.filter((sheet) => sheet.planned5 !== '' && sheet.actual5 === '').length,
+    },
+    {
+        path: 'get-purchase',
+        gateKey: 'getPurchase',
+        name: 'Get Purchase',
+        icon: <Package2 size={20} />,
+        element: <GetPurchase />,
+        notifications: () => 0,
     },
     {
         path: 'store-out-approval',

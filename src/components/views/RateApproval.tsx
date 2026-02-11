@@ -10,7 +10,6 @@ import {
     DialogTrigger,
 } from '../ui/dialog';
 import { useEffect, useState } from 'react';
-import { useSheets } from '@/context/SheetsContext';
 import DataTable from '../element/DataTable';
 import { Button } from '../ui/button';
 import { Form, FormControl, FormField, FormItem, FormLabel } from '../ui/form';
@@ -27,6 +26,7 @@ import { useAuth } from '@/context/AuthContext';
 import Heading from '../element/Heading';
 import { formatDate } from '@/lib/utils';
 import { Input } from '../ui/input';
+import { supabase } from '@/lib/supabaseClient';
 
 interface RateApprovalData {
     indentNo: string;
@@ -47,7 +47,6 @@ interface HistoryData {
 }
 
 export default () => {
-    const { indentLoading, indentSheet, updateIndentSheet } = useSheets();
     const { user } = useAuth();
 
     const [selectedIndent, setSelectedIndent] = useState<RateApprovalData | null>(null);
@@ -55,51 +54,73 @@ export default () => {
     const [tableData, setTableData] = useState<RateApprovalData[]>([]);
     const [historyData, setHistoryData] = useState<HistoryData[]>([]);
     const [openDialog, setOpenDialog] = useState(false);
+    const [dataLoading, setDataLoading] = useState(true);
 
     // Fetching table data
     useEffect(() => {
-        setTableData(
-            indentSheet
-                .filter(
-                    (sheet) =>
-                        sheet.planned3 !== '' &&
-                        sheet.actual3 === '' &&
-                        sheet.vendorType === 'Three Party'
-                )
-                .map((sheet) => ({
-                    indentNo: sheet.indentNumber,
-                    indenter: sheet.indenterName,
-                    department: sheet.department,
-                    product: sheet.productName,
-                    comparisonSheet: sheet.comparisonSheet || '',
-                    date: formatDate(new Date(sheet.timestamp)),
-                    vendors: [
-                        [sheet.vendorName1, sheet.rate1.toString(), sheet.paymentTerm1],
-                        [sheet.vendorName2, sheet.rate2.toString(), sheet.paymentTerm2],
-                        [sheet.vendorName3, sheet.rate3.toString(), sheet.paymentTerm3],
-                    ],
-                }))
-                
-        );
-        setHistoryData(
-            indentSheet
-                .filter(
-                    (sheet) =>
-                        sheet.planned3 !== '' &&
-                        sheet.actual3 !== '' &&
-                        sheet.vendorType === 'Three Party'
-                )
-                .map((sheet) => ({
-                    indentNo: sheet.indentNumber,
-                    indenter: sheet.indenterName,
-                    department: sheet.department,
-                    product: sheet.productName,
-                    date: new Date(sheet.timestamp).toDateString(),
-                    vendor: [sheet.approvedVendorName, sheet.approvedRate.toString()],
-                }))
-                
-        );
-    }, [indentSheet]);
+        const fetchData = async () => {
+            setDataLoading(true);
+            try {
+                // Fetch pending data (planned_3 not null and actual_3 null with Three Party vendor type)
+                const { data: pendingData, error: pendingError } = await supabase
+                    .from('indent')
+                    .select('*')
+                    .not('planned_3', 'is', null)
+                    .is('actual_3', null)
+                    .eq('vendor_type', 'Three Party')
+                    .order('created_at', { ascending: false });
+
+                if (pendingError) throw pendingError;
+
+                if (pendingData) {
+                    const pendingTableData = pendingData.map((record: any) => ({
+                        indentNo: record.indent_number || '',
+                        indenter: record.indenter_name || '',
+                        department: record.department || '',
+                        product: record.product_name || '',
+                        comparisonSheet: record.comparison_sheet || '',
+                        date: formatDate(new Date(record.created_at)),
+                        vendors: [
+                            [record.vendor_name_1 || '', record.rate_1?.toString() || '0', record.payment_term_1 || ''] as [string, string, string],
+                            [record.vendor_name_2 || '', record.rate_2?.toString() || '0', record.payment_term_2 || ''] as [string, string, string],
+                            [record.vendor_name_3 || '', record.rate_3?.toString() || '0', record.payment_term_3 || ''] as [string, string, string],
+                        ],
+                    }));
+                    setTableData(pendingTableData);
+                }
+
+                // Fetch history data (planned_3 not null and actual_3 not null with Three Party vendor type)
+                const { data: historyDataResult, error: historyError } = await supabase
+                    .from('indent')
+                    .select('*')
+                    .not('planned_3', 'is', null)
+                    .not('actual_3', 'is', null)
+                    .eq('vendor_type', 'Three Party')
+                    .order('created_at', { ascending: false });
+
+                if (historyError) throw historyError;
+
+                if (historyDataResult) {
+                    const historyTableData = historyDataResult.map((record: any) => ({
+                        indentNo: record.indent_number || '',
+                        indenter: record.indenter_name || '',
+                        department: record.department || '',
+                        product: record.product_name || '',
+                        date: new Date(record.created_at).toDateString(),
+                        vendor: [record.approved_vendor_name || '', record.approved_rate?.toString() || '0'] as [string, string],
+                    }));
+                    setHistoryData(historyTableData);
+                }
+            } catch (error: any) {
+                console.error('Error fetching data from Supabase:', error);
+                toast.error('Failed to fetch data: ' + error.message);
+            } finally {
+                setDataLoading(false);
+            }
+        };
+
+        fetchData();
+    }, []);
 
     // Creating table columns
     const columns: ColumnDef<RateApprovalData>[] = [
@@ -134,86 +155,86 @@ export default () => {
         { accessorKey: 'department', header: 'Department' },
         { accessorKey: 'product', header: 'Product' },
         { accessorKey: 'date', header: 'Date' },
-       {
-    accessorKey: 'vendors',
-    header: 'Vendors',
-    enableSorting: false,   // <-- ADD THIS
-    cell: ({ row }) => {
-        const vendors = row.original.vendors;
-        return (
-            <div className="grid place-items-center">
-                <div className="flex flex-col gap-1">
-                    {vendors.map((vendor) => (
-                        <span className="rounded-full text-xs px-3 py-1 bg-accent text-accent-foreground border border-accent-foreground">
-                            {vendor[0]} - ₹{vendor[1]}
-                        </span>
-                    ))}
-                </div>
-            </div>
-        );
-    },
-},
+        {
+            accessorKey: 'vendors',
+            header: 'Vendors',
+            enableSorting: false,   // <-- ADD THIS
+            cell: ({ row }) => {
+                const vendors = row.original.vendors;
+                return (
+                    <div className="grid place-items-center">
+                        <div className="flex flex-col gap-1">
+                            {vendors.map((vendor) => (
+                                <span className="rounded-full text-xs px-3 py-1 bg-accent text-accent-foreground border border-accent-foreground">
+                                    {vendor[0]} - ₹{vendor[1]}
+                                </span>
+                            ))}
+                        </div>
+                    </div>
+                );
+            },
+        },
 
-       {
-    accessorKey: 'comparisonSheet',
-    header: 'Comparison Sheet',
-    enableSorting: false,    // <-- ADD THIS
-    cell: ({ row }) => {
-        const sheet = row.original.comparisonSheet;
-        return sheet ? (
-            <a href={sheet} target="_blank">Comparison Sheet</a>
-        ) : <></>;
-    },
-},
+        {
+            accessorKey: 'comparisonSheet',
+            header: 'Comparison Sheet',
+            enableSorting: false,    // <-- ADD THIS
+            cell: ({ row }) => {
+                const sheet = row.original.comparisonSheet;
+                return sheet ? (
+                    <a href={sheet} target="_blank">Comparison Sheet</a>
+                ) : <></>;
+            },
+        },
 
     ];
 
     const historyColumns: ColumnDef<HistoryData>[] = [
-                ...(user.updateVendorAction ? [
-                    {
-                            header: 'Action',
-                            cell: ({ row }: { row: Row<HistoryData> }) => {
-                                const indent = row.original;
-        
-                                return (
-                                    <div>
-                                        <DialogTrigger asChild>
-                                            <Button
-                                                variant="outline"
-                                                onClick={() => {
-                                                    setSelectedHistory(indent);
-                                                }}
-                                            >
-                                                Update
-                                            </Button>
-                                        </DialogTrigger>
-                                    </div>
-                                );
-                            },
-                        },
-                ] : []),
+        ...(user.updateVendorAction ? [
+            {
+                header: 'Action',
+                cell: ({ row }: { row: Row<HistoryData> }) => {
+                    const indent = row.original;
+
+                    return (
+                        <div>
+                            <DialogTrigger asChild>
+                                <Button
+                                    variant="outline"
+                                    onClick={() => {
+                                        setSelectedHistory(indent);
+                                    }}
+                                >
+                                    Update
+                                </Button>
+                            </DialogTrigger>
+                        </div>
+                    );
+                },
+            },
+        ] : []),
         { accessorKey: 'indentNo', header: 'Indent No.' },
         { accessorKey: 'indenter', header: 'Indenter' },
         { accessorKey: 'department', header: 'Department' },
         { accessorKey: 'product', header: 'Product' },
         { accessorKey: 'date', header: 'Date' },
-       {
-    accessorKey: 'vendor',
-    header: 'Vendor',
-    enableSorting: false,     // <-- ADD THIS
-    cell: ({ row }) => {
-        const vendor = row.original.vendor;
-        return (
-            <div className="grid place-items-center">
-                <div className="flex flex-col gap-1">
-                    <span className="rounded-full text-xs px-3 py-1 bg-accent text-accent-foreground border border-accent-foreground">
-                        {vendor[0]} - ₹{vendor[1]}
-                    </span>
-                </div>
-            </div>
-        );
-    },
-},
+        {
+            accessorKey: 'vendor',
+            header: 'Vendor',
+            enableSorting: false,     // <-- ADD THIS
+            cell: ({ row }) => {
+                const vendor = row.original.vendor;
+                return (
+                    <div className="grid place-items-center">
+                        <div className="flex flex-col gap-1">
+                            <span className="rounded-full text-xs px-3 py-1 bg-accent text-accent-foreground border border-accent-foreground">
+                                {vendor[0]} - ₹{vendor[1]}
+                            </span>
+                        </div>
+                    </div>
+                );
+            },
+        },
 
     ];
 
@@ -229,79 +250,129 @@ export default () => {
         },
     });
 
-   const getCurrentFormattedDateOnly = () => {
-    const now = new Date();
-    const day = String(now.getDate()).padStart(2, '0');
-    const month = String(now.getMonth() + 1).padStart(2, '0');
-    const year = now.getFullYear();
-    return `${day}/${month}/${year}`;
-};
+    const getCurrentFormattedDateOnly = () => {
+        const now = new Date();
+        const year = now.getFullYear();
+        const month = String(now.getMonth() + 1).padStart(2, '0');
+        const day = String(now.getDate()).padStart(2, '0');
+        const hours = String(now.getHours()).padStart(2, '0');
+        const minutes = String(now.getMinutes()).padStart(2, '0');
+        const seconds = String(now.getSeconds()).padStart(2, '0');
+        return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
+    };
 
-async function onSubmit(values: z.infer<typeof schema>) {
-    try {
-        await postToSheet(
-            indentSheet
-                .filter((s) => s.indentNumber === selectedIndent?.indentNo)
-                .map((prev) => {
-                    const { timestamp, ...prevWithoutTimestamp } = prev;
-                    return {
-                        ...prevWithoutTimestamp,
-                        actual3: getCurrentFormattedDateOnly(), // Date only format
-                        approvedVendorName: selectedIndent?.vendors[values.vendor][0],
-                        approvedRate: selectedIndent?.vendors[values.vendor][1],
-                        approvedPaymentTerm: selectedIndent?.vendors[values.vendor][2],
-                    };
-                }),
-            'update'
-        );
-        toast.success(`Approved vendor for ${selectedIndent?.indentNo}`);
-        setOpenDialog(false);
-        form.reset();
-        setTimeout(() => updateIndentSheet(), 1000);
-    } catch {
-        toast.error('Failed to update vendor');
-    }
-}
+    async function onSubmit(values: z.infer<typeof schema>) {
+        try {
+            const selectedVendor = selectedIndent?.vendors[values.vendor];
 
-      const historyUpdateSchema = z.object({
-            rate: z.coerce.number(),
-        })
-    
-        const historyUpdateForm = useForm({
-            resolver: zodResolver(historyUpdateSchema),
-            defaultValues: {
-                rate: 0,
-            },
-        })
-    
-        useEffect(() => {
-            if (selectedHistory) {
-                historyUpdateForm.reset({rate: parseInt(selectedHistory.vendor[1])})
+            const { error } = await supabase
+                .from('indent')
+                .update({
+                    actual_3: getCurrentFormattedDateOnly(),
+                    approved_vendor_name: selectedVendor?.[0],
+                    approved_rate: selectedVendor?.[1],
+                    approved_payment_term: selectedVendor?.[2],
+                })
+                .eq('indent_number', selectedIndent?.indentNo);
+
+            if (error) throw error;
+
+            toast.success(`Approved vendor for ${selectedIndent?.indentNo}`);
+            setOpenDialog(false);
+            form.reset();
+
+            // Refresh the data after update
+            const { data: pendingData, error: pendingError } = await supabase
+                .from('indent')
+                .select('*')
+                .not('planned_3', 'is', null)
+                .is('actual_3', null)
+                .eq('vendor_type', 'Three Party')
+                .order('created_at', { ascending: false });
+
+            if (pendingError) throw pendingError;
+
+            if (pendingData) {
+                const pendingTableData = pendingData.map((record: any) => ({
+                    indentNo: record.indent_number || '',
+                    indenter: record.indenter_name || '',
+                    department: record.department || '',
+                    product: record.product_name || '',
+                    comparisonSheet: record.comparison_sheet || '',
+                    date: formatDate(new Date(record.created_at)),
+                    vendors: [
+                        [record.vendor_name_1 || '', record.rate_1?.toString() || '0', record.payment_term_1 || ''] as [string, string, string],
+                        [record.vendor_name_2 || '', record.rate_2?.toString() || '0', record.payment_term_2 || ''] as [string, string, string],
+                        [record.vendor_name_3 || '', record.rate_3?.toString() || '0', record.payment_term_3 || ''] as [string, string, string],
+                    ],
+                }));
+                setTableData(pendingTableData);
             }
-        }, [selectedHistory])
-    
-       async function onSubmitHistoryUpdate(values: z.infer<typeof historyUpdateSchema>) {
-    try {
-        await postToSheet(
-            indentSheet
-                .filter((s) => s.indentNumber === selectedHistory?.indentNo)
-                .map((prev) => {
-                    const { timestamp, ...prevWithoutTimestamp } = prev;
-                    return {
-                        ...prevWithoutTimestamp,
-                        approvedRate: values.rate,
-                    };
-                }),
-            'update'
-        );
-        toast.success(`Updated rate of ${selectedHistory?.indentNo}`);
-        setOpenDialog(false);
-        historyUpdateForm.reset({ rate: undefined });
-        setTimeout(() => updateIndentSheet(), 1000);
-    } catch {
-        toast.error('Failed to update vendor');
+        } catch (error: any) {
+            console.error('Error updating vendor:', error);
+            toast.error('Failed to update vendor: ' + error.message);
+        }
     }
-}
+
+    const historyUpdateSchema = z.object({
+        rate: z.coerce.number(),
+    })
+
+    const historyUpdateForm = useForm({
+        resolver: zodResolver(historyUpdateSchema),
+        defaultValues: {
+            rate: 0,
+        },
+    })
+
+    useEffect(() => {
+        if (selectedHistory) {
+            historyUpdateForm.reset({ rate: parseInt(selectedHistory.vendor[1]) })
+        }
+    }, [selectedHistory])
+
+    async function onSubmitHistoryUpdate(values: z.infer<typeof historyUpdateSchema>) {
+        try {
+            const { error } = await supabase
+                .from('indent')
+                .update({
+                    approved_rate: values.rate,
+                })
+                .eq('indent_number', selectedHistory?.indentNo);
+
+            if (error) throw error;
+
+            toast.success(`Updated rate of ${selectedHistory?.indentNo}`);
+            setOpenDialog(false);
+            historyUpdateForm.reset({ rate: undefined });
+
+            // Refresh the data after update
+            const { data: historyDataResult, error: historyError } = await supabase
+                .from('indent')
+                .select('*')
+                .not('planned_3', 'is', null)
+                .not('actual_3', 'is', null)
+                .eq('vendor_type', 'Three Party')
+                .order('created_at', { ascending: false });
+
+            if (historyError) throw historyError;
+
+            if (historyDataResult) {
+                const historyTableData = historyDataResult.map((record: any) => ({
+                    indentNo: record.indent_number || '',
+                    indenter: record.indenter_name || '',
+                    department: record.department || '',
+                    product: record.product_name || '',
+                    date: new Date(record.created_at).toDateString(),
+                    vendor: [record.approved_vendor_name || '', record.approved_rate?.toString() || '0'] as [string, string],
+                }));
+                setHistoryData(historyTableData);
+            }
+        } catch (error: any) {
+            console.error('Error updating vendor:', error);
+            toast.error('Failed to update vendor: ' + error.message);
+        }
+    }
 
     function onError(e: any) {
         console.log(e);
@@ -324,7 +395,7 @@ async function onSubmit(values: z.infer<typeof schema>) {
                             data={tableData}
                             columns={columns}
                             searchFields={['product', 'department', 'indenter']}
-                            dataLoading={indentLoading}
+                            dataLoading={dataLoading}
                         />
                     </TabsContent>
                     <TabsContent value="history">
@@ -332,7 +403,7 @@ async function onSubmit(values: z.infer<typeof schema>) {
                             data={historyData}
                             columns={historyColumns}
                             searchFields={['product', 'department', 'indenter']}
-                            dataLoading={indentLoading}
+                            dataLoading={dataLoading}
                         />
                     </TabsContent>
                 </Tabs>
@@ -440,57 +511,57 @@ async function onSubmit(values: z.infer<typeof schema>) {
                     </DialogContent>
                 )}
 
-                                {selectedHistory && (
-                                        <DialogContent>
-                                            <Form {...historyUpdateForm}>
-                                                <form onSubmit={historyUpdateForm.handleSubmit(onSubmitHistoryUpdate, onError)} className="space-y-7">
-                                                    <DialogHeader className="space-y-1">
-                                                        <DialogTitle>Update Rate</DialogTitle>
-                                                        <DialogDescription>
-                                                            Update rate for{' '}
-                                                            <span className="font-medium">
-                                                                {selectedHistory.indentNo}
-                                                            </span>
-                                                        </DialogDescription>
-                                                    </DialogHeader>
-                                                    <div className="grid gap-3">
-                                                        <FormField
-                                                            control={historyUpdateForm.control}
-                                                            name="rate"
-                                                            render={({ field }) => (
-                                                                <FormItem>
-                                                                    <FormLabel>Rate</FormLabel>
-                                                                    <FormControl>
-                                                                        <Input type="number" {...field} />
-                                                                    </FormControl>
-                                                                </FormItem>
-                                                            )}
-                                                        />
-                                                    </div>                                    
-                
-                                                    <DialogFooter>
-                                                        <DialogClose asChild>
-                                                            <Button variant="outline">Close</Button>
-                                                        </DialogClose>
-                
-                                                        <Button
-                                                            type="submit"
-                                                            disabled={historyUpdateForm.formState.isSubmitting}
-                                                        >
-                                                            {historyUpdateForm.formState.isSubmitting && (
-                                                                <Loader
-                                                                    size={20}
-                                                                    color="white"
-                                                                    aria-label="Loading Spinner"
-                                                                />
-                                                            )}
-                                                            Update
-                                                        </Button>
-                                                    </DialogFooter>
-                                                </form>
-                                            </Form>
-                                        </DialogContent>
-                                    )}
+                {selectedHistory && (
+                    <DialogContent>
+                        <Form {...historyUpdateForm}>
+                            <form onSubmit={historyUpdateForm.handleSubmit(onSubmitHistoryUpdate, onError)} className="space-y-7">
+                                <DialogHeader className="space-y-1">
+                                    <DialogTitle>Update Rate</DialogTitle>
+                                    <DialogDescription>
+                                        Update rate for{' '}
+                                        <span className="font-medium">
+                                            {selectedHistory.indentNo}
+                                        </span>
+                                    </DialogDescription>
+                                </DialogHeader>
+                                <div className="grid gap-3">
+                                    <FormField
+                                        control={historyUpdateForm.control}
+                                        name="rate"
+                                        render={({ field }) => (
+                                            <FormItem>
+                                                <FormLabel>Rate</FormLabel>
+                                                <FormControl>
+                                                    <Input type="number" {...field} />
+                                                </FormControl>
+                                            </FormItem>
+                                        )}
+                                    />
+                                </div>
+
+                                <DialogFooter>
+                                    <DialogClose asChild>
+                                        <Button variant="outline">Close</Button>
+                                    </DialogClose>
+
+                                    <Button
+                                        type="submit"
+                                        disabled={historyUpdateForm.formState.isSubmitting}
+                                    >
+                                        {historyUpdateForm.formState.isSubmitting && (
+                                            <Loader
+                                                size={20}
+                                                color="white"
+                                                aria-label="Loading Spinner"
+                                            />
+                                        )}
+                                        Update
+                                    </Button>
+                                </DialogFooter>
+                            </form>
+                        </Form>
+                    </DialogContent>
+                )}
             </Dialog>
         </div>
     );

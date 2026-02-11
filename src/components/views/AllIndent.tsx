@@ -1,20 +1,17 @@
 import { type ColumnDef, type Row } from '@tanstack/react-table';
 import DataTable from '../element/DataTable';
 import { useEffect, useState } from 'react';
-import { useSheets } from '@/context/SheetsContext';
-import { DownloadOutlined } from "@ant-design/icons";
 import { Button } from '../ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select';
 import { Input } from '../ui/input';
 import { Textarea } from '../ui/textarea';
-import { postToSheet } from '@/lib/fetchers';
 import { toast } from 'sonner';
 import { PuffLoader as Loader } from 'react-spinners';
-import { ClipboardList, PenSquare, Search } from 'lucide-react';
+import { ClipboardList, Search } from 'lucide-react';
 import { formatDate } from '@/lib/utils';
 import { useAuth } from '@/context/AuthContext';
 import Heading from '../element/Heading';
-import type { IndentSheet } from '@/types';
+import { supabase } from '@/lib/supabaseClient';
 
 interface AllIndentTableData {
     id: string;
@@ -35,9 +32,8 @@ interface AllIndentTableData {
 }
 
 export default () => {
-    const { indentSheet, indentLoading, updateIndentSheet, masterSheet: options } = useSheets();
     const { user } = useAuth();
-    
+
     const [tableData, setTableData] = useState<AllIndentTableData[]>([]);
     const [selectedRows, setSelectedRows] = useState<Set<string>>(new Set());
     const [bulkUpdates, setBulkUpdates] = useState<Map<string, Partial<AllIndentTableData>>>(new Map());
@@ -46,46 +42,52 @@ export default () => {
     const [searchTermDepartment, setSearchTermDepartment] = useState('');
     const [searchTermGroupHead, setSearchTermGroupHead] = useState('');
     const [searchTermProduct, setSearchTermProduct] = useState('');
+    const [indentLoading, setIndentLoading] = useState(true);
 
     useEffect(() => {
-        console.log('Original indentSheet:', indentSheet); // pehle yeh dekho data kya hai
-        
-        setTableData(
-            indentSheet
-                .map((sheet, index) => {
-                    console.log(`Row ${index}:`, {
-                        timestamp: sheet.timestamp,
-                        vendorType: sheet.vendorType,
-                        vendorTypeType: typeof sheet.vendorType
-                    }); // har row ka vendorType check karo
-                    return { sheet, originalIndex: index };
-                })
-                .filter(({ sheet }) => {
-                    const hasTimestamp = !!sheet.timestamp;
-                    const isactual4Null = sheet.actual4 === null || sheet.actual4 === undefined || sheet.actual4 === '';
-                    console.log('Filter check:', { hasTimestamp, isactual4Null, actual4: sheet.actual4 });
-                    return hasTimestamp && isactual4Null;
-                })
-                .map(({ sheet, originalIndex }) => ({
-                    id: `${sheet.indentNumber}_${originalIndex}`,
-                    timestamp: formatDate(new Date(sheet.timestamp)),
-                    indentNumber: sheet.indentNumber,
-                    indenterName: sheet.indenterName,
-                    indentApproveBy: sheet.indentApprovedBy || '',
-                    indentType: sheet.indentType as 'Purchase' | 'Store Out',
-                    department: sheet.department,
-                    groupHead: sheet.groupHead,
-                    productName: sheet.productName,
-                    quantity: sheet.quantity,
-                    uom: sheet.uom,
-                    areaOfUse: sheet.areaOfUse,
-                    specifications: sheet.specifications || '',
-                    attachment: sheet.attachment || '',
-                    vendorType: sheet.vendorType || 'Pending',
-                }))
-                .reverse()
-        );
-    }, [indentSheet]);
+        const fetchIndents = async () => {
+            setIndentLoading(true);
+            try {
+                const { data, error } = await supabase
+                    .from('indent')
+                    .select('*')
+                    .order('created_at', { ascending: false });
+
+                if (error) {
+                    throw error;
+                }
+
+                if (data) {
+                    const transformedData = data.map((record: any) => ({
+                        id: record.id ? record.id.toString() : Math.random().toString(), // fallback to random ID if record.id is null/undefined
+                        timestamp: formatDate(new Date(record.created_at)),
+                        indentNumber: record.indent_number || '',
+                        indenterName: record.indenter_name || '',
+                        indentApproveBy: record.indent_approve_by || '',
+                        indentType: record.indent_type as 'Purchase' | 'Store Out' || 'Purchase',
+                        department: record.department || '',
+                        groupHead: record.group_head || '',
+                        productName: record.product_name || '',
+                        quantity: record.quantity || 0,
+                        uom: record.uom || '',
+                        areaOfUse: record.area_of_use || '',
+                        specifications: record.specifications || '',
+                        attachment: record.attachment || '',
+                        vendorType: record.vendor_type || 'Pending',
+                    }));
+
+                    setTableData(transformedData);
+                }
+            } catch (error: any) {
+                console.error('Error fetching indents:', error);
+                toast.error('Failed to fetch indents: ' + error.message);
+            } finally {
+                setIndentLoading(false);
+            }
+        };
+
+        fetchIndents();
+    }, []);
     const handleRowSelect = (id: string, checked: boolean) => {
         setSelectedRows(prev => {
             const newSet = new Set(prev);
@@ -140,97 +142,116 @@ export default () => {
         });
     };
 
- const handleSubmitBulkUpdates = async () => {
-    if (selectedRows.size === 0) {
-        toast.error('Please select at least one row to update');
-        return;
-    }
-
-    setSubmitting(true);
-    try {
-        const updatesToProcess = Array.from(selectedRows)
-            .map(id => {
-                const update = bulkUpdates.get(id);
-                const originalSheet = indentSheet.find(s => `${s.indentNumber}_${indentSheet.indexOf(s)}` === id);
-                
-                if (!originalSheet || !update) return null;
-
-                // Current date in DD/MM/YYYY HH:mm:ss format
-                const now = new Date();
-                const day = String(now.getDate()).padStart(2, '0');
-                const month = String(now.getMonth() + 1).padStart(2, '0');
-                const year = now.getFullYear();
-                const hours = String(now.getHours()).padStart(2, '0');
-                const minutes = String(now.getMinutes()).padStart(2, '0');
-                const seconds = String(now.getSeconds()).padStart(2, '0');
-                const formattedTimestamp = `${day}/${month}/${year} ${hours}:${minutes}:${seconds}`;
-
-                return {
-                    ...originalSheet,
-                    indenterName: update.indenterName || originalSheet.indenterName,
-                    indentApprovedBy: update.indentApproveBy || originalSheet.indentApprovedBy,
-                    indentType: update.indentType || originalSheet.indentType,
-                    department: update.department || originalSheet.department,
-                    groupHead: update.groupHead || originalSheet.groupHead,
-                    productName: update.productName || originalSheet.productName,
-                    quantity: update.quantity || originalSheet.quantity,
-                    uom: update.uom || originalSheet.uom,
-                    areaOfUse: update.areaOfUse || originalSheet.areaOfUse,
-                    specifications: update.specifications || originalSheet.specifications,
-                    timestamp: formattedTimestamp, // lastUpdated ke bajay timestamp use karo
-                };
-            })
-            .filter((item): item is NonNullable<typeof item> => item !== null);
-
-        if (updatesToProcess.length > 0) {
-            await postToSheet(updatesToProcess, 'update');
-            toast.success(`Updated ${updatesToProcess.length} indents successfully`);
-            
-            setSelectedRows(new Set());
-            setBulkUpdates(new Map());
-            
-            setTimeout(() => updateIndentSheet(), 1000);
-        }
-    } catch (error) {
-        toast.error('Failed to update indents');
-    } finally {
-        setSubmitting(false);
-    }
-};
-
-    const handleDownload = (data: AllIndentTableData[]) => {
-        if (!data || data.length === 0) {
-            toast.error("No data to download");
+    const handleSubmitBulkUpdates = async () => {
+        if (selectedRows.size === 0) {
+            toast.error('Please select at least one row to update');
             return;
         }
 
-        const headers = Object.keys(data[0]);
-        const csvRows = [
-            headers.join(","),
-            ...data.map(row =>
-                headers.map(h => `"${String((row as any)[h] ?? "").replace(/"/g, '""')}"`).join(",")
-            )
-        ];
-
-        const csvContent = csvRows.join("\n");
-        const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
-        const url = URL.createObjectURL(blob);
-        const link = document.createElement("a");
-        link.href = url;
-        link.setAttribute("download", `all-indents-${Date.now()}.csv`);
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-    };
-
-    const onDownloadClick = async () => {
-        setLoading(true);
+        setSubmitting(true);
         try {
-            await handleDownload(tableData);
+            const updatesToProcess = Array.from(selectedRows).map(id => {
+                const update = bulkUpdates.get(id);
+                const originalRecord = tableData.find(s => s.id === id);
+
+                if (!originalRecord || !update) return null;
+
+                // Prepare update object with only changed fields
+                const updatePayload: any = {};
+
+                if (update.indenterName !== originalRecord.indenterName) {
+                    updatePayload.indenter_name = update.indenterName;
+                }
+                if (update.indentApproveBy !== originalRecord.indentApproveBy) {
+                    updatePayload.indent_approve_by = update.indentApproveBy;
+                }
+                if (update.indentType !== originalRecord.indentType) {
+                    updatePayload.indent_type = update.indentType;
+                }
+                if (update.department !== originalRecord.department) {
+                    updatePayload.department = update.department;
+                }
+                if (update.groupHead !== originalRecord.groupHead) {
+                    updatePayload.group_head = update.groupHead;
+                }
+                if (update.productName !== originalRecord.productName) {
+                    updatePayload.product_name = update.productName;
+                }
+                if (update.quantity !== originalRecord.quantity) {
+                    updatePayload.quantity = update.quantity;
+                }
+                if (update.uom !== originalRecord.uom) {
+                    updatePayload.uom = update.uom;
+                }
+                if (update.areaOfUse !== originalRecord.areaOfUse) {
+                    updatePayload.area_of_use = update.areaOfUse;
+                }
+                if (update.specifications !== originalRecord.specifications) {
+                    updatePayload.specifications = update.specifications;
+                }
+
+                return {
+                    id: originalRecord.id,
+                    updatePayload
+                };
+            }).filter((item): item is NonNullable<typeof item> => item !== null);
+
+            // Process each update individually
+            for (const updateItem of updatesToProcess) {
+                const { data, error } = await supabase
+                    .from('indent')
+                    .update(updateItem.updatePayload)
+                    .eq('id', updateItem.id);
+
+                if (error) {
+                    throw error;
+                }
+            }
+
+            toast.success(`Updated ${updatesToProcess.length} indents successfully`);
+
+            // Refresh the data after updates
+            const { data, error } = await supabase
+                .from('indent')
+                .select('*')
+                .order('created_at', { ascending: false });
+
+            if (error) {
+                throw error;
+            }
+
+            if (data) {
+                const transformedData = data.map((record: any) => ({
+                    id: record.id ? record.id.toString() : Math.random().toString(), // fallback to random ID if record.id is null/undefined
+                    timestamp: formatDate(new Date(record.created_at)),
+                    indentNumber: record.indent_number || '',
+                    indenterName: record.indenter_name || '',
+                    indentApproveBy: record.indent_approve_by || '',
+                    indentType: record.indent_type as 'Purchase' | 'Store Out' || 'Purchase',
+                    department: record.department || '',
+                    groupHead: record.group_head || '',
+                    productName: record.product_name || '',
+                    quantity: record.quantity || 0,
+                    uom: record.uom || '',
+                    areaOfUse: record.area_of_use || '',
+                    specifications: record.specifications || '',
+                    attachment: record.attachment || '',
+                    vendorType: record.vendor_type || 'Pending',
+                }));
+
+                setTableData(transformedData);
+            }
+
+            setSelectedRows(new Set());
+            setBulkUpdates(new Map());
+        } catch (error: any) {
+            console.error('Error updating indents:', error);
+            toast.error('Failed to update indents: ' + error.message);
         } finally {
-            setLoading(false);
+            setSubmitting(false);
         }
     };
+
 
     // Define table columns
     const columns: ColumnDef<AllIndentTableData>[] = [
@@ -354,38 +375,15 @@ export default () => {
                 const indent = row.original;
                 const isSelected = selectedRows.has(indent.id);
                 const currentValue = bulkUpdates.get(indent.id)?.department || indent.department;
-                
+
                 return (
-                    <Select
+                    <Input
                         value={currentValue}
-                        onValueChange={(value) => handleBulkUpdate(indent.id, 'department', value)}
+                        onChange={(e) => handleBulkUpdate(indent.id, 'department', e.target.value)}
                         disabled={!isSelected}
-                    >
-                        <SelectTrigger className={`w-36 text-xs sm:text-sm ${!isSelected ? 'opacity-50' : ''}`}>
-                            <SelectValue placeholder="Select department" />
-                        </SelectTrigger>
-                        <SelectContent>
-                            <div className="flex items-center border-b px-3 pb-3">
-                                <Search className="mr-2 h-4 w-4 shrink-0 opacity-50" />
-                                <input
-                                    placeholder="Search departments..."
-                                    value={searchTermDepartment}
-                                    onChange={(e) => setSearchTermDepartment(e.target.value)}
-                                    onKeyDown={(e) => e.stopPropagation()}
-                                    className="flex h-10 w-full rounded-md border-0 bg-transparent py-3 text-sm outline-none placeholder:text-muted-foreground"
-                                />
-                            </div>
-                            {options?.departments
-                                ?.filter((dep) =>
-                                    dep.toLowerCase().includes(searchTermDepartment.toLowerCase())
-                                )
-                                .map((dep, i) => (
-                                    <SelectItem key={i} value={dep}>
-                                        {dep}
-                                    </SelectItem>
-                                ))}
-                        </SelectContent>
-                    </Select>
+                        className={`w-36 text-xs sm:text-sm ${!isSelected ? 'opacity-50' : ''}`}
+                        placeholder="Department"
+                    />
                 );
             },
             size: 160,
@@ -397,38 +395,15 @@ export default () => {
                 const indent = row.original;
                 const isSelected = selectedRows.has(indent.id);
                 const currentValue = bulkUpdates.get(indent.id)?.groupHead || indent.groupHead;
-                
+
                 return (
-                    <Select
+                    <Input
                         value={currentValue}
-                        onValueChange={(value) => handleBulkUpdate(indent.id, 'groupHead', value)}
+                        onChange={(e) => handleBulkUpdate(indent.id, 'groupHead', e.target.value)}
                         disabled={!isSelected}
-                    >
-                        <SelectTrigger className={`w-36 text-xs sm:text-sm ${!isSelected ? 'opacity-50' : ''}`}>
-                            <SelectValue placeholder="Select group head" />
-                        </SelectTrigger>
-                        <SelectContent>
-                            <div className="flex items-center border-b px-3 pb-3">
-                                <Search className="mr-2 h-4 w-4 shrink-0 opacity-50" />
-                                <input
-                                    placeholder="Search group heads..."
-                                    value={searchTermGroupHead}
-                                    onChange={(e) => setSearchTermGroupHead(e.target.value)}
-                                    onKeyDown={(e) => e.stopPropagation()}
-                                    className="flex h-10 w-full rounded-md border-0 bg-transparent py-3 text-sm outline-none placeholder:text-muted-foreground"
-                                />
-                            </div>
-                            {Object.keys(options?.groupHeads || {})
-                                .filter((dep) =>
-                                    dep.toLowerCase().includes(searchTermGroupHead.toLowerCase())
-                                )
-                                .map((dep, i) => (
-                                    <SelectItem key={i} value={dep}>
-                                        {dep}
-                                    </SelectItem>
-                                ))}
-                        </SelectContent>
-                    </Select>
+                        className={`w-36 text-xs sm:text-sm ${!isSelected ? 'opacity-50' : ''}`}
+                        placeholder="Group head"
+                    />
                 );
             },
             size: 160,
@@ -440,40 +415,15 @@ export default () => {
                 const indent = row.original;
                 const isSelected = selectedRows.has(indent.id);
                 const currentValue = bulkUpdates.get(indent.id)?.productName || indent.productName;
-                const groupHead = bulkUpdates.get(indent.id)?.groupHead || indent.groupHead;
-                const productOptions = options?.groupHeads[groupHead] || [];
-                
+
                 return (
-                    <Select
+                    <Input
                         value={currentValue}
-                        onValueChange={(value) => handleBulkUpdate(indent.id, 'productName', value)}
-                        disabled={!isSelected || !groupHead}
-                    >
-                        <SelectTrigger className={`w-52 text-xs sm:text-sm ${!isSelected ? 'opacity-50' : ''}`}>
-                            <SelectValue placeholder="Select product" />
-                        </SelectTrigger>
-                        <SelectContent className="w-auto min-w-[300px] max-w-[600px]">
-    <div className="flex items-center border-b px-3 pb-3">
-        <Search className="mr-2 h-4 w-4 shrink-0 opacity-50" />
-        <input
-            placeholder="Search products..."
-            value={searchTermProduct}
-            onChange={(e) => setSearchTermProduct(e.target.value)}
-            onKeyDown={(e) => e.stopPropagation()}
-            className="flex h-10 w-full rounded-md border-0 bg-transparent py-3 text-sm outline-none placeholder:text-muted-foreground"
-        />
-    </div>
-                            {productOptions
-                                .filter((dep) =>
-                                    dep.toLowerCase().includes(searchTermProduct.toLowerCase())
-                                )
-                                .map((dep, i) => (
-                                    <SelectItem key={i} value={dep}>
-                                        {dep}
-                                    </SelectItem>
-                                ))}
-                        </SelectContent>
-                    </Select>
+                        onChange={(e) => handleBulkUpdate(indent.id, 'productName', e.target.value)}
+                        disabled={!isSelected}
+                        className={`w-52 text-xs sm:text-sm ${!isSelected ? 'opacity-50' : ''}`}
+                        placeholder="Product name"
+                    />
                 );
             },
             size: 220,
@@ -634,25 +584,6 @@ export default () => {
                         columns={columns}
                         searchFields={['indentNumber', 'indenterName', 'department', 'productName', 'groupHead']}
                         dataLoading={indentLoading}
-                        extraActions={
-                            <Button
-                                variant="default"
-                                onClick={onDownloadClick}
-                                className="flex items-center gap-2 text-xs sm:text-sm"
-                                style={{
-                                    background: "linear-gradient(90deg, #4CAF50, #2E7D32)",
-                                    border: "none",
-                                    borderRadius: "8px",
-                                    padding: "8px 12px",
-                                    fontWeight: "bold",
-                                    boxShadow: "0 4px 8px rgba(0,0,0,0.15)",
-                                }}
-                            >
-                                <DownloadOutlined />
-                                <span className="hidden sm:inline">{loading ? "Downloading..." : "Download"}</span>
-                                <span className="sm:hidden">{loading ? "..." : "CSV"}</span>
-                            </Button>
-                        }
                     />
                 </div>
             </div>

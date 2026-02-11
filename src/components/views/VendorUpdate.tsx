@@ -1,4 +1,3 @@
-import { useSheets } from '@/context/SheetsContext';
 import type { ColumnDef, Row } from '@tanstack/react-table';
 import { useEffect, useState } from 'react';
 import DataTable from '../element/DataTable';
@@ -28,6 +27,7 @@ import { useAuth } from '@/context/AuthContext';
 import Heading from '../element/Heading';
 import { Pill } from '../ui/pill';
 import { formatDate } from '@/lib/utils';
+import { supabase } from '@/lib/supabaseClient';
 
 interface VendorUpdateData {
     indentNo: string;
@@ -54,7 +54,6 @@ interface HistoryData {
 }
 
 export default () => {
-    const { indentSheet, indentLoading, updateIndentSheet, masterSheet: options } = useSheets();
     const { user } = useAuth();
 
     const [selectedIndent, setSelectedIndent] = useState<VendorUpdateData | null>(null);
@@ -67,6 +66,8 @@ export default () => {
     const [vendorSearch, setVendorSearch] = useState('');
     const [vendors, setVendors] = useState([]);
     const [vendorsLoading, setVendorsLoading] = useState(true);
+    const [dataLoading, setDataLoading] = useState(true);
+
     useEffect(() => {
         const loadVendors = async () => {
             setVendorsLoading(true);
@@ -76,41 +77,71 @@ export default () => {
         };
         loadVendors();
     }, []);
+
     // Fetching table data
     useEffect(() => {
-        setTableData(
-            indentSheet
-                .filter((sheet) => sheet.planned2 !== '' && sheet.actual2 === '')
-                .map((sheet) => ({
-                    indentNo: sheet.indentNumber,
-                    indenter: sheet.indenterName,
-                    department: sheet.department,
-                    product: sheet.productName,
-                    quantity: sheet.approvedQuantity,
-                    uom: sheet.uom,
-                    vendorType: sheet.vendorType as VendorUpdateData['vendorType'],
-                    vendorName: sheet.approvedVendorName || sheet.vendorName1 || '',
-                }))
-                .reverse()
-        );
-        setHistoryData(
-            indentSheet
-                .filter((sheet) => sheet.planned2 !== '' && sheet.actual2 !== '')
-                .map((sheet) => ({
-                    date: formatDate(new Date(sheet.actual2)),
-                    indentNo: sheet.indentNumber,
-                    indenter: sheet.indenterName,
-                    department: sheet.department,
-                    product: sheet.productName,
-                    quantity: sheet.quantity,
-                    uom: sheet.uom,
-                    rate: sheet.approvedRate || 0,
-                    vendorType: sheet.vendorType as HistoryData['vendorType'],
-                    vendorName: sheet.approvedVendorName || sheet.vendorName1 || '',
-                }))
-                .reverse()
-        );
-    }, [indentSheet]);
+        const fetchData = async () => {
+            setDataLoading(true);
+            try {
+                // Fetch pending data (planned_2 not null and actual_2 null)
+                const { data: pendingData, error: pendingError } = await supabase
+                    .from('indent')
+                    .select('*')
+                    .not('planned_2', 'is', null)
+                    .is('actual_2', null)
+                    .order('created_at', { ascending: false });
+
+                if (pendingError) throw pendingError;
+
+                if (pendingData) {
+                    const pendingTableData = pendingData.map((record: any) => ({
+                        indentNo: record.indent_number || '',
+                        indenter: record.indenter_name || '',
+                        department: record.department || '',
+                        product: record.product_name || '',
+                        quantity: record.approved_quantity || 0,
+                        uom: record.uom || '',
+                        vendorType: record.vendor_type as VendorUpdateData['vendorType'],
+                        vendorName: record.approved_vendor_name || record.vendor_name_1 || '',
+                    }));
+                    setTableData(pendingTableData);
+                }
+
+                // Fetch history data (planned_2 not null and actual_2 not null)
+                const { data: historyDataResult, error: historyError } = await supabase
+                    .from('indent')
+                    .select('*')
+                    .not('planned_2', 'is', null)
+                    .not('actual_2', 'is', null)
+                    .order('created_at', { ascending: false });
+
+                if (historyError) throw historyError;
+
+                if (historyDataResult) {
+                    const historyTableData = historyDataResult.map((record: any) => ({
+                        date: formatDate(new Date(record.actual_2)),
+                        indentNo: record.indent_number || '',
+                        indenter: record.indenter_name || '',
+                        department: record.department || '',
+                        product: record.product_name || '',
+                        quantity: record.quantity || 0,
+                        uom: record.uom || '',
+                        rate: record.approved_rate || 0,
+                        vendorType: record.vendor_type as HistoryData['vendorType'],
+                        vendorName: record.approved_vendor_name || record.vendor_name_1 || '',
+                    }));
+                    setHistoryData(historyTableData);
+                }
+            } catch (error: any) {
+                console.error('Error fetching data from Supabase:', error);
+                toast.error('Failed to fetch data: ' + error.message);
+            } finally {
+                setDataLoading(false);
+            }
+        };
+
+        fetchData();
+    }, []);
 
 
     const handleEditClick = (row: HistoryData) => {
@@ -133,31 +164,69 @@ export default () => {
 
     const handleSaveEdit = async (indentNo: string) => {
         try {
-            await postToSheet(
-                indentSheet
-                    .filter((s) => s.indentNumber === indentNo)
-                    .map((prev) => {
-                        const { timestamp, ...prevWithoutTimestamp } = prev;
-                        return {
-                            ...prevWithoutTimestamp,
-                            quantity: editValues.quantity,
-                            uom: editValues.uom,
-                            vendorType: editValues.vendorType,
-                            rate1: editValues.rate?.toString(),
-                            approvedRate: editValues.rate,
-                            productName: editValues.product,
-                            approvedVendorName: editValues.vendorName,
-                            vendorName1: editValues.vendorName,
-                        };
-                    }),
-                'update'
-            );
+            const updatePayload: any = {};
+
+            if (editValues.quantity !== undefined) {
+                updatePayload.quantity = editValues.quantity;
+            }
+            if (editValues.uom) {
+                updatePayload.uom = editValues.uom;
+            }
+            if (editValues.vendorType) {
+                updatePayload.vendor_type = editValues.vendorType;
+            }
+            if (editValues.rate !== undefined) {
+                updatePayload.rate_1 = editValues.rate.toString();
+                updatePayload.approved_rate = editValues.rate;
+            }
+            if (editValues.product) {
+                updatePayload.product_name = editValues.product;
+            }
+            if (editValues.vendorName) {
+                updatePayload.approved_vendor_name = editValues.vendorName;
+                updatePayload.vendor_name_1 = editValues.vendorName;
+            }
+
+            const { error } = await supabase
+                .from('indent')
+                .update(updatePayload)
+                .eq('indent_number', indentNo);
+
+            if (error) throw error;
+
             toast.success(`Updated indent ${indentNo}`);
-            updateIndentSheet();
+
+            // Refresh the data after update
+            const { data: historyDataResult, error: historyError } = await supabase
+                .from('indent')
+                .select('*')
+                .not('planned_2', 'is', null)
+                .not('actual_2', 'is', null)
+                .order('created_at', { ascending: false });
+
+            if (historyError) throw historyError;
+
+            if (historyDataResult) {
+                const historyTableData = historyDataResult.map((record: any) => ({
+                    date: formatDate(new Date(record.actual_2)),
+                    indentNo: record.indent_number || '',
+                    indenter: record.indenter_name || '',
+                    department: record.department || '',
+                    product: record.product_name || '',
+                    quantity: record.quantity || 0,
+                    uom: record.uom || '',
+                    rate: record.approved_rate || 0,
+                    vendorType: record.vendor_type as HistoryData['vendorType'],
+                    vendorName: record.approved_vendor_name || record.vendor_name_1 || '',
+                }));
+                setHistoryData(historyTableData);
+            }
+
             setEditingRow(null);
             setEditValues({});
-        } catch {
-            toast.error('Failed to update indent');
+        } catch (error: any) {
+            console.error('Error updating indent:', error);
+            toast.error('Failed to update indent: ' + error.message);
         }
     };
 
@@ -525,40 +594,64 @@ export default () => {
 
     const getCurrentFormattedDateOnly = () => {
         const now = new Date();
-        const day = String(now.getDate()).padStart(2, '0');
-        const month = String(now.getMonth() + 1).padStart(2, '0');
         const year = now.getFullYear();
-        return `${day}/${month}/${year}`;
+        const month = String(now.getMonth() + 1).padStart(2, '0');
+        const day = String(now.getDate()).padStart(2, '0');
+        const hours = String(now.getHours()).padStart(2, '0');
+        const minutes = String(now.getMinutes()).padStart(2, '0');
+        const seconds = String(now.getSeconds()).padStart(2, '0');
+        return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
     };
 
 
 
     async function onSubmitRegular(values: z.infer<typeof regularSchema>) {
         try {
-            await postToSheet(
-                indentSheet
-                    .filter((s) => s.indentNumber === selectedIndent?.indentNo)
-                    .map((prev) => {
-                        const { timestamp, ...prevWithoutTimestamp } = prev;
-                        return {
-                            ...prevWithoutTimestamp,
-                            actual2: getCurrentFormattedDateOnly(), // Updated format
-                            vendorName1: values.vendorName,
-                            rate1: values.rate.toString(),
-                            paymentTerm1: values.paymentTerm,
-                            approvedVendorName: values.vendorName,
-                            approvedRate: values.rate,
-                            approvedPaymentTerm: values.paymentTerm,
-                        };
-                    }),
-                'update'
-            );
+            const { error } = await supabase
+                .from('indent')
+                .update({
+                    actual_2: getCurrentFormattedDateOnly(),
+                    vendor_name_1: values.vendorName,
+                    rate_1: values.rate.toString(),
+                    payment_term_1: values.paymentTerm,
+                    approved_vendor_name: values.vendorName,
+                    approved_rate: values.rate,
+                    approved_payment_term: values.paymentTerm,
+                })
+                .eq('indent_number', selectedIndent?.indentNo);
+
+            if (error) throw error;
+
             toast.success(`Updated vendor of ${selectedIndent?.indentNo}`);
             setOpenDialog(false);
             regularForm.reset();
-            setTimeout(() => updateIndentSheet(), 1000);
-        } catch {
-            toast.error('Failed to update vendor');
+
+            // Refresh the data after update
+            const { data: pendingData, error: pendingError } = await supabase
+                .from('indent')
+                .select('*')
+                .not('planned_2', 'is', null)
+                .is('actual_2', null)
+                .order('created_at', { ascending: false });
+
+            if (pendingError) throw pendingError;
+
+            if (pendingData) {
+                const pendingTableData = pendingData.map((record: any) => ({
+                    indentNo: record.indent_number || '',
+                    indenter: record.indenter_name || '',
+                    department: record.department || '',
+                    product: record.product_name || '',
+                    quantity: record.approved_quantity || 0,
+                    uom: record.uom || '',
+                    vendorType: record.vendor_type as VendorUpdateData['vendorType'],
+                    vendorName: record.approved_vendor_name || record.vendor_name_1 || '',
+                }));
+                setTableData(pendingTableData);
+            }
+        } catch (error: any) {
+            console.error('Error updating vendor:', error);
+            toast.error('Failed to update vendor: ' + error.message);
         }
     }
 
@@ -613,34 +706,55 @@ export default () => {
                 );
             }
 
-            await postToSheet(
-                indentSheet
-                    .filter((s) => s.indentNumber === selectedIndent?.indentNo)
-                    .map((prev) => {
-                        const { timestamp, ...prevWithoutTimestamp } = prev;
-                        return {
-                            ...prevWithoutTimestamp,
-                            actual2: getCurrentFormattedDateOnly(), // Updated format
-                            vendorName1: values.vendors[0].vendorName,
-                            rate1: values.vendors[0].rate.toString(),
-                            paymentTerm1: values.vendors[0].paymentTerm,
-                            vendorName2: values.vendors[1].vendorName,
-                            rate2: values.vendors[1].rate.toString(),
-                            paymentTerm2: values.vendors[1].paymentTerm,
-                            vendorName3: values.vendors[2].vendorName,
-                            rate3: values.vendors[2].rate.toString(),
-                            paymentTerm3: values.vendors[2].paymentTerm,
-                            comparisonSheet: url,
-                        };
-                    }),
-                'update'
-            );
+            const { error } = await supabase
+                .from('indent')
+                .update({
+                    actual_2: getCurrentFormattedDateOnly(),
+                    vendor_name_1: values.vendors[0].vendorName,
+                    rate_1: values.vendors[0].rate.toString(),
+                    payment_term_1: values.vendors[0].paymentTerm,
+                    vendor_name_2: values.vendors[1].vendorName,
+                    rate_2: values.vendors[1].rate.toString(),
+                    payment_term_2: values.vendors[1].paymentTerm,
+                    vendor_name_3: values.vendors[2].vendorName,
+                    rate_3: values.vendors[2].rate.toString(),
+                    payment_term_3: values.vendors[2].paymentTerm,
+                    comparison_sheet: url,
+                })
+                .eq('indent_number', selectedIndent?.indentNo);
+
+            if (error) throw error;
+
             toast.success(`Updated vendors of ${selectedIndent?.indentNo}`);
             setOpenDialog(false);
             threePartyForm.reset();
-            setTimeout(() => updateIndentSheet(), 1000);
-        } catch {
-            toast.error('Failed to update vendor');
+
+            // Refresh the data after update
+            const { data: pendingData, error: pendingError } = await supabase
+                .from('indent')
+                .select('*')
+                .not('planned_2', 'is', null)
+                .is('actual_2', null)
+                .order('created_at', { ascending: false });
+
+            if (pendingError) throw pendingError;
+
+            if (pendingData) {
+                const pendingTableData = pendingData.map((record: any) => ({
+                    indentNo: record.indent_number || '',
+                    indenter: record.indenter_name || '',
+                    department: record.department || '',
+                    product: record.product_name || '',
+                    quantity: record.approved_quantity || 0,
+                    uom: record.uom || '',
+                    vendorType: record.vendor_type as VendorUpdateData['vendorType'],
+                    vendorName: record.approved_vendor_name || record.vendor_name_1 || '',
+                }));
+                setTableData(pendingTableData);
+            }
+        } catch (error: any) {
+            console.error('Error updating vendor:', error);
+            toast.error('Failed to update vendor: ' + error.message);
         }
     }
 
@@ -666,26 +780,49 @@ export default () => {
 
     async function onSubmitHistoryUpdate(values: z.infer<typeof historyUpdateSchema>) {
         try {
-            await postToSheet(
-                indentSheet
-                    .filter((s) => s.indentNumber === selectedHistory?.indentNo)
-                    .map((prev) => {
-                        const { timestamp, ...prevWithoutTimestamp } = prev;
-                        return {
-                            ...prevWithoutTimestamp,
-                            actual2: getCurrentFormattedDateOnly(), // Updated format
-                            rate1: values.rate.toString(),
-                            approvedRate: values.rate,
-                        };
-                    }),
-                'update'
-            );
+            const { error } = await supabase
+                .from('indent')
+                .update({
+                    actual_2: getCurrentFormattedDateOnly(),
+                    rate_1: values.rate.toString(),
+                    approved_rate: values.rate,
+                })
+                .eq('indent_number', selectedHistory?.indentNo);
+
+            if (error) throw error;
+
             toast.success(`Updated rate of ${selectedHistory?.indentNo}`);
             setOpenDialog(false);
             historyUpdateForm.reset({ rate: undefined });
-            setTimeout(() => updateIndentSheet(), 1000);
-        } catch {
-            toast.error('Failed to update vendor');
+
+            // Refresh the data after update
+            const { data: historyDataResult, error: historyError } = await supabase
+                .from('indent')
+                .select('*')
+                .not('planned_2', 'is', null)
+                .not('actual_2', 'is', null)
+                .order('created_at', { ascending: false });
+
+            if (historyError) throw historyError;
+
+            if (historyDataResult) {
+                const historyTableData = historyDataResult.map((record: any) => ({
+                    date: formatDate(new Date(record.actual_2)),
+                    indentNo: record.indent_number || '',
+                    indenter: record.indenter_name || '',
+                    department: record.department || '',
+                    product: record.product_name || '',
+                    quantity: record.quantity || 0,
+                    uom: record.uom || '',
+                    rate: record.approved_rate || 0,
+                    vendorType: record.vendor_type as HistoryData['vendorType'],
+                    vendorName: record.approved_vendor_name || record.vendor_name_1 || '',
+                }));
+                setHistoryData(historyTableData);
+            }
+        } catch (error: any) {
+            console.error('Error updating vendor:', error);
+            toast.error('Failed to update vendor: ' + error.message);
         }
     }
     function onError(e: any) {
@@ -709,7 +846,7 @@ export default () => {
                             data={tableData}
                             columns={columns}
                             searchFields={['product', 'department', 'indenter', 'vendorType', 'vendorName']}
-                            dataLoading={indentLoading}
+                            dataLoading={dataLoading}
                         />
                     </TabsContent>
                     <TabsContent value="history">
@@ -717,7 +854,7 @@ export default () => {
                             data={historyData}
                             columns={historyColumns}
                             searchFields={['product', 'department', 'indenter', 'vendorType', 'vendorName']}
-                            dataLoading={indentLoading}
+                            dataLoading={dataLoading}
                         />
                     </TabsContent>
 
@@ -1065,16 +1202,20 @@ export default () => {
                                                             </SelectTrigger>
                                                         </FormControl>
                                                         <SelectContent>
-                                                            {options?.paymentTerms?.map(
-                                                                (term, i) => (
-                                                                    <SelectItem
-                                                                        key={i}
-                                                                        value={term}
-                                                                    >
-                                                                        {term}
-                                                                    </SelectItem>
-                                                                )
-                                                            )}
+                                                            {[
+                                                                "Immediate Payment",
+                                                                "Net 30 Days",
+                                                                "Net 60 Days",
+                                                                "Net 90 Days",
+                                                                "Other"
+                                                            ].map((term, i) => (
+                                                                <SelectItem
+                                                                    key={i}
+                                                                    value={term}
+                                                                >
+                                                                    {term}
+                                                                </SelectItem>
+                                                            ))}
                                                         </SelectContent>
                                                     </Select>
                                                 </FormItem>

@@ -2,9 +2,7 @@
 import { type ColumnDef, type Row } from '@tanstack/react-table';
 import DataTable from '../element/DataTable';
 import { useEffect, useState } from 'react';
-import { useSheets } from '@/context/SheetsContext';
 import { DownloadOutlined } from "@ant-design/icons";
-
 import { Button } from '../ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select';
 import { postToSheet } from '@/lib/fetchers';
@@ -17,6 +15,7 @@ import { useAuth } from '@/context/AuthContext';
 import Heading from '../element/Heading';
 import { Pill } from '../ui/pill';
 import { Input } from '../ui/input';
+import { supabase } from '@/lib/supabaseClient';
 
 const statuses = ['Reject', 'Three Party', 'Regular'];
 
@@ -48,7 +47,6 @@ interface HistoryData {
 }
 
 export default () => {
-    const { indentSheet, indentLoading, updateIndentSheet } = useSheets();
     const { user } = useAuth();
 
     const [tableData, setTableData] = useState<ApproveTableData[]>([]);
@@ -59,58 +57,78 @@ export default () => {
     const [selectedRows, setSelectedRows] = useState<Set<string>>(new Set());
     const [bulkUpdates, setBulkUpdates] = useState<Map<string, { vendorType?: string; quantity?: number }>>(new Map());
     const [submitting, setSubmitting] = useState(false);
+    const [dataLoading, setDataLoading] = useState(true);
 
     // Fetching table data
     useEffect(() => {
-        setTableData(
-            indentSheet
-                .filter(
-                    (sheet) =>
-                        sheet.planned1 !== '' &&
-                        sheet.actual1 === '' &&
-                        sheet.indentType === 'Purchase'
-                )
-                .map((sheet) => ({
-                    indentNo: sheet.indentNumber,
-                    indenter: sheet.indenterName,
-                    department: sheet.department,
-                    product: sheet.productName,
-                    quantity: sheet.quantity,
-                    uom: sheet.uom,
-                    attachment: sheet.attachment,
-                    specifications: sheet.specifications || '',
-                    vendorType: statuses.includes(sheet.vendorType)
-                        ? (sheet.vendorType as ApproveTableData['vendorType'])
-                        : '',
-                    date: formatDate(new Date(sheet.timestamp)),
-                }))
-                .reverse()
-        );
-        setHistoryData(
-            indentSheet
-                .filter(
-                    (sheet) =>
-                        sheet.planned1 !== '' &&
-                        sheet.actual1 !== '' &&
-                        sheet.indentType === 'Purchase'
-                )
-                .map((sheet) => ({
-                    indentNo: sheet.indentNumber,
-                    indenter: sheet.indenterName,
-                    department: sheet.department,
-                    product: sheet.productName,
-                    approvedQuantity: sheet.approvedQuantity || sheet.quantity,
-                    vendorType: sheet.vendorType as HistoryData['vendorType'],
-                    uom: sheet.uom,
-                    specifications: sheet.specifications || '',
-                    date: formatDate(new Date(sheet.timestamp)),
-                    approvedDate: formatDate(new Date(sheet.actual1)),
-                }))
-                .sort((a, b) => {
-                    return b.indentNo.localeCompare(a.indentNo);
-                })
-        );
-    }, [indentSheet]);
+        const fetchData = async () => {
+            setDataLoading(true);
+            try {
+                // First, let's fetch ALL data to see what's available
+                const { data: allData, error: allError } = await supabase
+                    .from('indent')
+                    .select('*')
+                    .order('created_at', { ascending: false });
+
+                if (allError) throw allError;
+
+                if (allData) {
+                    // Filter pending indents (planned_1 not null and actual_1 null)
+                    const pendingData = allData.filter(record =>
+                        record.planned_1 != null &&
+                        record.actual_1 == null &&
+                        record.indent_type === 'Purchase'
+                    );
+
+                    const pendingTableData = pendingData.map((record: any) => ({
+                        indentNo: record.indent_number || '',
+                        indenter: record.indenter_name || '',
+                        department: record.department || '',
+                        product: record.product_name || '',
+                        quantity: record.quantity || 0,
+                        uom: record.uom || '',
+                        attachment: record.attachment || '',
+                        specifications: record.specifications || '',
+                        vendorType: (statuses.includes(record.vendor_type)
+                            ? record.vendor_type
+                            : '') as "Reject" | "Three Party" | "Regular",
+                        date: formatDate(new Date(record.created_at)),
+                    }));
+                    setTableData(pendingTableData);
+
+                    // Filter history data (planned_1 not null and actual_1 not null)
+                    const historyDataResult = allData.filter(record =>
+                        record.planned_1 != null &&
+                        record.actual_1 != null &&
+                        record.indent_type === 'Purchase'
+                    );
+
+                    const historyTableData = historyDataResult.map((record: any) => ({
+                        indentNo: record.indent_number || '',
+                        indenter: record.indenter_name || '',
+                        department: record.department || '',
+                        product: record.product_name || '',
+                        approvedQuantity: record.approved_quantity || record.quantity || 0,
+                        vendorType: record.vendor_type as HistoryData['vendorType'],
+                        uom: record.uom || '',
+                        specifications: record.specifications || '',
+                        date: formatDate(new Date(record.created_at)),
+                        approvedDate: formatDate(new Date(record.actual_1)),
+                    })).sort((a, b) => {
+                        return b.indentNo.localeCompare(a.indentNo);
+                    });
+                    setHistoryData(historyTableData);
+                }
+            } catch (error: any) {
+                console.error('Error fetching data from Supabase:', error);
+                toast.error('Failed to fetch data: ' + error.message);
+            } finally {
+                setDataLoading(false);
+            }
+        };
+
+        fetchData();
+    }, []);
 
     const getCurrentFormattedDate = () => {
         const now = new Date();
@@ -213,58 +231,85 @@ export default () => {
 
         setSubmitting(true);
         try {
-            const updatesToProcess = Array.from(selectedRows)
-                .map(indentNo => {
-                    const update = bulkUpdates.get(indentNo);
-                    const originalSheet = indentSheet.find(s => s.indentNumber === indentNo);
+            // Format date as YYYY-MM-DD HH:MM:SS for PostgreSQL compatibility
+            const now = new Date();
+            const year = now.getFullYear();
+            const month = String(now.getMonth() + 1).padStart(2, '0');
+            const day = String(now.getDate()).padStart(2, '0');
+            const hours = String(now.getHours()).padStart(2, '0');
+            const minutes = String(now.getMinutes()).padStart(2, '0');
+            const seconds = String(now.getSeconds()).padStart(2, '0');
+            const formattedDate = `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
 
-                    if (!originalSheet || !update) return null;
+            const updatesToProcess = Array.from(selectedRows).map(indentNo => {
+                const update = bulkUpdates.get(indentNo);
+                const originalRecord = tableData.find(s => s.indentNo === indentNo);
 
-                    // Current date in DD/MM/YYYY HH:mm:ss format
-                    const now = new Date();
-                    const day = String(now.getDate()).padStart(2, '0');
-                    const month = String(now.getMonth() + 1).padStart(2, '0');
-                    const year = now.getFullYear();
-                    const hours = String(now.getHours()).padStart(2, '0');
-                    const minutes = String(now.getMinutes()).padStart(2, '0');
-                    const seconds = String(now.getSeconds()).padStart(2, '0');
-                    const formattedDate = `${day}/${month}/${year} ${hours}:${minutes}:${seconds}`;
+                if (!originalRecord || !update) return null;
 
-                    // Create dataToSend without timestamp
-                    const { timestamp, ...sheetWithoutTimestamp } = originalSheet;
+                // Prepare update object with only changed fields
+                const updatePayload: any = {
+                    vendor_type: update.vendorType || originalRecord.vendorType,
+                    approved_quantity: update.quantity !== undefined ? update.quantity : originalRecord.quantity,
+                    // H column (quantity) bhi approved ke equal
+                    quantity: update.quantity !== undefined ? update.quantity : originalRecord.quantity,
+                    actual_1: formattedDate,
+                };
 
-                    const dataToSend = {
-                        ...sheetWithoutTimestamp, // Spread without timestamp
-                        vendorType: update.vendorType || originalSheet.vendorType,
-                        approvedQuantity: update.quantity !== undefined ? update.quantity : originalSheet.quantity,
-                        // H column (quantity) bhi approved ke equal
-                        quantity: update.quantity !== undefined ? update.quantity : originalSheet.quantity,
-                        actual1: formattedDate,
-                    };
+                return {
+                    indentNo: originalRecord.indentNo,
+                    updatePayload
+                };
+            }).filter((item): item is NonNullable<typeof item> => item !== null);
 
-                    console.log('🔍 After creating object:', dataToSend);
-                    console.log('dataToSend.actual1:', dataToSend.actual1);
-                    console.log('typeof dataToSend.actual1:', typeof dataToSend.actual1);
-                    console.log('Full object:', JSON.stringify(dataToSend, null, 2));
+            // Process each update individually
+            for (const updateItem of updatesToProcess) {
+                const { error } = await supabase
+                    .from('indent')
+                    .update(updateItem.updatePayload)
+                    .eq('indent_number', updateItem.indentNo);
 
-                    return dataToSend;
-                })
-                .filter((item): item is NonNullable<typeof item> => item !== null);
-
-            console.log('🚀 Final data before postToSheet:', JSON.stringify(updatesToProcess, null, 2));
-
-            if (updatesToProcess.length > 0) {
-                await postToSheet(updatesToProcess, 'update');
-                toast.success(`Updated ${updatesToProcess.length} indents successfully`);
-
-                setSelectedRows(new Set());
-                setBulkUpdates(new Map());
-
-                setTimeout(() => updateIndentSheet(), 1000);
+                if (error) {
+                    throw error;
+                }
             }
-        } catch (error) {
+
+            toast.success(`Updated ${updatesToProcess.length} indents successfully`);
+
+            // Refresh the data after updates
+            const { data: pendingData, error: pendingError } = await supabase
+                .from('indent')
+                .select('*')
+                .not('planned_1', 'is', null)
+                .is('actual_1', null)
+                .eq('indent_type', 'Purchase')
+                .order('created_at', { ascending: false });
+
+            if (pendingError) throw pendingError;
+
+            if (pendingData) {
+                const pendingTableData = pendingData.map((record: any) => ({
+                    indentNo: record.indent_number || '',
+                    indenter: record.indenter_name || '',
+                    department: record.department || '',
+                    product: record.product_name || '',
+                    quantity: record.quantity || 0,
+                    uom: record.uom || '',
+                    attachment: record.attachment || '',
+                    specifications: record.specifications || '',
+                    vendorType: (statuses.includes(record.vendor_type)
+                        ? record.vendor_type as ApproveTableData['vendorType']
+                        : '') as "Reject" | "Three Party" | "Regular",
+                    date: formatDate(new Date(record.created_at)),
+                }));
+                setTableData(pendingTableData);
+            }
+
+            setSelectedRows(new Set());
+            setBulkUpdates(new Map());
+        } catch (error: any) {
             console.error('❌ Error:', error);
-            toast.error('Failed to update indents');
+            toast.error('Failed to update indents: ' + error.message);
         } finally {
             setSubmitting(false);
         }
@@ -325,52 +370,78 @@ export default () => {
             const oldProductName = currentRow?.product;
             const newProductName = editValues.product;
 
-            // Current date in DD/MM/YYYY HH:mm:ss format
-            const now = new Date();
-            const day = String(now.getDate()).padStart(2, '0');
-            const month = String(now.getMonth() + 1).padStart(2, '0');
-            const year = now.getFullYear();
-            const hours = String(now.getHours()).padStart(2, '0');
-            const minutes = String(now.getMinutes()).padStart(2, '0');
-            const seconds = String(now.getSeconds()).padStart(2, '0');
-            const formattedDate = `${day}/${month}/${year} ${hours}:${minutes}:${seconds}`;
-
-            // If product name changed, update all rows with the same old product name
+            // Check if product name changed
             if (oldProductName && newProductName && oldProductName !== newProductName) {
-                const rowsToUpdate = indentSheet.filter(s => s.productName === oldProductName);
+                // Update all rows with the same old product name
+                const { error: updateError } = await supabase
+                    .from('indent')
+                    .update({ product_name: newProductName })
+                    .eq('product_name', oldProductName);
 
-                await postToSheet(
-                    rowsToUpdate.map((prev) => ({
-                        ...prev,
-                        productName: newProductName,
-                        timestamp: prev.timestamp, // Keep original
-                    })),
-                    'update'
-                );
-                toast.success(`Updated product name from "${oldProductName}" to "${newProductName}" for ${rowsToUpdate.length} records`);
+                if (updateError) throw updateError;
+
+                toast.success(`Updated product name from "${oldProductName}" to "${newProductName}"`);
             } else {
                 // Update only the current row for other fields
-                await postToSheet(
-                    indentSheet
-                        .filter((s) => s.indentNumber === indentNo)
-                        .map((prev) => ({
-                            ...prev,
-                            approvedQuantity: editValues.approvedQuantity,
-                            uom: editValues.uom,
-                            vendorType: editValues.vendorType,
-                            productName: editValues.product,
-                            timestamp: prev.timestamp, // Keep original
-                        })),
-                    'update'
-                );
+                const updatePayload: any = {};
+
+                if (editValues.approvedQuantity !== undefined) {
+                    updatePayload.approved_quantity = editValues.approvedQuantity;
+                }
+                if (editValues.uom) {
+                    updatePayload.uom = editValues.uom;
+                }
+                if (editValues.vendorType) {
+                    updatePayload.vendor_type = editValues.vendorType;
+                }
+                if (editValues.product) {
+                    updatePayload.product_name = editValues.product;
+                }
+
+                const { error } = await supabase
+                    .from('indent')
+                    .update(updatePayload)
+                    .eq('indent_number', indentNo);
+
+                if (error) throw error;
+
                 toast.success(`Updated indent ${indentNo}`);
             }
 
-            updateIndentSheet();
+            // Refresh the data after updates
+            const { data: historyDataResult, error: historyError } = await supabase
+                .from('indent')
+                .select('*')
+                .not('planned_1', 'is', null)
+                .not('actual_1', 'is', null)
+                .eq('indent_type', 'Purchase')
+                .order('created_at', { ascending: false });
+
+            if (historyError) throw historyError;
+
+            if (historyDataResult) {
+                const historyTableData = historyDataResult.map((record: any) => ({
+                    indentNo: record.indent_number || '',
+                    indenter: record.indenter_name || '',
+                    department: record.department || '',
+                    product: record.product_name || '',
+                    approvedQuantity: record.approved_quantity || record.quantity || 0,
+                    vendorType: record.vendor_type as HistoryData['vendorType'],
+                    uom: record.uom || '',
+                    specifications: record.specifications || '',
+                    date: formatDate(new Date(record.created_at)),
+                    approvedDate: formatDate(new Date(record.actual_1)),
+                })).sort((a, b) => {
+                    return b.indentNo.localeCompare(a.indentNo);
+                });
+                setHistoryData(historyTableData);
+            }
+
             setEditingRow(null);
             setEditValues({});
-        } catch {
-            toast.error('Failed to update indent');
+        } catch (error: any) {
+            console.error('Error updating indent:', error);
+            toast.error('Failed to update indent: ' + error.message);
         }
     };
 
@@ -552,19 +623,24 @@ export default () => {
 
                 const handleBlur = async () => {
                     try {
-                        await postToSheet(
-                            indentSheet
-                                .filter((s) => s.indentNumber === indentNo)
-                                .map((prev) => ({
-                                    ...prev,
-                                    specifications: value,
-                                })),
-                            'update'
-                        );
+                        const { error } = await supabase
+                            .from('indent')
+                            .update({ specifications: value })
+                            .eq('indent_number', indentNo);
+
+                        if (error) throw error;
+
                         toast.success(`Updated specifications for ${indentNo}`);
-                        updateIndentSheet();
-                    } catch {
-                        toast.error('Failed to update specifications');
+
+                        // Update local state
+                        setTableData(prev => prev.map(item =>
+                            item.indentNo === indentNo
+                                ? { ...item, specifications: value }
+                                : item
+                        ));
+                    } catch (error: any) {
+                        console.error('Error updating specifications:', error);
+                        toast.error('Failed to update specifications: ' + error.message);
                     }
                 };
 
@@ -883,7 +959,7 @@ export default () => {
                                 data={tableData}
                                 columns={columns}
                                 searchFields={['product', 'department', 'indenter', 'vendorType']}
-                                dataLoading={indentLoading}
+                                dataLoading={dataLoading}
                                 extraActions={
                                     <Button
                                         variant="default"
@@ -913,7 +989,7 @@ export default () => {
                             data={historyData}
                             columns={historyColumns}
                             searchFields={['product', 'department', 'indenter', 'vendorType']}
-                            dataLoading={indentLoading}
+                            dataLoading={dataLoading}
                         />
                     </div>
                 </TabsContent>

@@ -9,10 +9,10 @@ import { useFieldArray, useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { Form, FormControl, FormField, FormItem, FormLabel } from '../ui/form';
 import type { PoMasterSheet } from '@/types';
-import { postToSheet, uploadFile } from '@/lib/fetchers';
+import { postToSheet, uploadFile, fetchSheet } from '@/lib/fetchers';
 import { useEffect, useState } from 'react';
-import { useSheets } from '@/context/SheetsContext';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select';
+import { supabase } from '@/lib/supabaseClient';
 import {
     calculateGrandTotal,
     calculateSubtotal,
@@ -37,7 +37,7 @@ function generatePoNumber(poNumbers: string[], today = new Date()): string {
 
     // Step 2: Extract numbers for curre nt financial year
     const numbersInFY = poNumbers
-        .filter((po) => po.includes(`/${fy}/`))
+        .filter((po) => po != null && typeof po === 'string' && po.includes(`/${fy}/`))
         .map((po) => {
             const match = po.match(/\/(\d+)(?:-\d+)?$/); // gets '80' from '80-2'
             return match ? parseInt(match[1], 10) : null;
@@ -60,7 +60,8 @@ function incrementPoRevision(poNumber: string, allPOs: PoMasterSheet[]): string 
     let maxRevision = 0;
 
     for (const po of allPOs) {
-        const poParts = po.poNumber.split('/');
+        const currentPoNumber = po.po_number || '';
+        const poParts = currentPoNumber.split('/');
         const poLastSegment = poParts[poParts.length - 1];
         const [poSeq, poRev] = poLastSegment.split('-');
 
@@ -76,13 +77,14 @@ function incrementPoRevision(poNumber: string, allPOs: PoMasterSheet[]): string 
     return `${baseKey}-${maxRevision + 1}`;
 }
 
-function filterUniquePoNumbers(data: PoMasterSheet[]): PoMasterSheet[] {
+function filterUniquePoNumbers(data: any[]): any[] {
     const seen = new Set<string>();
-    const result: PoMasterSheet[] = [];
+    const result: any[] = [];
 
     for (const po of data) {
-        if (!seen.has(po.poNumber)) {
-            seen.add(po.poNumber);
+        const poNumber = po.po_number || po.poNumber;
+        if (!seen.has(poNumber)) {
+            seen.add(poNumber);
             result.push(po);
         }
     }
@@ -91,49 +93,100 @@ function filterUniquePoNumbers(data: PoMasterSheet[]): PoMasterSheet[] {
 }
 
 export default () => {
-    const { indentSheet, poMasterSheet, updateIndentSheet, updatePoMasterSheet, masterSheet: details } = useSheets();
+    const [indentSheetData, setIndentSheetData] = useState<any[]>([]);
+    const [poMasterSheetData, setPoMasterSheetData] = useState<any[]>([]);
+    const [detailsData, setDetailsData] = useState<any>(null);
+    const [vendorsData, setVendorsData] = useState<any[]>([]);
     const [readOnly, setReadOnly] = useState(-1);
     const [mode, setMode] = useState<'create' | 'revise'>('create');
     const [isEditingDestination, setIsEditingDestination] = useState(false);
     const [destinationAddress, setDestinationAddress] = useState('');
+    const [loading, setLoading] = useState(true);
 
     // Initialize destination address from details
     useEffect(() => {
-        if (details?.destinationAddress) {
-            setDestinationAddress(details.destinationAddress);
+        if (detailsData?.destinationAddress) {
+            setDestinationAddress(detailsData.destinationAddress);
         }
-    }, [details]);
+    }, [detailsData]);
 
-   const schema = z.object({
-  poNumber: z.string().nonempty(),
-  poDate: z.coerce.date(),
-  supplierName: z.string().nonempty(),
-  supplierAddress: z.string().nonempty(),
-  gstin: z.string().nonempty(),
-  quotationNumber: z.string().nonempty(),
-  quotationDate: z.coerce.date(),
-  ourEnqNo: z.string(),
-  enquiryDate: z.coerce.date(),
-  description: z.string().optional().default(''), // Made optional
-  indents: z
-    .array(
-      z.object({
-        indentNumber: z.string().nonempty(),
-        gst: z.coerce.number(),
-        discount: z.coerce.number().default(0).optional(),
-      })
-    ),
-  terms: z.array(z.string().nonempty()).max(10),
-  preparedBy: z.string().nonempty(),
-  approvedBy: z.string().nonempty(),
-});
+    // Fetch data from Supabase
+    useEffect(() => {
+        const fetchData = async () => {
+            setLoading(true);
+            try {
+                // Fetch pending indents (Stage 4: Pending POs) directly from Supabase
+                // We need snake_case data for this component, and Stage 4 specifically
+                const { data: indentData, error: indentError } = await supabase
+                    .from('indent')
+                    .select('*')
+                    .not('planned_4', 'is', null)
+                    .is('actual_4', null);
+
+                if (indentError) throw indentError;
+
+                // Fetch PO master data
+                const { data: poData, error: poError } = await supabase
+                    .from('po_master')
+                    .select('*');
+
+                if (poError) throw poError;
+
+                // Fetch master data using fetchSheet
+                const masterData = await fetchSheet('MASTER') as any;
+
+                // Fetch vendors from master_data table
+                const { data: vendorsFromDB, error: vendorsError } = await supabase
+                    .from('master_data')
+                    .select('*');
+
+                if (vendorsError) throw vendorsError;
+
+                setIndentSheetData(indentData || []);
+                setPoMasterSheetData(poData || []);
+                setDetailsData(masterData);
+                setVendorsData(vendorsFromDB || []); // Use vendors from master_data table
+            } catch (error: any) {
+                console.error('Error fetching data from Supabase:', error);
+                toast.error('Failed to fetch data: ' + error.message);
+            } finally {
+                setLoading(false);
+            }
+        };
+
+        fetchData();
+    }, []);
+
+    const schema = z.object({
+        poNumber: z.string().nonempty(),
+        poDate: z.coerce.date(),
+        supplierName: z.string().nonempty(),
+        supplierAddress: z.string().nonempty(),
+        gstin: z.string().nonempty(),
+        quotationNumber: z.string().nonempty(),
+        quotationDate: z.coerce.date(),
+        ourEnqNo: z.string(),
+        enquiryDate: z.coerce.date(),
+        description: z.string().optional().default(''), // Made optional
+        indents: z
+            .array(
+                z.object({
+                    indentNumber: z.string().nonempty(),
+                    gst: z.coerce.number(),
+                    discount: z.coerce.number().default(0).optional(),
+                })
+            ),
+        terms: z.array(z.string().nonempty()).max(10),
+        preparedBy: z.string().nonempty(),
+        approvedBy: z.string().nonempty(),
+    });
 
 
     type FormData = z.infer<typeof schema>;
     const form = useForm<FormData>({
         resolver: zodResolver(schema),
         defaultValues: {
-            poNumber: generatePoNumber(poMasterSheet.map((p) => p.poNumber)),
+            poNumber: generatePoNumber(poMasterSheetData.map((p: any) => p.po_number).filter(po => po != null)),
             poDate: new Date(),
             supplierName: '',
             supplierAddress: '',
@@ -145,15 +198,15 @@ export default () => {
             ourEnqNo: '',
             enquiryDate: undefined,
             indents: [],
-            terms: details?.defaultTerms || [],
+            terms: detailsData?.defaultTerms || [], // Updated to camelCase
         },
     });
 
     useEffect(() => {
-        if (details) {
-            form.setValue('terms', details.defaultTerms);
+        if (detailsData) {
+            form.setValue('terms', detailsData.defaultTerms); // Updated to camelCase
         }
-    }, [details]);
+    }, [detailsData]);
 
     const indents = form.watch('indents');
     const vendor = form.watch('supplierName');
@@ -177,12 +230,12 @@ export default () => {
             form.setValue(
                 'poNumber',
                 generatePoNumber(
-                    poMasterSheet.map((p) => p.poNumber),
+                    poMasterSheetData.map((p: any) => p.po_number).filter(po => po != null),
                     poDate
                 )
             );
         }
-    }, [poDate, poMasterSheet, mode]);
+    }, [poDate, poMasterSheetData, mode]);
 
     useEffect(() => {
         if (mode === 'revise') {
@@ -203,7 +256,7 @@ export default () => {
             });
         } else {
             form.reset({
-                poNumber: generatePoNumber(poMasterSheet.map((p) => p.poNumber)),
+                poNumber: generatePoNumber(poMasterSheetData.map((p: any) => p.po_number).filter(po => po != null)),
                 poDate: new Date(),
                 supplierName: '',
                 supplierAddress: '',
@@ -215,70 +268,74 @@ export default () => {
                 ourEnqNo: '',
                 enquiryDate: undefined,
                 indents: [],
-                terms: details?.defaultTerms || [],
+                terms: detailsData?.defaultTerms || [], // Updated to camelCase
             });
         }
-    }, [mode]);
+    }, [mode, poMasterSheetData, detailsData]);
 
     useEffect(() => {
         if (vendor && mode === 'create') {
-            const items = indentSheet.filter(
-                (i) => i.planned4 !== '' && i.actual4 === '' && i.approvedVendorName === vendor
+            const items = indentSheetData.filter(
+                (i: any) => i.approved_vendor_name === vendor
             );
+
+            // Find vendor from master_data table
+            const selectedVendor = vendorsData.find((v: any) => v.vendor_name === vendor);
+
             form.setValue(
                 'supplierAddress',
-                details?.vendors.find((v) => v.vendorName === vendor)?.address || ''
+                selectedVendor?.vendor_address || ''
             );
             form.setValue(
                 'gstin',
-                details?.vendors.find((v) => v.vendorName === vendor)?.gstin || ''
+                selectedVendor?.vendor_gstin || ''
             );
             form.setValue(
                 'indents',
-                items.map((i) => ({
-                    indentNumber: i.indentNumber,
+                items.map((i: any) => ({
+                    indentNumber: i.indent_number,
                     gst: 18,
                     discount: 0,
                 }))
             );
         }
-    }, [vendor]);
+    }, [vendor, indentSheetData, vendorsData]);
 
-   useEffect(() => {
-    const po = poMasterSheet.find((p) => p.poNumber === poNumber)!;
-    if (mode === 'revise' && po) {
-        const vendor = details?.vendors.find((v) => v.vendorName === po.partyName);
-        form.setValue('poDate', po.timestamp ? new Date(po.timestamp) : new Date());
-        form.setValue('supplierName', po.partyName);
-        form.setValue('supplierAddress', vendor?.address || '');
-        form.setValue('preparedBy', po.preparedBy);
-        form.setValue('approvedBy', po.approvedBy);
-        form.setValue('gstin', vendor?.gstin || '');
-        form.setValue('quotationNumber', po.quotationNumber);
-        form.setValue('quotationDate', po.quotationDate ? new Date(po.quotationDate) : new Date());
-        form.setValue('description', po.description);
-        form.setValue('ourEnqNo', po.enquiryNumber);
-        form.setValue('enquiryDate', po.enquiryDate ? new Date(po.enquiryDate) : new Date());
-        form.setValue(
-            'indents',
-            poMasterSheet
-                .filter((p) => p.poNumber === po.poNumber)
-                .map((po) => ({
-                    indentNumber: po.internalCode,
-                    gst: po.gst,
-                    discount: po.discount,
-                }))
-        );
-        const terms = [];
-        for (let i = 0; i < 10; i++) {
-            const term = po[`term${i + 1}` as keyof PoMasterSheet] as string;
-            if (term !== '') {
-                terms.push(term);
+    useEffect(() => {
+        const po = poMasterSheetData.find((p: any) => p.po_number === poNumber)!;
+        if (mode === 'revise' && po) {
+            const vendor = vendorsData.find((v: any) => v.vendor_name === po.party_name); // Use vendor_name from master_data
+            form.setValue('poDate', po.timestamp ? new Date(po.timestamp) : new Date());
+            form.setValue('supplierName', po.party_name);
+            form.setValue('supplierAddress', vendor?.vendor_address || ''); // Use vendor_address
+            form.setValue('preparedBy', po.prepared_by);
+            form.setValue('approvedBy', po.approved_by);
+            form.setValue('gstin', vendor?.vendor_gstin || ''); // Use vendor_gstin
+            form.setValue('quotationNumber', po.quotation_number);
+            form.setValue('quotationDate', po.quotation_date ? new Date(po.quotation_date) : new Date());
+            form.setValue('description', po.description);
+            form.setValue('ourEnqNo', po.enquiry_number);
+            form.setValue('enquiryDate', po.enquiry_date ? new Date(po.enquiry_date) : new Date());
+            form.setValue(
+                'indents',
+                poMasterSheetData
+                    .filter((p: any) => p.po_number === po.po_number)
+                    .map((po: any) => ({
+                        indentNumber: po.internal_code,
+                        gst: po.gst_percent || 0, // Updated from gst to gst_percent
+                        discount: po.discount_percent || 0, // Updated from discount to discount_percent
+                    }))
+            );
+            const terms = [];
+            for (let i = 0; i < 10; i++) {
+                const term = po[`term_${i + 1}` as keyof PoMasterSheet] as string; // Updated to term_N
+                if (term && term !== '') {
+                    terms.push(term);
+                }
             }
+            form.setValue('terms', terms);
         }
-        form.setValue('terms', terms);
-    }
-}, [poNumber]);
+    }, [poNumber, poMasterSheetData, vendorsData]);
 
     const handleDestinationEdit = () => {
         setIsEditingDestination(true);
@@ -290,200 +347,231 @@ export default () => {
     };
 
     const handleDestinationCancel = () => {
-        setDestinationAddress(details?.destinationAddress || '');
+        setDestinationAddress(detailsData?.destinationAddress || ''); // Updated to camelCase
         setIsEditingDestination(false);
     };
 
-   const getCurrentFormattedDateTime = () => {
-    const now = new Date();
-    const day = String(now.getDate()).padStart(2, '0');
-    const month = String(now.getMonth() + 1).padStart(2, '0');
-    const year = now.getFullYear();
-    const hours = String(now.getHours()).padStart(2, '0');
-    const minutes = String(now.getMinutes()).padStart(2, '0');
-    const seconds = String(now.getSeconds()).padStart(2, '0');
-    return `${day}/${month}/${year} ${hours}:${minutes}:${seconds}`;
-};
+    const getCurrentFormattedDateTime = () => {
+        const now = new Date();
+        // Return in PostgreSQL timestamp format for Supabase compatibility
+        return now.toISOString().slice(0, 19).replace('T', ' ');
+    };
 
-async function onSubmit(values: FormData) {
-    try {
-        const poNumber =
-            mode === 'create'
-                ? values.poNumber
-                : incrementPoRevision(values.poNumber, poMasterSheet);
-        const grandTotal = calculateGrandTotal(
-            values.indents.map((indent) => {
-                const value = indentSheet.find((i) => i.indentNumber === indent.indentNumber);
-                return {
-                    quantity: value?.approvedQuantity || 0,
-                    rate: value?.approvedRate || 0,
-                    discountPercent: indent?.discount || 0,
-                    gstPercent: indent.gst,
-                };
-            })
-        );
-
-        // Convert logo image to base64 for PDF
-        const logoResponse = await fetch('/logo.png');
-        const logoBlob = await logoResponse.blob();
-        const logoBase64 = await new Promise<string>((resolve) => {
-            const reader = new FileReader();
-            reader.onloadend = () => resolve(reader.result as string);
-            reader.readAsDataURL(logoBlob);
-        });
-
-        const pdfProps: POPdfProps = {
-            // companyLogo: logoBase64,
-            companyName: details?.companyName || '',
-            companyPhone: details?.companyPhone || '',
-            companyGstin: details?.companyGstin || '',
-            companyPan: details?.companyPan || '',
-            companyAddress: details?.companyAddress || '',
-            billingAddress: details?.billingAddress || '',
-            destinationAddress: destinationAddress, // Use the editable destination address
-            supplierName: values.supplierName,
-            supplierAddress: values.supplierAddress,
-            supplierGstin: values.gstin,
-            orderNumber: poNumber,
-            orderDate: formatDate(values.poDate),
-            quotationNumber: values.quotationNumber,
-            quotationDate: formatDate(values.quotationDate),
-            enqNo: values.ourEnqNo,
-            enqDate: formatDate(values.enquiryDate),
-            description: values.description,
-            items: values.indents.map((item) => {
-                const indent = indentSheet.find((i) => i.indentNumber === item.indentNumber)!;
-                return {
-                    internalCode: indent.indentNumber,
-                    product: indent.productName,
-                    description: indent.specifications,
-                    quantity: indent.approvedQuantity,
-                    unit: indent.uom,
-                    rate: indent.approvedRate,
-                    gst: item.gst || 0,
-                    discount: item.discount || 0,
-                    amount: calculateTotal(
-                        indent.approvedRate,
-                        item.gst || 0,
-                        item.discount || 0,
-                        indent.approvedQuantity
-                    ),
-                };
-            }),
-            total: calculateSubtotal(
+    async function onSubmit(values: FormData) {
+        try {
+            const poNumber =
+                mode === 'create'
+                    ? values.poNumber
+                    : incrementPoRevision(values.poNumber, poMasterSheetData as PoMasterSheet[]);
+            const grandTotal = calculateGrandTotal(
                 values.indents.map((indent) => {
-                    const value = indentSheet.find(
-                        (i) => i.indentNumber === indent.indentNumber
-                    );
+                    const value = indentSheetData.find((i: any) => i.indent_number === indent.indentNumber);
                     return {
-                        quantity: value?.approvedQuantity || 0,
-                        rate: value?.approvedRate || 0,
-                        discountPercent: indent?.discount || 0,
-                    };
-                })
-            ),
-            gstAmount: calculateTotalGst(
-                values.indents.map((indent) => {
-                    const value = indentSheet.find(
-                        (i) => i.indentNumber === indent.indentNumber
-                    );
-                    return {
-                        quantity: value?.approvedQuantity || 0,
-                        rate: value?.approvedRate || 0,
+                        quantity: value?.approved_quantity || 0,
+                        rate: value?.approved_rate || 0,
                         discountPercent: indent?.discount || 0,
                         gstPercent: indent.gst,
                     };
                 })
-            ),
-            grandTotal: grandTotal,
-            terms: values.terms,
-            preparedBy: values.preparedBy,
-            approvedBy: values.approvedBy,
-        };
+            );
 
-        const blob = await pdf(<POPdf {...pdfProps} />).toBlob();
-        const file = new File([blob], `PO-${poNumber}.pdf`, {
-            type: 'application/pdf',
-        });
-      const email = details?.vendors.find((v) => v.vendorName === values.supplierName)?.email;
+            // Convert logo image to base64 for PDF
+            const logoResponse = await fetch('/logo.png');
+            const logoBlob = await logoResponse.blob();
+            const logoBase64 = await new Promise<string>((resolve) => {
+                const reader = new FileReader();
+                reader.onloadend = () => resolve(reader.result as string);
+                reader.readAsDataURL(logoBlob);
+            });
 
-let url = '';
-
-if (email) {
-    // Email hai to PDF upload + email send
-    url = await uploadFile(
-        file,
-        import.meta.env.VITE_PURCHASE_ORDERS_FOLDER,
-        'email',
-        email
-    );
-    toast.success('PO created and email sent successfully');
-} else {
-    // Email nahi hai to sirf PDF upload (without email)
-    url = await uploadFile(
-        file,
-        import.meta.env.VITE_PURCHASE_ORDERS_FOLDER,
-        'upload', // ← Use 'upload' instead of 'email'
-        '' // Empty email parameter
-    );
-    toast.warning("PO created but email not sent (vendor email not found)");
-}
-
-        const rows: PoMasterSheet[] = values.indents.map((v) => {
-            const indent = indentSheet.find((i) => i.indentNumber === v.indentNumber)!;
-            return {
-                timestamp: getCurrentFormattedDateTime(), // Updated format: DD/MM/YYYY HH:mm:ss
-                partyName: values.supplierName,
-                poNumber,
-                internalCode: v.indentNumber,
-                product: indent.productName,
+            const pdfProps: POPdfProps = {
+                // companyLogo: logoBase64,
+                companyName: detailsData?.companyName || '', // Updated to camelCase
+                companyPhone: detailsData?.companyPhone || '', // Updated to camelCase
+                companyGstin: detailsData?.companyGstin || '', // Updated to camelCase
+                companyPan: detailsData?.companyPan || '', // Updated to camelCase
+                companyAddress: detailsData?.companyAddress || '', // Updated to camelCase
+                billingAddress: detailsData?.billingAddress || '', // Updated to camelCase
+                destinationAddress: destinationAddress, // Use the editable destination address
+                supplierName: values.supplierName,
+                supplierAddress: values.supplierAddress,
+                supplierGstin: values.gstin,
+                orderNumber: poNumber,
+                orderDate: formatDate(values.poDate),
+                quotationNumber: values.quotationNumber,
+                quotationDate: formatDate(values.quotationDate),
+                enqNo: values.ourEnqNo,
+                enqDate: formatDate(values.enquiryDate),
                 description: values.description,
-                quantity: indent.approvedQuantity,
-                unit: indent.uom,
-                rate: indent.approvedRate,
-                gst: v.gst,
-                discount: v.discount || 0,
-                amount: calculateTotal(
-                    indent.approvedRate,
-                    v.gst,
-                    v.discount || 0,
-                    indent.approvedQuantity
+                items: values.indents.map((item) => {
+                    const indent = indentSheetData.find((i: any) => i.indent_number === item.indentNumber)!;
+                    return {
+                        internalCode: indent.indent_number,
+                        product: indent.product_name,
+                        description: indent.specifications,
+                        quantity: indent.approved_quantity,
+                        unit: indent.uom,
+                        rate: indent.approved_rate,
+                        gst: item.gst || 0,
+                        discount: item.discount || 0,
+                        amount: calculateTotal(
+                            indent.approved_rate,
+                            item.gst || 0,
+                            item.discount || 0,
+                            indent.approved_quantity
+                        ),
+                    };
+                }),
+                total: calculateSubtotal(
+                    values.indents.map((indent) => {
+                        const value = indentSheetData.find(
+                            (i: any) => i.indent_number === indent.indentNumber
+                        );
+                        return {
+                            quantity: value?.approved_quantity || 0,
+                            rate: value?.approved_rate || 0,
+                            discountPercent: indent?.discount || 0,
+                        };
+                    })
                 ),
-                totalPoAmount: grandTotal,
-                pdf: url,
+                gstAmount: calculateTotalGst(
+                    values.indents.map((indent) => {
+                        const value = indentSheetData.find(
+                            (i: any) => i.indent_number === indent.indentNumber
+                        );
+                        return {
+                            quantity: value?.approved_quantity || 0,
+                            rate: value?.approved_rate || 0,
+                            discountPercent: indent?.discount || 0,
+                            gstPercent: indent.gst,
+                        };
+                    })
+                ),
+                grandTotal: grandTotal,
+                terms: values.terms,
                 preparedBy: values.preparedBy,
                 approvedBy: values.approvedBy,
-                quotationNumber: values.quotationNumber,
-                quotationDate: values.quotationDate ? formatDate(values.quotationDate) : '', // Use formatDate for consistency
-                enquiryNumber: values.ourEnqNo,
-                enquiryDate: values.enquiryDate ? formatDate(values.enquiryDate) : '', // Use formatDate for consistency
-                term1: values.terms[0],
-                term2: values.terms[1],
-                term3: values.terms[2],
-                term4: values.terms[3],
-                term5: values.terms[4],
-                term6: values.terms[5],
-                term7: values.terms[6],
-                term8: values.terms[7],
-                term9: values.terms[8],
-                term10: values.terms[9],
-                discountPercent: v.discount || 0, // Add this
-                gstPercent: v.gst, // Add this
             };
-        });
 
-        await postToSheet(rows, 'insert', 'PO MASTER');
-        toast.success(`Successfully ${mode}d purchase order`);
-        form.reset();
-        setTimeout(() => {
-            updatePoMasterSheet();
-            updateIndentSheet();
-        }, 1000);
-    } catch (e) {
-        console.log(e);
-        toast.error(`Failed to ${mode} purchase order`);
+            const blob = await pdf(<POPdf {...pdfProps} />).toBlob();
+            const file = new File([blob], `PO-${poNumber}.pdf`, {
+                type: 'application/pdf',
+            });
+            const email = vendorsData.find((v: any) => v.vendorName === values.supplierName)?.email; // Updated vendorName from vendor_name
+
+            let url = '';
+
+            if (email) {
+                // Email hai to PDF upload + email send
+                url = await uploadFile(
+                    file,
+                    import.meta.env.VITE_PURCHASE_ORDERS_FOLDER,
+                    'email',
+                    email
+                );
+                toast.success('PO created and email sent successfully');
+            } else {
+                // Email nahi hai to sirf PDF upload (without email)
+                url = await uploadFile(
+                    file,
+                    import.meta.env.VITE_PURCHASE_ORDERS_FOLDER,
+                    'upload', // ← Use 'upload' instead of 'email'
+                    '' // Empty email parameter
+                );
+                toast.warning("PO created but email not sent (vendor email not found)");
+            }
+
+            // Insert PO data into Supabase
+            const poData: Partial<PoMasterSheet>[] = values.indents.map((v) => { // Added Type annotation
+                const indent = indentSheetData.find((i: any) => i.indent_number === v.indentNumber)!;
+
+                // Validate and process dates
+                const validateDate = (date: Date | null | undefined) => {
+                    if (!date) return null;
+                    const dateObj = new Date(date);
+                    if (isNaN(dateObj.getTime())) {
+                        console.error('Invalid date detected:', date);
+                        return null;
+                    }
+                    return dateObj.toISOString(); // Return ISO string to match type definition
+                };
+
+                return {
+                    timestamp: new Date().toISOString(), // Convert to ISO string to match type definition
+                    party_name: values.supplierName,
+                    po_number: poNumber,
+                    internal_code: v.indentNumber,
+                    product: indent.product_name,
+                    description: values.description,
+                    quantity: indent.approved_quantity,
+                    unit: indent.uom,
+                    rate: indent.approved_rate,
+                    // gst: v.gst, // REMOVED - not in schema
+                    // discount: v.discount || 0, // REMOVED - not in schema
+                    amount: calculateTotal(
+                        indent.approved_rate,
+                        v.gst,
+                        v.discount || 0,
+                        indent.approved_quantity
+                    ),
+                    total_po_amount: grandTotal,
+                    pdf_url: url, // Updated pdf -> pdf_url to match schema
+                    prepared_by: values.preparedBy,
+                    approved_by: values.approvedBy,
+                    quotation_number: values.quotationNumber,
+                    quotation_date: values.quotationDate ? values.quotationDate.toISOString() : null, // Convert to ISO string
+                    enquiry_number: values.ourEnqNo,
+                    enquiry_date: values.enquiryDate ? values.enquiryDate.toISOString() : null, // Convert to ISO string
+                    term_1: values.terms[0] || null, // Updated schema keys term1 -> term_1
+                    term_2: values.terms[1] || null,
+                    term_3: values.terms[2] || null,
+                    term_4: values.terms[3] || null,
+                    term_5: values.terms[4] || null,
+                    term_6: values.terms[5] || null,
+                    term_7: values.terms[6] || null,
+                    term_8: values.terms[7] || null,
+                    term_9: values.terms[8] || null,
+                    term_10: values.terms[9] || null,
+                    discount_percent: v.discount || 0,
+                    gst_percent: v.gst,
+                };
+            });
+
+            console.log('PO Data to be inserted:', poData); // Debug log
+
+            // Insert each PO record into the database
+            for (const record of poData) {
+                console.log('Inserting record:', record); // Debug log
+                const { error } = await supabase
+                    .from('po_master')
+                    .insert([record]); // Removed .select() to avoid potential conflicts
+
+                if (error) {
+                    console.error('Supabase insert error:', error);
+                    throw error;
+                } else {
+                    console.log('Record inserted successfully');
+                }
+            }
+
+            toast.success(`Successfully ${mode}d purchase order`);
+            form.reset();
+
+            // Refresh data after submission
+            const { data: updatedIndentData, error: indentError } = await supabase
+                .from('indent')
+                .select('*')
+                .not('planned_4', 'is', null)
+                .is('actual_4', null);
+
+            if (indentError) throw indentError;
+
+            setIndentSheetData(updatedIndentData || []);
+        } catch (e: any) {
+            console.log(e);
+            toast.error(`Failed to ${mode} purchase order: ${e.message}`);
+        }
     }
-}
 
     function onError(e: any) {
         console.log(e);
@@ -529,10 +617,10 @@ if (email) {
                                     className="w-20 h-20 object-contain"
                                 />
                                 <div className="text-center">
-                                    <h1 className="text-2xl font-bold">{details?.companyName}</h1>
+                                    <h1 className="text-2xl font-bold">{detailsData?.companyName}</h1>
                                     <div>
-                                        <p className="text-sm">{details?.companyAddress}</p>
-                                        <p className="text-sm">Phone No: +{details?.companyPhone}</p>
+                                        <p className="text-sm">{detailsData?.companyAddress}</p>
+                                        <p className="text-sm">Phone No: +{detailsData?.companyPhone}</p>
                                     </div>
                                 </div>
                             </div>
@@ -576,13 +664,13 @@ if (email) {
                                                             </FormControl>
                                                             <SelectContent>
                                                                 {filterUniquePoNumbers(
-                                                                    poMasterSheet
-                                                                ).map((i, k) => (
+                                                                    poMasterSheetData
+                                                                ).map((i: any, k) => (
                                                                     <SelectItem
                                                                         key={k}
-                                                                        value={i.poNumber}
+                                                                        value={i.po_number}
                                                                     >
-                                                                        {i.poNumber}
+                                                                        {i.po_number}
                                                                     </SelectItem>
                                                                 ))}
                                                             </SelectContent>
@@ -647,18 +735,16 @@ if (email) {
                                                             <SelectContent>
                                                                 {[
                                                                     ...new Map(
-                                                                        indentSheet
+                                                                        indentSheetData
                                                                             .filter(
-                                                                                (i) =>
-                                                                                    i.approvedVendorName !== '' &&
-                                                                                    i.planned4 !== '' &&
-                                                                                    i.actual4 === ''
+                                                                                (i: any) =>
+                                                                                    i.approved_vendor_name !== ''
                                                                             )
-                                                                            .map((i) => [i.approvedVendorName, i]) // Use approvedVendorName as the key
+                                                                            .map((i: any) => [i.approved_vendor_name, i]) // Use approved_vendor_name as the key
                                                                     ).values()
-                                                                ].map((i, k) => (
-                                                                    <SelectItem key={k} value={i.approvedVendorName}>
-                                                                        {i.approvedVendorName}
+                                                                ].map((i: any, k) => (
+                                                                    <SelectItem key={k} value={i.approved_vendor_name}>
+                                                                        {i.approved_vendor_name}
                                                                     </SelectItem>
                                                                 ))}
                                                             </SelectContent>
@@ -823,11 +909,11 @@ if (email) {
                                     <CardContent className="p-5 text-sm">
                                         <p>
                                             <span className="font-medium">GSTIN</span>{' '}
-                                            {details?.companyGstin}
+                                            {detailsData?.company_gstin}
                                         </p>
                                         <p>
                                             <span className="font-medium">Pan No.</span>{' '}
-                                            {details?.companyPan}
+                                            {detailsData?.company_pan}
                                         </p>
                                     </CardContent>
                                 </Card>
@@ -838,8 +924,8 @@ if (email) {
                                         </CardTitle>
                                     </CardHeader>
                                     <CardContent className="p-5 text-sm">
-                                        <p>M/S {details?.companyName}</p>
-                                        <p>{details?.billingAddress}</p>
+                                        <p>M/S {detailsData?.company_name}</p>
+                                        <p>{detailsData?.billing_address}</p>
                                     </CardContent>
                                 </Card>
                                 <Card className="p-0 gap-0 shadow-xs rounded-[3px]">
@@ -862,7 +948,7 @@ if (email) {
                                         </CardTitle>
                                     </CardHeader>
                                     <CardContent className="p-5 text-sm">
-                                        <p>M/S {details?.companyName}</p>
+                                        <p>M/S {detailsData?.company_name}</p>
                                         {isEditingDestination ? (
                                             <div className="flex items-center gap-2 mt-1">
                                                 <Input
@@ -940,16 +1026,16 @@ if (email) {
                                         <TableBody>
                                             {itemsArray.fields.map((field, index) => {
                                                 const value = indents[index];
-                                                const indent = indentSheet.find(
-                                                    (i) => i.indentNumber === value.indentNumber
+                                                const indent = indentSheetData.find(
+                                                    (i: any) => i.indent_number === value.indentNumber
                                                 );
                                                 return (
                                                     <TableRow key={field.id}>
                                                         <TableCell>{index + 1}</TableCell>
                                                         <TableCell>
-                                                            {indent?.indentNumber}
+                                                            {indent?.indent_number}
                                                         </TableCell>
-                                                        <TableCell>{indent?.productName}</TableCell>
+                                                        <TableCell>{indent?.product_name}</TableCell>
                                                         <TableCell>
                                                             {indent?.specifications || (
                                                                 <span className="text-muted-foreground">
@@ -958,37 +1044,37 @@ if (email) {
                                                             )}
                                                         </TableCell>
                                                         <TableCell>
-                                                            {indent?.approvedQuantity}
+                                                            {indent?.approved_quantity}
                                                         </TableCell>
                                                         <TableCell>{indent?.uom}</TableCell>
                                                         <TableCell>
-                                                            {indent?.approvedRate}
+                                                            {indent?.approved_rate}
                                                         </TableCell>
-                                                       <TableCell>
-    <FormField
-        control={form.control}
-        name={`indents.${index}.gst`}
-        render={({ field: indentField }) => (
-            <FormItem>
-                <Select
-                    onValueChange={(value) => indentField.onChange(Number(value))}
-                    value={indentField.value?.toString()}
-                >
-                    <FormControl>
-                        <SelectTrigger className="h-9 w-20">
-                            <SelectValue placeholder="GST%" />
-                        </SelectTrigger>
-                    </FormControl>
-                    <SelectContent>
-                        <SelectItem value="18">18%</SelectItem>
-                        <SelectItem value="5">5%</SelectItem>
-                        <SelectItem value="0">0%</SelectItem>
-                    </SelectContent>
-                </Select>
-            </FormItem>
-        )}
-    />
-</TableCell>
+                                                        <TableCell>
+                                                            <FormField
+                                                                control={form.control}
+                                                                name={`indents.${index}.gst`}
+                                                                render={({ field: indentField }) => (
+                                                                    <FormItem>
+                                                                        <Select
+                                                                            onValueChange={(value) => indentField.onChange(Number(value))}
+                                                                            value={indentField.value?.toString()}
+                                                                        >
+                                                                            <FormControl>
+                                                                                <SelectTrigger className="h-9 w-20">
+                                                                                    <SelectValue placeholder="GST%" />
+                                                                                </SelectTrigger>
+                                                                            </FormControl>
+                                                                            <SelectContent>
+                                                                                <SelectItem value="18">18%</SelectItem>
+                                                                                <SelectItem value="5">5%</SelectItem>
+                                                                                <SelectItem value="0">0%</SelectItem>
+                                                                            </SelectContent>
+                                                                        </Select>
+                                                                    </FormItem>
+                                                                )}
+                                                            />
+                                                        </TableCell>
                                                         <TableCell>
                                                             <FormField
                                                                 control={form.control}
@@ -1012,10 +1098,10 @@ if (email) {
                                                         </TableCell>
                                                         <TableCell>
                                                             {calculateTotal(
-                                                                indent?.approvedRate || 0,
+                                                                indent?.approved_rate || 0,
                                                                 value.gst,
                                                                 value.discount || 0,
-                                                                indent?.approvedQuantity || 0
+                                                                indent?.approved_quantity || 0
                                                             )}
                                                         </TableCell>
                                                         <TableCell>
@@ -1046,14 +1132,14 @@ if (email) {
                                             <span className="text-end">
                                                 {calculateSubtotal(
                                                     indents.map((indent) => {
-                                                        const value = indentSheet.find(
-                                                            (i) =>
-                                                                i.indentNumber ===
+                                                        const value = indentSheetData.find(
+                                                            (i: any) =>
+                                                                i.indent_number ===
                                                                 indent.indentNumber
                                                         );
                                                         return {
-                                                            quantity: value?.approvedQuantity || 0,
-                                                            rate: value?.approvedRate || 0,
+                                                            quantity: value?.approved_quantity || 0,
+                                                            rate: value?.approved_rate || 0,
                                                             discountPercent: indent?.discount || 0,
                                                         };
                                                     })
@@ -1066,14 +1152,14 @@ if (email) {
                                             <span className="text-end">
                                                 {calculateTotalGst(
                                                     indents.map((indent) => {
-                                                        const value = indentSheet.find(
-                                                            (i) =>
-                                                                i.indentNumber ===
+                                                        const value = indentSheetData.find(
+                                                            (i: any) =>
+                                                                i.indent_number ===
                                                                 indent.indentNumber
                                                         );
                                                         return {
-                                                            quantity: value?.approvedQuantity || 0,
-                                                            rate: value?.approvedRate || 0,
+                                                            quantity: value?.approved_quantity || 0,
+                                                            rate: value?.approved_rate || 0,
                                                             discountPercent: indent?.discount || 0,
                                                             gstPercent: indent.gst,
                                                         };
@@ -1087,14 +1173,14 @@ if (email) {
                                             <span className="text-end">
                                                 {calculateGrandTotal(
                                                     indents.map((indent) => {
-                                                        const value = indentSheet.find(
-                                                            (i) =>
-                                                                i.indentNumber ===
+                                                        const value = indentSheetData.find(
+                                                            (i: any) =>
+                                                                i.indent_number ===
                                                                 indent.indentNumber
                                                         );
                                                         return {
-                                                            quantity: value?.approvedQuantity || 0,
-                                                            rate: value?.approvedRate || 0,
+                                                            quantity: value?.approved_quantity || 0,
+                                                            rate: value?.approved_rate || 0,
                                                             discountPercent: indent?.discount || 0,
                                                             gstPercent: indent.gst,
                                                         };
@@ -1236,7 +1322,7 @@ if (email) {
                                         </FormItem>
                                     )}
                                 />
-                                <p className="break-words min-w-1/4">For {details?.companyName}</p>
+                                <p className="break-words min-w-1/4">For {detailsData?.company_name}</p>
                             </div>
                         </div>
 

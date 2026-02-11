@@ -51,7 +51,7 @@ function filterUniqueQuotationNumbers(data: PoMasterSheet[]): string[] {
   const result: string[] = [];
   for (const row of data) {
     // Convert to string first, then trim
-    const q = row.quotationNumber ? String(row.quotationNumber).trim() : '';
+    const q = row.quotation_number ? String(row.quotation_number).trim() : ''; // Updated to quotation_number
     if (q && !seen.has(q)) {
       seen.add(q);
       result.push(q);
@@ -69,7 +69,7 @@ function generateNextQuotationNumber(existingNumbers: string[]): string {
       return match ? parseInt(match[1]) : 0;
     })
     .filter(num => num > 0);
-  
+
   const maxNumber = numbers.length > 0 ? Math.max(...numbers) : 0;
   return `QT-${String(maxNumber + 1).padStart(3, '0')}`;
 }
@@ -90,13 +90,13 @@ type QuotationForm = z.infer<typeof quotationSchema>;
 
 
 // Simple Badge component as replacement
-const Badge = ({ children, variant, className, onClick }: { 
-  children: React.ReactNode; 
-  variant?: string; 
+const Badge = ({ children, variant, className, onClick }: {
+  children: React.ReactNode;
+  variant?: string;
   className?: string;
   onClick?: () => void;
 }) => (
-  <span 
+  <span
     className={cn(
       "inline-flex items-center px-2 py-1 rounded-full text-sm font-medium bg-gray-100 text-gray-800 border",
       className
@@ -139,12 +139,12 @@ export default function QuotationPage() {
       try {
         const quotationHistory = await fetchSheet('QUOTATION HISTORY');
         console.log('Fetched QUOTATION HISTORY:', quotationHistory);
-        
+
         if (Array.isArray(quotationHistory)) {
           const quotationNos = quotationHistory
             .map((row: any) => row.quatationNo || row.quotationNo || '')
             .filter((no: string) => no && no.trim() !== '');
-          
+
           setLatestQuotationNumbers(quotationNos);
           console.log('Latest quotation numbers:', quotationNos);
         }
@@ -162,24 +162,24 @@ export default function QuotationPage() {
     function hasVendors(data: any): data is { vendors: any[] } {
       return data && typeof data === 'object' && 'vendors' in data;
     }
-    
+
     const fetchMasterSuppliers = async () => {
       try {
         console.log('Fetching MASTER sheet data...');
-        
+
         const masterData = await fetchSheet('MASTER');
-        
+
         console.log('MASTER sheet raw data:', masterData);
-        
+
         // Use type guard to safely access vendors
         let vendorsArray: any[] = [];
-        
+
         if (hasVendors(masterData)) {
           vendorsArray = masterData.vendors || [];
         } else if (Array.isArray(masterData)) {
           vendorsArray = masterData;
         }
-        
+
         const suppliers: MasterSheetSupplier[] = vendorsArray
           .map((vendor: any) => ({
             supplierName: vendor.vendorName || vendor.supplierName || '',
@@ -191,10 +191,10 @@ export default function QuotationPage() {
             const name = supplier.supplierName;
             return name && typeof name === 'string' && name.trim() !== '';
           });
-        
+
         console.log('Processed suppliers:', suppliers);
         setMasterSuppliers(suppliers);
-        
+
         if (suppliers.length === 0) {
           console.warn('No suppliers found in MASTER sheet');
           toast.warning('No suppliers found in MASTER sheet');
@@ -202,7 +202,7 @@ export default function QuotationPage() {
           console.log(`Successfully loaded ${suppliers.length} suppliers from MASTER sheet`);
           toast.success(`Loaded ${suppliers.length} suppliers`);
         }
-        
+
       } catch (error) {
         console.error('Error fetching MASTER sheet suppliers:', error);
         toast.error('Failed to load suppliers from MASTER sheet');
@@ -216,14 +216,14 @@ export default function QuotationPage() {
   // Filter eligible items - planned2 NOT NULL and actual2 NULL
   const eligibleItems = useMemo(() => {
     console.log('Total indentSheet items:', indentSheet.length);
-    
+
     const filtered = indentSheet.filter(item => {
       const planned2NotNull = item.planned2 !== null && item.planned2 !== undefined && item.planned2 !== '';
       const actual2IsNull = item.actual2 === null || item.actual2 === undefined || item.actual2 === '';
-      
+
       return planned2NotNull && actual2IsNull;
     }).reverse();
-    
+
     console.log('Filtered eligible items:', filtered.length);
     return filtered;
   }, [indentSheet]);
@@ -264,12 +264,12 @@ export default function QuotationPage() {
   // Handle multiple supplier selection from MASTER sheet
   const handleSupplierSelect = (supplierName: string) => {
     setSelectedSuppliers(prev => {
-      const newSuppliers = prev.includes(supplierName) 
+      const newSuppliers = prev.includes(supplierName)
         ? prev.filter(s => s !== supplierName)
         : [...prev, supplierName];
-      
+
       form.setValue('suppliers', newSuppliers);
-      
+
       // Fetch supplier info from MASTER sheet data
       const infos = newSuppliers.map(name => {
         const masterSupplier = masterSuppliers.find(s => s.supplierName === name);
@@ -281,9 +281,9 @@ export default function QuotationPage() {
         };
       });
       setSupplierInfos(infos);
-      
+
       console.log('Selected suppliers info:', infos);
-      
+
       return newSuppliers;
     });
   };
@@ -337,7 +337,7 @@ export default function QuotationPage() {
         return;
       }
 
-      const selectedItemsData = eligibleItems.filter(item => 
+      const selectedItemsData = eligibleItems.filter(item =>
         selectedItems.includes(item.indentNumber)
       );
 
@@ -363,7 +363,7 @@ export default function QuotationPage() {
 
       for (let i = 0; i < supplierInfos.length; i++) {
         const supplierInfo = supplierInfos[i];
-        
+
         // Generate unique quotation number for each supplier
         currentMaxNumber += 1;
         const uniqueQuotationNumber = `QT-${String(currentMaxNumber).padStart(3, '0')}`;
@@ -412,7 +412,7 @@ export default function QuotationPage() {
           toast.error(`Email not found for ${supplierInfo.name}!`);
           continue;
         }
-        
+
         const pdfUrl = await uploadFile(
           file,
           import.meta.env.VITE_PURCHASE_ORDERS_FOLDER,
@@ -441,15 +441,15 @@ export default function QuotationPage() {
       console.log('Submitting to QUOTATION HISTORY:', allQuotationRows);
       console.log('Total rows:', allQuotationRows.length);
       console.log('First row:', allQuotationRows[0]);
-      
+
       await postToSheet(allQuotationRows, 'insert', 'QUOTATION HISTORY');
-      
+
       toast.success(`Successfully created ${selectedSuppliers.length} unique quotation(s) for ${selectedSuppliers.length} supplier(s)`);
       form.reset();
       setSelectedItems([]);
       setSelectedSuppliers([]);
       setSupplierInfos([]);
-      
+
       setTimeout(() => {
         updatePoMasterSheet();
         updateIndentSheet();
@@ -545,7 +545,7 @@ export default function QuotationPage() {
                                   )}
                                 </SelectContent>
                               </Select>
-                              
+
                               {/* Selected suppliers badges */}
                               {selectedSuppliers.length > 0 && (
                                 <div className="flex flex-wrap gap-2 mt-2">
@@ -755,7 +755,7 @@ export default function QuotationPage() {
                               <TableCell>
                                 <Checkbox
                                   checked={selectedItems.includes(item.indentNumber)}
-                                  onCheckedChange={(checked) => 
+                                  onCheckedChange={(checked) =>
                                     handleItemSelection(item.indentNumber, checked as boolean)
                                   }
                                 />

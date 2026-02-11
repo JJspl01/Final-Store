@@ -4,6 +4,7 @@ import { Package2, Trash2 } from 'lucide-react';
 import Heading from '../element/Heading';
 import { useSheets } from '@/context/SheetsContext';
 import { useEffect, useState } from 'react';
+import { supabase } from '@/lib/supabaseClient';
 import type { ColumnDef } from '@tanstack/react-table';
 import { formatDate } from '@/lib/utils';
 import DataTable from '../element/DataTable';
@@ -19,50 +20,70 @@ interface HistoryData {
     totalAmount: number;
     status: 'Revised' | 'Not Recieved' | 'Recieved';
     indentNumber: string;
-    rowIndex: number;
+
+    id: number;
 }
 
 
 export default () => {
-    const { poMasterLoading, poMasterSheet, indentSheet, receivedSheet } = useSheets();
+    // Use context only for status calculation (indent vs received)
+    const { indentSheet, receivedSheet } = useSheets();
+    const [poMasterLoading, setPoMasterLoading] = useState(true);
 
 
     const [historyData, setHistoryData] = useState<HistoryData[]>([]);
 
 
- // Fetching table data
-useEffect(() => {
-    setHistoryData(
-        poMasterSheet
-            .map((sheet, index) => ({
-                approvedBy: sheet.approvedBy,
-                poCopy: sheet.pdf,
-                poNumber: sheet.poNumber,
-                preparedBy: sheet.preparedBy,
-                totalAmount: sheet.totalPoAmount,
-                vendorName: sheet.partyName,
-                indentNumber: sheet.internalCode || '',
-                rowIndex: (sheet as any).rowIndex || index + 2, // Fallback to index + 2 (accounting for header row)
-                status: (indentSheet.map((s) => s.poNumber).includes(sheet.poNumber)
-                    ? receivedSheet.map((r) => r.poNumber).includes(sheet.poNumber)
-                        ? 'Recieved'
-                        : 'Not Recieved'
-                    : 'Revised') as 'Revised' | 'Not Recieved' | 'Recieved',
-            }))
-            .reverse()
-    );
-}, [poMasterSheet, indentSheet, receivedSheet]);
+    // Fetching table data directly from Supabase to ensure snake_case fields match
+    useEffect(() => {
+        const fetchPOMaster = async () => {
+            setPoMasterLoading(true);
+            try {
+                const { data, error } = await supabase
+                    .from('po_master')
+                    .select('*')
+                    .order('timestamp', { ascending: false });
+
+                if (error) throw error;
+
+                if (data) {
+                    setHistoryData(
+                        data
+                            // Filter out any invalid items, if necessary
+                            .filter(sheet => sheet.po_number || sheet.party_name)
+                            .map((sheet, index) => ({
+                                approvedBy: sheet.approved_by || '',
+                                poCopy: sheet.pdf_url || sheet.pdf_link || '', // Check both possible column names
+                                poNumber: sheet.po_number || '',
+                                preparedBy: sheet.prepared_by || '',
+                                totalAmount: Number(sheet.total_po_amount) || 0,
+                                vendorName: sheet.party_name || '',
+                                indentNumber: sheet.internal_code || '',
+                                id: sheet.id || 0,
+                                status: (indentSheet.map((s) => s.poNumber).includes(sheet.po_number || '')
+                                    ? receivedSheet.map((r) => r.poNumber).includes(sheet.po_number || '')
+                                        ? 'Recieved'
+                                        : 'Not Recieved'
+                                    : 'Revised') as 'Revised' | 'Not Recieved' | 'Recieved',
+                            }))
+                    );
+                }
+            } catch (error) {
+                console.error('Error fetching PO history:', error);
+            } finally {
+                setPoMasterLoading(false);
+            }
+        };
+
+        fetchPOMaster();
+    }, [indentSheet, receivedSheet]);
 
 
     // Delete handler function using Apps Script
-    const handleDelete = async (indentNumber: string, rowIndex: number) => {
-        if (!indentNumber) {
-            alert('Indent Number not found');
-            return;
-        }
-
-        if (!rowIndex) {
-            alert('Row index not found');
+    // Delete handler function using Supabase
+    const handleDelete = async (indentNumber: string, id: number) => {
+        if (!id) {
+            alert('Row ID not found');
             return;
         }
 
@@ -73,50 +94,27 @@ useEffect(() => {
         if (!confirmDelete) return;
 
         try {
-            // FIXED: Use environment variable or fallback to sessionStorage
-            const scriptUrl = import.meta.env.VITE_APP_SCRIPT_URL || sessionStorage.getItem('googleScriptUrl');
-            
-            if (!scriptUrl) {
-                alert('Google Script URL not found');
-                console.error('VITE_APP_SCRIPT_URL not set in .env file');
+            console.log('Deleting row with ID:', id);
+
+            const { error } = await supabase
+                .from('po_master')
+                .delete()
+                .eq('id', id);
+
+            if (error) {
+                console.error('Delete error:', error);
+                alert('Failed to delete row: ' + error.message);
                 return;
             }
 
-            console.log('Deleting row:', { indentNumber, rowIndex });
-            
-            // Prepare the delete request
-            const params = new URLSearchParams();
-            params.append('action', 'delete');
-            params.append('sheetName', 'PO MASTER'); // Make sure this matches your actual sheet name
-            params.append('rows', JSON.stringify([{ rowIndex: rowIndex }]));
-
-            console.log('Request URL:', scriptUrl);
-            console.log('Request params:', params.toString());
-
-            const response = await fetch(scriptUrl, {
-                method: 'POST',
-                body: params,
-                redirect: 'follow',
-            });
-
-            console.log('Response status:', response.status);
-            
-            const result = await response.json();
-            console.log('Response result:', result);
-
-            if (result.success) {
-                alert('Row deleted successfully');
-                // Update local state to remove the deleted row
-                setHistoryData((prev) =>
-                    prev.filter((item) => item.indentNumber !== indentNumber)
-                );
-            } else {
-                console.error('Delete error:', result.error);
-                alert('Failed to delete row: ' + (result.error || 'Unknown error'));
-            }
+            alert('Row deleted successfully');
+            // Update local state to remove the deleted row
+            setHistoryData((prev) =>
+                prev.filter((item) => item.id !== id)
+            );
         } catch (error) {
             console.error('Delete error:', error);
-            alert('Error deleting row: ' + error.message);
+            alert('Error deleting row: ' + (error as any).message);
         }
     };
 
@@ -149,8 +147,8 @@ useEffect(() => {
                 return <>&#8377;{row.original.totalAmount}</>;
             },
         },
-        { 
-            accessorKey: 'status', 
+        {
+            accessorKey: 'status',
             header: 'Status',
             cell: ({ row }) => {
                 const variant = row.original.status === "Not Recieved" ? "secondary" : row.original.status === "Recieved" ? "primary" : "default"
@@ -162,8 +160,8 @@ useEffect(() => {
             header: 'Actions',
             cell: ({ row }) => {
                 return (
-                    <button 
-                        onClick={() => handleDelete(row.original.indentNumber, row.original.rowIndex)}
+                    <button
+                        onClick={() => handleDelete(row.original.indentNumber, row.original.id)}
                         className="text-red-500 hover:text-red-700 transition-colors disabled:opacity-50"
                         title="Delete row"
                     >

@@ -1,9 +1,10 @@
 import { ListTodo } from 'lucide-react';
 import Heading from '../element/Heading';
-import { useSheets } from '@/context/SheetsContext';
+
 import { useEffect, useState } from 'react';
 import type { ColumnDef } from '@tanstack/react-table';
 import { formatDate } from '@/lib/utils';
+import { supabase } from '@/lib/supabaseClient';
 import DataTable from '../element/DataTable';
 
 interface PendingIndentsData {
@@ -62,78 +63,69 @@ const parseGSTPercent = (value: any): number => {
 };
 
 export default () => {
-    const { poMasterSheet, poMasterLoading } = useSheets();
 
+    const [loading, setLoading] = useState(true);
     const [tableData, setTableData] = useState<PendingIndentsData[]>([]);
 
-    // DEBUG: Log the sheet data to see structure
     useEffect(() => {
-        if (poMasterSheet && poMasterSheet.length > 0) {
-            console.log('DEBUG: First row of poMasterSheet:', poMasterSheet[0]);
-            console.log('DEBUG: All keys in first row:', Object.keys(poMasterSheet[0]));
+        const fetchPOMaster = async () => {
+            try {
+                setLoading(true);
+                const { data, error } = await supabase
+                    .from('po_master')
+                    .select('*')
+                    .order('timestamp', { ascending: true }); // Fetch in chronological order to match sheet behavior
 
-            // Check for different possible GST property names
-            const firstRow = poMasterSheet[0];
-            console.log('DEBUG: GST related properties:');
-            Object.keys(firstRow).forEach(key => {
-                if (key.toLowerCase().includes('gst')) {
-                    // console.log(`  ${key}: ${firstRow[key]}`);
+                if (error) throw error;
+
+                if (data) {
+                    setTableData(
+                        data
+                            // Filter for pending POs - adjust this condition based on your pending criteria
+                            .filter(() => {
+                                // Example: You can add filtering logic here if needed
+                                // For now, showing all records
+                                return true;
+                            })
+                            .map((sheet) => {
+                                // Try different possible property names for GST
+                                let gstValue = sheet.gst_percent || 0; // Updated to gst_percent
+
+                                return {
+                                    timestamp: sheet.timestamp ? formatDate(new Date(sheet.timestamp)) : '',
+                                    partyName: sheet.party_name || '',
+                                    poNumber: sheet.po_number || '',
+                                    quotationNumber: sheet.quotation_number || '', // Database uses quotation_number
+                                    quotationDate: sheet.quotation_date ? formatDate(new Date(sheet.quotation_date)) : '',
+                                    enquiryNumber: sheet.enquiry_number || '',
+                                    enquiryDate: sheet.enquiry_date ? formatDate(new Date(sheet.enquiry_date)) : '',
+                                    internalCode: sheet.internal_code || '',
+                                    product: sheet.product || '',
+                                    description: sheet.description || '',
+                                    quantity: Number(sheet.quantity) || 0,
+                                    unit: sheet.unit || '',
+                                    rate: Number(sheet.rate) || 0,
+                                    gstPercent: parseGSTPercent(gstValue),
+                                    discountPercent: Number(sheet.discount_percent) || 0,
+                                    amount: Number(sheet.amount) || 0,
+                                    totalPoAmount: Number(sheet.total_po_amount) || 0,
+                                    preparedBy: sheet.prepared_by || '',
+                                    approvedBy: sheet.approved_by || '',
+                                    pdf: sheet.pdf_link || sheet.pdf_url || '', // Database likely uses pdf_link based on previous files, checking both
+                                };
+                            })
+                            .reverse()
+                    );
                 }
-            });
-        }
-    }, [poMasterSheet]);
+            } catch (error) {
+                console.error('Error fetching PO master:', error);
+            } finally {
+                setLoading(false);
+            }
+        };
 
-    // Fetching table data from PO MASTER sheet (Sheet ID: 10y1LM5kG9blQgML5W5K0E9sb7p8AKmFdCtbWyGL8QLM)
-    useEffect(() => {
-        if (poMasterSheet && poMasterSheet.length > 0) {
-            setTableData(
-                poMasterSheet
-                    // Filter for pending POs - adjust this condition based on your pending criteria
-                    .filter(() => {
-                        // Example: You can add filtering logic here if needed
-                        // For now, showing all records
-                        return true;
-                    })
-                    .map((sheet) => {
-                        // Try different possible property names for GST
-                        let gstValue = sheet.gstPercent ||
-                            // sheet['GST%'] ||
-                            // sheet['GST %'] ||
-                            sheet.gst ||
-                            // sheet.GST ||
-                            // sheet['gst%'] ||
-                            // sheet['gst %'] ||
-                            0;
-
-                        console.log('DEBUG: GST value for this row:', gstValue, 'from sheet object:', sheet);
-
-                        return {
-                            timestamp: sheet.timestamp ? formatDate(new Date(sheet.timestamp)) : '',
-                            partyName: sheet.partyName || '',
-                            poNumber: sheet.poNumber || '',
-                            quotationNumber: sheet.quotationNumber || '',
-                            quotationDate: sheet.quotationDate ? formatDate(new Date(sheet.quotationDate)) : '',
-                            enquiryNumber: sheet.enquiryNumber || '',
-                            enquiryDate: sheet.enquiryDate ? formatDate(new Date(sheet.enquiryDate)) : '',
-                            internalCode: sheet.internalCode || '',
-                            product: sheet.product || '',
-                            description: sheet.description || '',
-                            quantity: Number(sheet.quantity) || 0,
-                            unit: sheet.unit || '',
-                            rate: Number(sheet.rate) || 0,
-                            gstPercent: parseGSTPercent(gstValue), // Using the found GST value
-                            discountPercent: Number(sheet.discountPercent) || 0,
-                            amount: Number(sheet.amount) || 0,
-                            totalPoAmount: Number(sheet.totalPoAmount) || 0,
-                            preparedBy: sheet.preparedBy || '',
-                            approvedBy: sheet.approvedBy || '',
-                            pdf: sheet.pdf || '',
-                        };
-                    })
-                    .reverse()
-            );
-        }
-    }, [poMasterSheet]);
+        fetchPOMaster();
+    }, []);
 
     // Creating table columns based on PO MASTER sheet structure (Columns A-T)
     const columns: ColumnDef<PendingIndentsData>[] = [
@@ -224,7 +216,7 @@ export default () => {
                     'preparedBy',
                     'approvedBy'
                 ]}
-                dataLoading={poMasterLoading}
+                dataLoading={loading}
                 className="h-[80dvh]"
             />
         </div>
