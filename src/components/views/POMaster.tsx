@@ -6,6 +6,7 @@ import type { ColumnDef } from '@tanstack/react-table';
 import { formatDate } from '@/lib/utils';
 import { supabase } from '@/lib/supabaseClient';
 import DataTable from '../element/DataTable';
+import { fetchFromSupabasePaginated } from '@/lib/fetchers';
 
 interface PendingIndentsData {
     timestamp: string;
@@ -71,12 +72,11 @@ export default () => {
         const fetchPOMaster = async () => {
             try {
                 setLoading(true);
-                const { data, error } = await supabase
-                    .from('po_master')
-                    .select('*')
-                    .order('timestamp', { ascending: true }); // Fetch in chronological order to match sheet behavior
-
-                if (error) throw error;
+                const data = await fetchFromSupabasePaginated(
+                    'po_master',
+                    '*',
+                    { column: 'timestamp', options: { ascending: true } }
+                );
 
                 if (data) {
                     setTableData(

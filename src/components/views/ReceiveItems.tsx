@@ -8,7 +8,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { DownloadOutlined } from "@ant-design/icons";
 import * as XLSX from 'xlsx';
 import { supabase } from '@/lib/supabaseClient';
-import { uploadFile } from '@/lib/fetchers';
+import { uploadFile, fetchFromSupabasePaginated } from '@/lib/fetchers';
 import {
     Dialog,
     DialogContent,
@@ -30,6 +30,7 @@ import { Tabs, TabsContent } from '../ui/tabs';
 import { useAuth } from '@/context/AuthContext';
 import Heading from '../element/Heading';
 import { formatDate } from '@/lib/utils';
+import { useSheets } from '@/context/SheetsContext';
 import { Pill } from '../ui/pill';
 
 interface RecieveItemsData {
@@ -73,6 +74,7 @@ const ReceiveItems = () => {
     const [localIndentLoading, setLocalIndentLoading] = useState(false);
     const [localReceivedLoading, setLocalReceivedLoading] = useState(false);
     const { user } = useAuth();
+    const { updateIndentSheet, updateReceivedSheet } = useSheets();
 
     const [tableData, setTableData] = useState<RecieveItemsData[]>([]);
     const [historyData, setHistoryData] = useState<HistoryData[]>([]);
@@ -85,38 +87,20 @@ const ReceiveItems = () => {
         const fetchPendingItems = async () => {
             setLocalIndentLoading(true);
 
-            // Fetch indents (Stage 4 passed means PO created)
-            const { data: indentData, error: indentError } = await supabase
-                .from('indent')
-                .select(`
-                    indent_number,
-                    po_number,
-                    uom,
-                    po_copy,
-                    approved_vendor_name,
-                    approved_quantity,
-                    actual_4,
-                    product_name
-                `)
-                .not('actual_4', 'is', null); // PO Created
+            // Fetch indents with pagination (Stage 4 passed means PO created)
+            const indentData = await fetchFromSupabasePaginated(
+                'indent',
+                'indent_number, po_number, uom, po_copy, approved_vendor_name, approved_quantity, actual_4, product_name',
+                { column: 'actual_4', options: { ascending: false } },
+                (q) => q.not('actual_4', 'is', null)
+            );
 
-            if (indentError) {
-                console.error('Error fetching pending items from Supabase:', indentError);
-                toast.error('Failed to fetch pending items');
-                setLocalIndentLoading(false);
-                return;
-            }
-
-            // Fetch all received records to calculate totals
-            const { data: receivedData, error: receivedError } = await supabase
-                .from('received')
-                .select('indent_number, received_quantity');
-
-            if (receivedError) {
-                console.error('Error fetching received data:', receivedError);
-                setLocalIndentLoading(false);
-                return;
-            }
+            // Fetch all received records with pagination to calculate totals
+            const receivedData = await fetchFromSupabasePaginated(
+                'received',
+                'indent_number, received_quantity',
+                { column: 'timestamp', options: { ascending: false } }
+            );
 
             const mappedData = indentData.map((item: any) => {
                 const totalReceived = receivedData
@@ -151,40 +135,20 @@ const ReceiveItems = () => {
         const fetchHistoryItems = async () => {
             setLocalReceivedLoading(true);
 
-            // Fetch indents
-            const { data: indentData, error: indentError } = await supabase
-                .from('indent')
-                .select(`
-                    indent_number,
-                    po_number,
-                    actual_4,
-                    approved_vendor_name,
-                    product_name,
-                    approved_quantity,
-                    uom,
-                    planned_5,
-                    actual_5
-                `)
-                .not('actual_4', 'is', null);
+            // Fetch indents with pagination
+            const indentData = await fetchFromSupabasePaginated(
+                'indent',
+                'indent_number, po_number, actual_4, approved_vendor_name, product_name, approved_quantity, uom, planned_5, actual_5',
+                { column: 'actual_4', options: { ascending: false } },
+                (q) => q.not('actual_4', 'is', null)
+            );
 
-            if (indentError) {
-                console.error('Error fetching indent history from Supabase:', indentError);
-                toast.error('Failed to fetch history items');
-                setLocalReceivedLoading(false);
-                return;
-            }
-
-            // Fetch received items
-            const { data: receivedData, error: receivedError } = await supabase
-                .from('received')
-                .select('*');
-
-            if (receivedError) {
-                console.error('Error fetching received items from Supabase:', receivedError);
-                toast.error('Failed to fetch received items');
-                setLocalReceivedLoading(false);
-                return;
-            }
+            // Fetch received items with pagination
+            const receivedData = await fetchFromSupabasePaginated(
+                'received',
+                '*',
+                { column: 'timestamp', options: { ascending: false } }
+            );
 
             // Map the combined data
             const mappedData = receivedData.map((receivedRecord: any) => {
@@ -512,6 +476,8 @@ const ReceiveItems = () => {
             }
 
             toast.success(`Items received for PO ${selectedIndent?.poNumber}`);
+            updateIndentSheet(); // Update context for sidebar
+            updateReceivedSheet(); // Update context for history
             setOpenDialog(false);
 
             // Refresh the data after successful submission

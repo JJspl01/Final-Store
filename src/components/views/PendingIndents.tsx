@@ -6,6 +6,8 @@ import { formatDate } from '@/lib/utils';
 import DataTable from '../element/DataTable';
 import { supabase } from '@/lib/supabaseClient';
 
+import { fetchFromSupabasePaginated } from '@/lib/fetchers';
+
 interface PendingIndentsData {
     date: string;
     indentNo: string;
@@ -27,14 +29,12 @@ export default () => {
         const fetchData = async () => {
             setDataLoading(true);
             try {
-                const { data, error } = await supabase
-                    .from('indent')
-                    .select('*')
-                    .not('planned_4', 'is', null)
-                    .is('actual_4', null)
-                    .order('created_at', { ascending: false });
-
-                if (error) throw error;
+                const data = await fetchFromSupabasePaginated(
+                    'indent',
+                    '*',
+                    { column: 'created_at', options: { ascending: false } },
+                    (q) => q.not('planned_4', 'is', null).is('actual_4', null)
+                );
 
                 if (data) {
                     const tableData = data.map((record: any) => ({

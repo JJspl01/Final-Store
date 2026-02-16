@@ -9,8 +9,9 @@ import { useFieldArray, useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { Form, FormControl, FormField, FormItem, FormLabel } from '../ui/form';
 import type { PoMasterSheet } from '@/types';
-import { postToSheet, uploadFile, fetchSheet } from '@/lib/fetchers';
+import { postToSheet, uploadFile, fetchSheet, fetchVendors, fetchFromSupabasePaginated } from '@/lib/fetchers';
 import { useEffect, useState } from 'react';
+import { useSheets } from '@/context/SheetsContext';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select';
 import { supabase } from '@/lib/supabaseClient';
 import {
@@ -93,6 +94,7 @@ function filterUniquePoNumbers(data: any[]): any[] {
 }
 
 export default () => {
+    const { updateIndentSheet, updatePoMasterSheet } = useSheets();
     const [indentSheetData, setIndentSheetData] = useState<any[]>([]);
     const [poMasterSheetData, setPoMasterSheetData] = useState<any[]>([]);
     const [detailsData, setDetailsData] = useState<any>(null);
@@ -115,37 +117,37 @@ export default () => {
         const fetchData = async () => {
             setLoading(true);
             try {
-                // Fetch pending indents (Stage 4: Pending POs) directly from Supabase
-                // We need snake_case data for this component, and Stage 4 specifically
-                const { data: indentData, error: indentError } = await supabase
-                    .from('indent')
-                    .select('*')
-                    .not('planned_4', 'is', null)
-                    .is('actual_4', null);
+                // Fetch pending indents (Stage 4: Pending POs) with pagination
+                const indentData = await fetchFromSupabasePaginated(
+                    'indent',
+                    '*',
+                    { column: 'planned_4', options: { ascending: false } },
+                    (q) => q.not('planned_4', 'is', null).is('actual_4', null)
+                );
 
-                if (indentError) throw indentError;
-
-                // Fetch PO master data
-                const { data: poData, error: poError } = await supabase
-                    .from('po_master')
-                    .select('*');
-
-                if (poError) throw poError;
+                // Fetch PO master data with pagination
+                const poData = await fetchFromSupabasePaginated(
+                    'po_master',
+                    '*',
+                    { column: 'timestamp', options: { ascending: false } }
+                );
 
                 // Fetch master data using fetchSheet
                 const masterData = await fetchSheet('MASTER') as any;
 
-                // Fetch vendors from master_data table
-                const { data: vendorsFromDB, error: vendorsError } = await supabase
-                    .from('master_data')
-                    .select('*');
-
-                if (vendorsError) throw vendorsError;
+                // Fetch vendors from master_data table using organized fetcher
+                const vendorsRaw = await fetchVendors();
+                const vendorsMapped = vendorsRaw.map(v => ({
+                    vendor_name: v.vendorName,
+                    vendor_address: v.address,
+                    vendor_gstin: v.gstin,
+                    vendor_email: v.email
+                }));
 
                 setIndentSheetData(indentData || []);
                 setPoMasterSheetData(poData || []);
                 setDetailsData(masterData);
-                setVendorsData(vendorsFromDB || []); // Use vendors from master_data table
+                setVendorsData(vendorsMapped); // Use mapped vendors
             } catch (error: any) {
                 console.error('Error fetching data from Supabase:', error);
                 toast.error('Failed to fetch data: ' + error.message);
@@ -280,7 +282,7 @@ export default () => {
             );
 
             // Find vendor from master_data table
-            const selectedVendor = vendorsData.find((v: any) => v.vendor_name === vendor);
+            const selectedVendor = vendorsData.find((v: any) => v.vendor_name?.trim().toLowerCase() === vendor?.trim().toLowerCase());
 
             form.setValue(
                 'supplierAddress',
@@ -304,7 +306,7 @@ export default () => {
     useEffect(() => {
         const po = poMasterSheetData.find((p: any) => p.po_number === poNumber)!;
         if (mode === 'revise' && po) {
-            const vendor = vendorsData.find((v: any) => v.vendor_name === po.party_name); // Use vendor_name from master_data
+            const vendor = vendorsData.find((v: any) => v.vendor_name?.trim().toLowerCase() === po.party_name?.trim().toLowerCase()); // Use vendor_name from master_data
             form.setValue('poDate', po.timestamp ? new Date(po.timestamp) : new Date());
             form.setValue('supplierName', po.party_name);
             form.setValue('supplierAddress', vendor?.vendor_address || ''); // Use vendor_address
@@ -457,7 +459,7 @@ export default () => {
             const file = new File([blob], `PO-${poNumber}.pdf`, {
                 type: 'application/pdf',
             });
-            const email = vendorsData.find((v: any) => v.vendorName === values.supplierName)?.email; // Updated vendorName from vendor_name
+            const email = vendorsData.find((v: any) => v.vendor_name?.trim().toLowerCase() === values.supplierName?.trim().toLowerCase())?.vendor_email; // Fixed logic to use correct column names and robust matching
 
             let url = '';
 
@@ -555,6 +557,8 @@ export default () => {
             }
 
             toast.success(`Successfully ${mode}d purchase order`);
+            updateIndentSheet(); // Update context for sidebars
+            updatePoMasterSheet(); // Update context for PO history
             form.reset();
 
             // Refresh data after submission
@@ -908,11 +912,11 @@ export default () => {
                                     </CardHeader>
                                     <CardContent className="p-5 text-sm">
                                         <p>
-                                            <span className="font-medium">GSTIN</span>{' '}
+                                            <span className="font-medium">GSTIN</span>{'21AACCJ1154B1ZG '}
                                             {detailsData?.company_gstin}
                                         </p>
                                         <p>
-                                            <span className="font-medium">Pan No.</span>{' '}
+                                            <span className="font-medium">Pan No.</span>{'AACCJ1154B'}
                                             {detailsData?.company_pan}
                                         </p>
                                     </CardContent>
@@ -924,7 +928,9 @@ export default () => {
                                         </CardTitle>
                                     </CardHeader>
                                     <CardContent className="p-5 text-sm">
-                                        <p>M/S {detailsData?.company_name}</p>
+                                        <p>M/S  Jay Jagannath Steel & Power Limited
+
+                                            N-2, CIVIL TOWNSHIP, ROURKELA-769004 DIST. SUNDARGARH (ODISHA){detailsData?.company_name}</p>
                                         <p>{detailsData?.billing_address}</p>
                                     </CardContent>
                                 </Card>
@@ -948,7 +954,7 @@ export default () => {
                                         </CardTitle>
                                     </CardHeader>
                                     <CardContent className="p-5 text-sm">
-                                        <p>M/S {detailsData?.company_name}</p>
+                                        <p>M/S Jay Jagannath Steel & Power Limited{detailsData?.company_name}</p>
                                         {isEditingDestination ? (
                                             <div className="flex items-center gap-2 mt-1">
                                                 <Input

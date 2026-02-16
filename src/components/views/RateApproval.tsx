@@ -16,13 +16,14 @@ import { Form, FormControl, FormField, FormItem, FormLabel } from '../ui/form';
 import { z } from 'zod';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { postToSheet } from '@/lib/fetchers';
+import { postToSheet, uploadFile, fetchFromSupabasePaginated } from '@/lib/fetchers';
 import { toast } from 'sonner';
 import { PuffLoader as Loader } from 'react-spinners';
 import { RadioGroup, RadioGroupItem } from '../ui/radio-group';
 import { Users } from 'lucide-react';
 import { Tabs, TabsContent } from '../ui/tabs';
 import { useAuth } from '@/context/AuthContext';
+import { useSheets } from '@/context/SheetsContext';
 import Heading from '../element/Heading';
 import { formatDate } from '@/lib/utils';
 import { Input } from '../ui/input';
@@ -48,6 +49,7 @@ interface HistoryData {
 
 export default () => {
     const { user } = useAuth();
+    const { updateIndentSheet } = useSheets();
 
     const [selectedIndent, setSelectedIndent] = useState<RateApprovalData | null>(null);
     const [selectedHistory, setSelectedHistory] = useState<HistoryData | null>(null);
@@ -61,16 +63,13 @@ export default () => {
         const fetchData = async () => {
             setDataLoading(true);
             try {
-                // Fetch pending data (planned_3 not null and actual_3 null with Three Party vendor type)
-                const { data: pendingData, error: pendingError } = await supabase
-                    .from('indent')
-                    .select('*')
-                    .not('planned_3', 'is', null)
-                    .is('actual_3', null)
-                    .eq('vendor_type', 'Three Party')
-                    .order('created_at', { ascending: false });
-
-                if (pendingError) throw pendingError;
+                // Fetch pending data with pagination
+                const pendingData = await fetchFromSupabasePaginated(
+                    'indent',
+                    '*',
+                    { column: 'created_at', options: { ascending: false } },
+                    (q) => q.not('planned_3', 'is', null).is('actual_3', null).eq('vendor_type', 'Three Party')
+                );
 
                 if (pendingData) {
                     const pendingTableData = pendingData.map((record: any) => ({
@@ -89,16 +88,13 @@ export default () => {
                     setTableData(pendingTableData);
                 }
 
-                // Fetch history data (planned_3 not null and actual_3 not null with Three Party vendor type)
-                const { data: historyDataResult, error: historyError } = await supabase
-                    .from('indent')
-                    .select('*')
-                    .not('planned_3', 'is', null)
-                    .not('actual_3', 'is', null)
-                    .eq('vendor_type', 'Three Party')
-                    .order('created_at', { ascending: false });
-
-                if (historyError) throw historyError;
+                // Fetch history data with pagination
+                const historyDataResult = await fetchFromSupabasePaginated(
+                    'indent',
+                    '*',
+                    { column: 'created_at', options: { ascending: false } },
+                    (q) => q.not('planned_3', 'is', null).not('actual_3', 'is', null).eq('vendor_type', 'Three Party')
+                );
 
                 if (historyDataResult) {
                     const historyTableData = historyDataResult.map((record: any) => ({
@@ -241,12 +237,14 @@ export default () => {
     // Creating approval form
     const schema = z.object({
         vendor: z.coerce.number(),
+        photoOfBill: z.instanceof(File).optional(),
     });
 
     const form = useForm({
         resolver: zodResolver(schema),
         defaultValues: {
             vendor: undefined,
+            photoOfBill: undefined,
         },
     });
 
@@ -263,6 +261,11 @@ export default () => {
 
     async function onSubmit(values: z.infer<typeof schema>) {
         try {
+            let photoUrl = '';
+            if (values.photoOfBill) {
+                photoUrl = await uploadFile(values.photoOfBill, 'bill_photo', 'supabase');
+            }
+
             const selectedVendor = selectedIndent?.vendors[values.vendor];
 
             const { error } = await supabase
@@ -272,25 +275,24 @@ export default () => {
                     approved_vendor_name: selectedVendor?.[0],
                     approved_rate: selectedVendor?.[1],
                     approved_payment_term: selectedVendor?.[2],
+                    photo_of_bill: photoUrl || undefined,
                 })
                 .eq('indent_number', selectedIndent?.indentNo);
 
             if (error) throw error;
 
             toast.success(`Approved vendor for ${selectedIndent?.indentNo}`);
+            updateIndentSheet(); // Update context to sync sidebar counts
             setOpenDialog(false);
             form.reset();
 
-            // Refresh the data after update
-            const { data: pendingData, error: pendingError } = await supabase
-                .from('indent')
-                .select('*')
-                .not('planned_3', 'is', null)
-                .is('actual_3', null)
-                .eq('vendor_type', 'Three Party')
-                .order('created_at', { ascending: false });
-
-            if (pendingError) throw pendingError;
+            // Refresh the data after update with pagination
+            const pendingData = await fetchFromSupabasePaginated(
+                'indent',
+                '*',
+                { column: 'created_at', options: { ascending: false } },
+                (q) => q.not('planned_3', 'is', null).is('actual_3', null).eq('vendor_type', 'Three Party')
+            );
 
             if (pendingData) {
                 const pendingTableData = pendingData.map((record: any) => ({
@@ -343,6 +345,7 @@ export default () => {
             if (error) throw error;
 
             toast.success(`Updated rate of ${selectedHistory?.indentNo}`);
+            updateIndentSheet(); // Update context to sync sidebar counts
             setOpenDialog(false);
             historyUpdateForm.reset({ rate: undefined });
 
@@ -485,6 +488,25 @@ export default () => {
                                                             )
                                                         )}
                                                     </RadioGroup>
+                                                </FormControl>
+                                            </FormItem>
+                                        )}
+                                    />
+                                    <FormField
+                                        control={form.control}
+                                        name="photoOfBill"
+                                        render={({ field }) => (
+                                            <FormItem>
+                                                <FormLabel>Upload Bill Photo (Optional)</FormLabel>
+                                                <FormControl>
+                                                    <Input
+                                                        type="file"
+                                                        accept="image/*,application/pdf"
+                                                        onChange={(e) => {
+                                                            const file = e.target.files?.[0];
+                                                            if (file) field.onChange(file);
+                                                        }}
+                                                    />
                                                 </FormControl>
                                             </FormItem>
                                         )}

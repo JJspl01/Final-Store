@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useSheets } from '@/context/SheetsContext';
 import {
     Dialog,
     DialogClose,
@@ -12,6 +13,7 @@ import {
 import type { ColumnDef, Row } from '@tanstack/react-table';
 import { Button } from '../ui/button';
 import DataTable from '../element/DataTable';
+import { fetchFromSupabasePaginated } from '@/lib/fetchers';
 import { z } from 'zod';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -59,6 +61,7 @@ interface HistoryData {
 
 export default () => {
     const { user } = useAuth();
+    const { updateIndentSheet } = useSheets();
     const [openDialog, setOpenDialog] = useState(false);
     const [tableData, setTableData] = useState<StoreOutTableData[]>([]);
     const [historyData, setHistoryData] = useState<HistoryData[]>([]);
@@ -107,13 +110,13 @@ export default () => {
     const fetchData = async () => {
         setDataLoading(true);
         try {
-            const { data: allData, error } = await supabase
-                .from('indent')
-                .select('*')
-                .eq('indent_type', 'Store Out')
-                .order('timestamp', { ascending: false });
-
-            if (error) throw error;
+            // Fetch all Store Out indents with pagination
+            const allData = await fetchFromSupabasePaginated(
+                'indent',
+                '*',
+                { column: 'timestamp', options: { ascending: false } },
+                (q) => q.eq('indent_type', 'Store Out')
+            );
 
             if (allData) {
                 // Pending: planned_6 not null and actual_6 null
@@ -253,6 +256,7 @@ export default () => {
                                             toast.success(
                                                 `Marked ${indent.indentNo} as Done`
                                             );
+                                            updateIndentSheet(); // Update context for sidebars
                                             setTimeout(() => fetchData(), 500);
                                         } catch (error) {
                                             console.error('Update error:', error);
@@ -475,6 +479,7 @@ export default () => {
             if (error) throw error;
 
             toast.success(`Updated store out approval status of ${selectedIndent?.indentNo}`);
+            updateIndentSheet(); // Update context for sidebars
             setOpenDialog(false);
             form.reset();
             setTimeout(() => fetchData(), 500);

@@ -12,6 +12,7 @@ import { formatDate } from '@/lib/utils';
 import { useAuth } from '@/context/AuthContext';
 import Heading from '../element/Heading';
 import { supabase } from '@/lib/supabaseClient';
+import { fetchFromSupabasePaginated } from '@/lib/fetchers';
 
 interface AllIndentTableData {
     id: string;
@@ -48,14 +49,11 @@ export default () => {
         const fetchIndents = async () => {
             setIndentLoading(true);
             try {
-                const { data, error } = await supabase
-                    .from('indent')
-                    .select('*')
-                    .order('created_at', { ascending: false });
-
-                if (error) {
-                    throw error;
-                }
+                const data = await fetchFromSupabasePaginated(
+                    'indent',
+                    '*',
+                    { column: 'created_at', options: { ascending: false } }
+                );
 
                 if (data) {
                     const transformedData = data.map((record: any) => ({
@@ -210,15 +208,12 @@ export default () => {
 
             toast.success(`Updated ${updatesToProcess.length} indents successfully`);
 
-            // Refresh the data after updates
-            const { data, error } = await supabase
-                .from('indent')
-                .select('*')
-                .order('created_at', { ascending: false });
-
-            if (error) {
-                throw error;
-            }
+            // Refresh the data after updates with pagination
+            const data = await fetchFromSupabasePaginated(
+                'indent',
+                '*',
+                { column: 'created_at', options: { ascending: false } }
+            );
 
             if (data) {
                 const transformedData = data.map((record: any) => ({
@@ -309,7 +304,7 @@ export default () => {
                 const indent = row.original;
                 const isSelected = selectedRows.has(indent.id);
                 const currentValue = bulkUpdates.get(indent.id)?.indenterName || indent.indenterName;
-                
+
                 return (
                     <Input
                         value={currentValue}
@@ -322,26 +317,7 @@ export default () => {
             },
             size: 140,
         },
-        {
-            accessorKey: 'indentApproveBy',
-            header: 'Approved By',
-            cell: ({ row }) => {
-                const indent = row.original;
-                const isSelected = selectedRows.has(indent.id);
-                const currentValue = bulkUpdates.get(indent.id)?.indentApproveBy || indent.indentApproveBy;
-                
-                return (
-                    <Input
-                        value={currentValue}
-                        onChange={(e) => handleBulkUpdate(indent.id, 'indentApproveBy', e.target.value)}
-                        disabled={!isSelected}
-                        className={`w-32 text-xs sm:text-sm ${!isSelected ? 'opacity-50' : ''}`}
-                        placeholder="Approved by"
-                    />
-                );
-            },
-            size: 140,
-        },
+
         {
             accessorKey: 'indentType',
             header: 'Indent Type',
@@ -349,7 +325,7 @@ export default () => {
                 const indent = row.original;
                 const isSelected = selectedRows.has(indent.id);
                 const currentValue = bulkUpdates.get(indent.id)?.indentType || indent.indentType;
-                
+
                 return (
                     <Select
                         value={currentValue}
@@ -435,7 +411,7 @@ export default () => {
                 const indent = row.original;
                 const isSelected = selectedRows.has(indent.id);
                 const currentValue = bulkUpdates.get(indent.id)?.quantity || indent.quantity;
-                
+
                 return (
                     <Input
                         type="number"
@@ -457,7 +433,7 @@ export default () => {
                 const indent = row.original;
                 const isSelected = selectedRows.has(indent.id);
                 const currentValue = bulkUpdates.get(indent.id)?.uom || indent.uom;
-                
+
                 return (
                     <Input
                         value={currentValue}
@@ -477,7 +453,7 @@ export default () => {
                 const indent = row.original;
                 const isSelected = selectedRows.has(indent.id);
                 const currentValue = bulkUpdates.get(indent.id)?.areaOfUse || indent.areaOfUse;
-                
+
                 return (
                     <Input
                         value={currentValue}
@@ -497,7 +473,7 @@ export default () => {
                 const indent = row.original;
                 const isSelected = selectedRows.has(indent.id);
                 const currentValue = bulkUpdates.get(indent.id)?.specifications || indent.specifications;
-                
+
                 return (
                     <Textarea
                         value={currentValue}
@@ -516,9 +492,9 @@ export default () => {
             cell: ({ row }) => {
                 const attachment = row.original.attachment;
                 return attachment ? (
-                    <a 
-                        href={attachment} 
-                        target="_blank" 
+                    <a
+                        href={attachment}
+                        target="_blank"
                         rel="noopener noreferrer"
                         className="text-blue-600 hover:text-blue-800 text-xs sm:text-sm underline"
                     >
@@ -530,19 +506,19 @@ export default () => {
             },
             size: 80,
         },
-{
-    accessorKey: 'vendorType',
-    header: 'Vendor Type',
-    cell: ({ getValue }) => {
-        const value = getValue() as string;
-        return (
-            <div className={`text-xs sm:text-sm ${!value || value === '' ? 'text-gray-400' : 'font-medium'}`}>
-                {value || '-'}
-            </div>
-        );
-    },
-    size: 120,
-},
+        {
+            accessorKey: 'vendorType',
+            header: 'Vendor Type',
+            cell: ({ getValue }) => {
+                const value = getValue() as string;
+                return (
+                    <div className={`text-xs sm:text-sm ${!value || value === '' ? 'text-gray-400' : 'font-medium'}`}>
+                        {value || '-'}
+                    </div>
+                );
+            },
+            size: 120,
+        },
 
     ];
 
@@ -577,7 +553,7 @@ export default () => {
                         </Button>
                     </div>
                 )}
-                
+
                 <div className="w-full overflow-x-auto">
                     <DataTable
                         data={tableData}

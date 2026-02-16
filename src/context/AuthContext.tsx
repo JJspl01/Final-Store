@@ -1,5 +1,6 @@
 import { Toaster } from '@/components/ui/sonner';
-import { fetchSheet } from '@/lib/fetchers';
+import { fetchSheet, toCamelCase } from '@/lib/fetchers';
+import { supabase } from '@/lib/supabaseClient';
 import type { UserPermissions } from '@/types/sheets';
 import React, { createContext, useContext, useEffect, useState } from 'react';
 
@@ -23,26 +24,40 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         const stored = localStorage.getItem('auth');
         if (stored) {
             const { username } = JSON.parse(stored);
-            fetchSheet('USER').then((res) => {
-                const user = (res as UserPermissions[]).find((user) => user.username === username);
-                if (user) {
-                    setUserPermissions(user);
-                    setLoggedIn(true);
-                }
-                setLoading(false);
-            });
+
+            // Direct Supabase call for session verification
+            supabase
+                .from('user_access_master')
+                .select('*')
+                .eq('username', username)
+                .single()
+                .then(({ data, error }) => {
+                    if (data && !error) {
+                        const user = toCamelCase({ ...data, row_index: data.id }) as UserPermissions;
+                        setUserPermissions(user);
+                        setLoggedIn(true);
+                    }
+                    setLoading(false);
+                });
         } else {
             setLoading(false);
         }
     }, []);
 
     async function login(username: string, password: string) {
-        const users = (await fetchSheet('USER')) as UserPermissions[];
-        const user = users.find((user) => user.username === username && user.password === password);
-        if (user === undefined) {
+        // Direct Supabase call for login
+        const { data, error } = await supabase
+            .from('user_access_master')
+            .select('*')
+            .eq('username', username)
+            .eq('password', password)
+            .single();
+
+        if (error || !data) {
             return false;
         }
 
+        const user = toCamelCase({ ...data, row_index: data.id }) as UserPermissions;
         localStorage.setItem('auth', JSON.stringify({ username }));
         setUserPermissions(user);
         setLoggedIn(true);

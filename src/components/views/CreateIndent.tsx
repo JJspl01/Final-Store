@@ -129,12 +129,13 @@ export default () => {
         }
     };
 
-    // Function to submit new product to Supabase items table
+    // Function to submit new product to Supabase master table
     const submitProductToMasterSheet = async (productName: string, createGroupHead: string) => {
         try {
-            const { error } = await supabase.from('items').insert({
-                product_name: productName,
-                group_head: createGroupHead, // Using createGroupHead as the group_head value
+            const { error } = await supabase.from('master').insert({
+                item_name: productName,
+                create_group_head: createGroupHead,
+                group_head: createGroupHead,
             });
 
             if (error) {
@@ -242,6 +243,7 @@ export default () => {
             }, 1000);
 
             toast.success('Indent created successfully');
+            updateIndentSheet(); // Update context for sidebars
 
             form.reset({
                 indenterName: '',

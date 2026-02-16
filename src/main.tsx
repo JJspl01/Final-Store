@@ -37,11 +37,12 @@ import {
     Store,
     Video,
     KeyRound,
-    
+    Settings,
+
 } from 'lucide-react';
 import type { UserPermissions } from './types/sheets';
-import Administration from './components/views/Administration';
 import Loading from './components/views/Loading';
+import Setting from './components/views/Setting';
 import CreatePO from './components/views/CreatePO';
 import PendingIndents from './components/views/PendingIndents';
 import Order from './components/views/Order';
@@ -63,9 +64,9 @@ function GatedRoute({
 }) {
     const { user } = useAuth();
     if (!identifier) return children;
-    
+
     const permissionValue = (user as any)[identifier];
-    
+
     // Check permission
     if (typeof permissionValue === 'string') {
         if (permissionValue.toUpperCase() !== 'TRUE') {
@@ -82,22 +83,22 @@ function GatedRoute({
     } else {
         return <Navigate to="/" replace />;
     }
-    
+
     return children;
 }
 
 function DefaultRoute({ routes }: { routes: RouteAttributes[] }) {
     const { user } = useAuth();
-    
+
     if (!user) return <Navigate to="/login" />;
-    
+
     // Find first accessible route
     const firstAccessibleRoute = routes.find(route => {
         // Skip routes without gateKey (always accessible)
         if (!route.gateKey) return true;
-        
+
         const permissionValue = (user as any)[route.gateKey];
-        
+
         // Check if user has access
         if (typeof permissionValue === 'string') {
             return permissionValue.toUpperCase() === 'TRUE';
@@ -110,11 +111,11 @@ function DefaultRoute({ routes }: { routes: RouteAttributes[] }) {
         }
         return false;
     });
-    
+
     if (firstAccessibleRoute) {
         return <Navigate to={`/${firstAccessibleRoute.path}`} replace />;
     }
-    
+
     // If no accessible routes, logout or show error
     return <Navigate to="/login" replace />;
 }
@@ -128,14 +129,14 @@ const routes: RouteAttributes[] = [
         gateKey: 'dashboard',
         notifications: () => 0,
     },
-    {
-        path: 'inventory',
-        name: 'Inventory',
-        icon: <Store size={20} />,
-        element: <Inventory />,
-        gateKey: 'inventory',
-        notifications: () => 0,
-    },
+    // {
+    //     path: 'inventory',
+    //     name: 'Inventory',
+    //     icon: <Store size={20} />,
+    //     element: <Inventory />,
+    //     gateKey: 'inventory',
+    //     notifications: () => 0,
+    // },
     {
         path: 'create-indent',
         gateKey: 'createIndent',
@@ -145,8 +146,8 @@ const routes: RouteAttributes[] = [
         notifications: () => 0,
     },
 
-    
-     {
+
+    {
         path: 'all-indent',
         gateKey: 'allIndent',
         name: 'All Indent',
@@ -163,8 +164,8 @@ const routes: RouteAttributes[] = [
         notifications: (sheets) =>
             sheets.filter(
                 (sheet) =>
-                    sheet.planned1 !== '' &&
-                    sheet.vendorType === '' &&
+                    (sheet.planned1 && sheet.planned1 !== '') &&
+                    (!sheet.actual1 || sheet.actual1 === '') &&
                     sheet.indentType === 'Purchase'
             ).length,
     },
@@ -175,7 +176,7 @@ const routes: RouteAttributes[] = [
         icon: <UserCheck size={20} />,
         element: <VendorUpdate />,
         notifications: (sheets) =>
-            sheets.filter((sheet) => sheet.planned2 !== '' && sheet.actual2 === '').length,
+            sheets.filter((sheet) => (sheet.planned2 && sheet.planned2 !== '') && (!sheet.actual2 || sheet.actual2 === '')).length,
     },
     {
         path: 'three-party-approval',
@@ -186,8 +187,8 @@ const routes: RouteAttributes[] = [
         notifications: (sheets) =>
             sheets.filter(
                 (sheet) =>
-                    sheet.planned3 !== '' &&
-                    sheet.actual3 === '' &&
+                    (sheet.planned3 && sheet.planned3 !== '') &&
+                    (!sheet.actual3 || sheet.actual3 === '') &&
                     sheet.vendorType === 'Three Party'
             ).length,
     },
@@ -198,7 +199,7 @@ const routes: RouteAttributes[] = [
         icon: <ListTodo size={20} />,
         element: <PendingIndents />,
         notifications: (sheets) =>
-            sheets.filter((sheet) => sheet.planned4 !== '' && sheet.actual4 === '').length,
+            sheets.filter((sheet) => (sheet.planned4 && sheet.planned4 !== '') && (!sheet.actual4 || sheet.actual4 === '')).length,
     },
     {
         path: 'create-po',
@@ -231,7 +232,7 @@ const routes: RouteAttributes[] = [
         icon: <Truck size={20} />,
         element: <ReceiveItems />,
         notifications: (sheets) =>
-            sheets.filter((sheet) => sheet.planned5 !== '' && sheet.actual5 === '').length,
+            sheets.filter((sheet) => (sheet.planned5 && sheet.planned5 !== '') && (!sheet.actual5 || sheet.actual5 === '')).length,
     },
     {
         path: 'get-purchase',
@@ -250,8 +251,8 @@ const routes: RouteAttributes[] = [
         notifications: (sheets) =>
             sheets.filter(
                 (sheet) =>
-                    sheet.planned6 !== '' &&
-                    sheet.actual6 === '' &&
+                    (sheet.planned6 && sheet.planned6 !== '') &&
+                    (!sheet.actual6 || sheet.actual6 === '') &&
                     sheet.indentType === 'Store Out'
             ).length,
     },
@@ -264,14 +265,14 @@ const routes: RouteAttributes[] = [
         notifications: () => 0,
     },
     {
-        path: 'administration',
-        gateKey: 'administrate',
-        name: 'Adminstration',
-        icon: <ShieldUser size={20} />,
-        element: <Administration />,
+        path: 'setting',
+        gateKey: 'setting',
+        name: 'Setting',
+        icon: <Settings size={20} />,
+        element: <Setting />,
         notifications: () => 0,
     },
-    { 
+    {
         path: 'training-video',
         name: 'Training Video',
         icon: <Video size={20} />,

@@ -3,7 +3,7 @@ import type { InventorySheet, PoMasterSheet, QuotationHistorySheet, UserPermissi
 import { supabase } from './supabaseClient';
 
 // Helper to convert snake_case keys to camelCase
-function toCamelCase(obj: any): any {
+export function toCamelCase(obj: any): any {
     // Safety guard for null/undefined
     if (obj === null || obj === undefined) {
         return obj;
@@ -125,77 +125,120 @@ export async function uploadFile(file: File, folderId: string, uploadType: 'uplo
 }
 
 export async function fetchIndentMasterData() {
-    const { data, error } = await supabase
-        .from('master')
-        .select('department, create_group_head, group_head, item_name');
-
-    if (error) {
-        console.error('Error fetching master:', error);
-        return { departments: [], createGroupHeads: [], groupHeadItems: {} };
-    }
-
-    // STEP 1: Get unique create_group_head values for the first dropdown (only non-null values)
-    const createGroupHeads = Array.from(
-        new Set(data.map(d => d.create_group_head).filter(value => value !== null && value !== undefined && value !== ''))
+    // Fetch all records from 'master' table with pagination
+    const allData = await fetchFromSupabasePaginated(
+        'master',
+        'department, create_group_head, group_head, item_name',
+        { column: 'id', options: { ascending: true } }
     );
 
-    // STEP 2: Create mapping of create_group_head -> group_head -> item_name
-    // For each create_group_head, find rows where group_head matches the create_group_head value
+    const data = allData;
+
+    // 🔹 STEP 1: Categories (Union of create_group_head and group_head to handle nulls)
+    const categories = Array.from(
+        new Set([
+            ...data.map(d => d.create_group_head?.trim()),
+            ...data.map(d => d.group_head?.trim())
+        ])
+    ).filter(Boolean) as string[];
+
+    // 🔹 STEP 2: Mapping Categories → item_name
+    // Logic: Match selected category against 'group_head' column
     const groupHeadItems: Record<string, string[]> = {};
 
-    createGroupHeads.forEach(createGroupHead => {
-        // Find all rows where group_head equals the selected create_group_head value
-        const matchingRows = data.filter(row =>
-            row.group_head === createGroupHead && row.item_name
-        );
+    categories.forEach(categoryName => {
+        const matchedItems = data
+            .filter(row => {
+                const head = row.group_head?.toLowerCase().trim();
+                const selection = categoryName.toLowerCase().trim();
+                return head === selection;
+            })
+            .map(row => row.item_name)
+            .filter(Boolean);
 
-        // Extract unique item_names for these matched rows
-        const uniqueItems = Array.from(
-            new Set(matchingRows.map(row => row.item_name).filter(Boolean))
-        );
-
-        groupHeadItems[createGroupHead] = uniqueItems;
+        groupHeadItems[categoryName] = Array.from(new Set(matchedItems));
     });
 
-    // Return the data structure with the strict dependent flow
     return {
-        departments: Array.from(new Set(data.map(d => d.department).filter(dept => dept && dept !== null))),
-        createGroupHeads, // Changed from 'groupHeads' to 'createGroupHeads' for clarity
-        groupHeadItems,   // Maps create_group_head to its corresponding item_names via group_head matching
+        departments: Array.from(
+            new Set(data.map(d => d.department).filter(Boolean))
+        ),
+        createGroupHeads: categories,
+        groupHeadItems
     };
+}
+
+// Helper to fetch all records from a Supabase table with pagination
+export async function fetchFromSupabasePaginated(
+    tableName: string,
+    select: string = '*',
+    orderBy: { column: string; options?: { ascending?: boolean } } = { column: 'created_at', options: { ascending: false } },
+    queryBuilder?: (query: any) => any
+) {
+    let allData: any[] = [];
+    let from = 0;
+    let hasMore = true;
+    const limit = 1000;
+
+    while (hasMore) {
+        let query = supabase
+            .from(tableName)
+            .select(select)
+            .range(from, from + limit - 1);
+
+        if (queryBuilder) {
+            query = queryBuilder(query);
+        }
+
+        if (orderBy.column) {
+            query = query.order(orderBy.column, orderBy.options || { ascending: false });
+        }
+
+        const { data, error } = await query;
+
+        if (error) {
+            console.error(`Error fetching from ${tableName}:`, error);
+            throw error;
+        }
+
+        if (data && data.length > 0) {
+            allData = [...allData, ...data];
+            from += limit;
+            if (data.length < limit) hasMore = false;
+        } else {
+            hasMore = false;
+        }
+    }
+    return allData;
 }
 
 export async function fetchSheet(
     sheetName: Sheet
 ): Promise<MasterSheet | IndentSheet[] | ReceivedSheet[] | UserPermissions[] | PoMasterSheet[] | InventorySheet[]> {
     if (sheetName === 'INDENT') {
-        console.log("Fetching pending indents from Supabase");
-        const { data, error } = await supabase
-            .from('indent')
-            .select('*')
-            .not('planned_7', 'is', null)  // planned_7 is not null
-            .is('actual_7', null)          // actual_7 is null
-            .order('timestamp', { ascending: false });
-
-        if (error) {
-            console.error('Error fetching pending indents from Supabase:', error);
-            throw error;
-        }
-        return toCamelCase(data) as IndentSheet[];
+        console.log("Fetching all indents from Supabase for notifications and views");
+        const allData = await fetchFromSupabasePaginated('indent', '*', { column: 'created_at', options: { ascending: false } });
+        return toCamelCase(allData) as IndentSheet[];
     }
 
     if (sheetName === 'PO MASTER') {
         console.log("Fetching PO Master from Supabase");
-        const { data, error } = await supabase
-            .from('po_master')
-            .select('*')
-            .order('timestamp', { ascending: false });
+        const allData = await fetchFromSupabasePaginated('po_master', '*', { column: 'timestamp', options: { ascending: false } });
+        return toCamelCase(allData) as PoMasterSheet[];
+    }
 
-        if (error) {
-            console.error('Error fetching PO Master from Supabase:', error);
-            throw error;
-        }
-        return toCamelCase(data) as PoMasterSheet[];
+    if (sheetName === 'RECEIVED') {
+        console.log("Fetching Received items from Supabase");
+        const allData = await fetchFromSupabasePaginated('received', '*', { column: 'timestamp', options: { ascending: false } });
+        return toCamelCase(allData) as ReceivedSheet[];
+    }
+
+    if (sheetName === 'USER') {
+        console.log("Fetching users from Supabase");
+        const allData = await fetchFromSupabasePaginated('user_access_master', '*', { column: 'id', options: { ascending: true } });
+        // Map database 'id' to 'rowIndex' so the frontend logic doesn't break
+        const mappedData = (allData || []).map((u: any) => ({ ...u, row_index: u.id }));
+        return toCamelCase(mappedData) as UserPermissions[];
     }
 
     if (sheetName === 'MASTER') {
@@ -205,9 +248,9 @@ export async function fetchSheet(
 
         try {
             // Fetch all records from master_data table to get complete header information
-            const { data: companyRes, error: companyErr } = await supabase.from('master_data').select('*');
+            const companyRes = await fetchFromSupabasePaginated('master_data', '*', { column: 'id', options: { ascending: true } });
 
-            if (!companyErr && companyRes && companyRes.length > 0) {
+            if (companyRes && companyRes.length > 0) {
                 // Use the first record as the primary source of company information
                 masterData = companyRes[0];
 
@@ -240,7 +283,7 @@ export async function fetchSheet(
                     paymentTerms: allPaymentTerms
                 };
             } else {
-                console.warn('Master data table not found or empty:', companyErr);
+                console.warn('Master data table not found or empty');
                 // Provide default company info if master_data table is not found
                 companyInfo = {
                     companyName: 'JJSPL STORES',
@@ -273,12 +316,10 @@ export async function fetchSheet(
         }
 
         // Fetch dropdown data from master table (for CreateIndent page)
-        const { data: masterTableData, error: masterTableErr } = await supabase
-            .from('master')
-            .select('department, create_group_head, group_head, item_name');
+        const masterTableData = await fetchFromSupabasePaginated('master', 'department, create_group_head, group_head, item_name', { column: 'id', options: { ascending: true } });
 
-        if (masterTableErr) {
-            console.error('Error fetching master table:', masterTableErr);
+        if (!masterTableData) {
+            console.error('Error fetching master table');
         }
 
         // Process dropdown data from master table with strict dependent flow
@@ -397,52 +438,62 @@ export async function postToQuotationHistory(rows: any[]) {
 
 export async function fetchVendors() {
     try {
-        // Fetch vendor_name column from ALL rows
-        const { data, error } = await supabase
-            .from('master_data')
-            .select('vendor_name');
+        // Fetch vendors from master_data table with pagination
+        const allData = await fetchFromSupabasePaginated(
+            'master_data',
+            'vendor_name, vendor_gstin, vendor_address, vendor_email',
+            { column: 'id', options: { ascending: true } }
+        );
 
-        if (error) {
-            console.error('Error fetching vendors from master_data:', error);
-            return [];
-        }
-
-        const vendors: {
+        const uniqueVendors = new Map<string, {
             vendorName: string;
             gstin: string;
             address: string;
             email: string;
-        }[] = [];
+        }>();
 
-        // Loop through all rows
-        data.forEach(row => {
+        allData.forEach(row => {
             const vendorNames = row.vendor_name;
+            const gstin = row.vendor_gstin || '';
+            const address = row.vendor_address || '';
+            const email = row.vendor_email || '';
+
+            // Helper to add vendor if not already present or if present but has empty fields
+            const addVendor = (name: string) => {
+                if (!name || name.trim() === '') return;
+                const trimmedName = name.trim();
+
+                if (!uniqueVendors.has(trimmedName)) {
+                    uniqueVendors.set(trimmedName, {
+                        vendorName: trimmedName,
+                        gstin: gstin,
+                        address: address,
+                        email: email
+                    });
+                } else {
+                    // Optional: If already exists but current row has more info, update it
+                    const existing = uniqueVendors.get(trimmedName)!;
+                    if (!existing.gstin && gstin) existing.gstin = gstin;
+                    if (!existing.address && address) existing.address = address;
+                    if (!existing.email && email) existing.email = email;
+                }
+            };
 
             // If vendor_name is an array
             if (Array.isArray(vendorNames)) {
-                vendorNames.forEach(vendorName => {
-                    if (vendorName && vendorName.trim() !== '') {
-                        vendors.push({
-                            vendorName,
-                            gstin: '',
-                            address: '',
-                            email: '',
-                        });
-                    }
-                });
+                vendorNames.forEach(name => addVendor(name));
             }
             // If vendor_name is a single string
-            else if (typeof vendorNames === 'string' && vendorNames.trim() !== '') {
-                vendors.push({
-                    vendorName: vendorNames,
-                    gstin: '',
-                    address: '',
-                    email: '',
-                });
+            else if (typeof vendorNames === 'string') {
+                addVendor(vendorNames);
             }
         });
 
-        return vendors;
+        const sortedVendors = Array.from(uniqueVendors.values()).sort((a, b) =>
+            a.vendorName.localeCompare(b.vendorName)
+        );
+
+        return sortedVendors;
     } catch (error) {
         console.error('Error fetching vendors:', error);
         return [];
@@ -494,6 +545,56 @@ export async function postToSheet(
                     .eq('indent_number', snakeRow.indent_number);
                 if (error) {
                     console.error('Supabase update error:', error);
+                    throw error;
+                }
+            }
+            return { success: true };
+        }
+    }
+
+    if (sheet === 'USER') {
+        if (action === 'insert') {
+            const processedData = data.map(row => {
+                const snakeRow = toSnakeCase(row);
+                // Strip fields that shouldn't be inserted
+                const { id, row_index, created_at, ...insertData } = snakeRow;
+                return insertData;
+            });
+
+            const { error } = await supabase.from('user_access_master').insert(processedData);
+            if (error) {
+                console.error('Error inserting into user_access_master:', error);
+                throw error;
+            }
+            return { success: true };
+        } else if (action === 'update') {
+            for (const row of data) {
+                const snakeRow = toSnakeCase(row);
+                // Use row_index (which we mapped from id) as the primary key for updates
+                const idToUpdate = snakeRow.row_index || snakeRow.id;
+                const { id, row_index, created_at, ...updateData } = snakeRow;
+
+                const { error } = await supabase
+                    .from('user_access_master')
+                    .update(updateData)
+                    .eq('id', idToUpdate);
+                if (error) {
+                    console.error('Error updating user_access_master:', error);
+                    throw error;
+                }
+            }
+            return { success: true };
+        } else if (action === 'delete') {
+            for (const row of data) {
+                const snakeRow = toSnakeCase(row);
+                const idToDelete = snakeRow.row_index || snakeRow.id;
+
+                const { error } = await supabase
+                    .from('user_access_master')
+                    .delete()
+                    .eq('id', idToDelete);
+                if (error) {
+                    console.error('Error deleting from user_access_master:', error);
                     throw error;
                 }
             }

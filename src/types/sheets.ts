@@ -210,6 +210,7 @@ export type UserPermissions = {
     // New permissions for Dashboard and Inventory
     dashboard: boolean;
     inventory: boolean;
+    setting: boolean;
 };
 
 export const allPermissionKeys = [
@@ -234,6 +235,7 @@ export const allPermissionKeys = [
     "getPurchase",
     "dashboard",
     "inventory",
+    "setting",
 ] as const;
 
 

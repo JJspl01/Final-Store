@@ -5,6 +5,7 @@ import Heading from '../element/Heading';
 import { useSheets } from '@/context/SheetsContext';
 import { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabaseClient';
+import { fetchFromSupabasePaginated } from '@/lib/fetchers';
 import type { ColumnDef } from '@tanstack/react-table';
 import { formatDate } from '@/lib/utils';
 import DataTable from '../element/DataTable';
@@ -39,12 +40,11 @@ export default () => {
         const fetchPOMaster = async () => {
             setPoMasterLoading(true);
             try {
-                const { data, error } = await supabase
-                    .from('po_master')
-                    .select('*')
-                    .order('timestamp', { ascending: false });
-
-                if (error) throw error;
+                const data = await fetchFromSupabasePaginated(
+                    'po_master',
+                    '*',
+                    { column: 'timestamp', options: { ascending: false } }
+                );
 
                 if (data) {
                     setHistoryData(

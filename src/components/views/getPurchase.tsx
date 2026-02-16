@@ -16,7 +16,7 @@ import {
     DialogFooter,
     DialogClose,
 } from '../ui/dialog';
-import { postToSheet, uploadFile } from '@/lib/fetchers';
+import { postToSheet, uploadFile, fetchFromSupabasePaginated } from '@/lib/fetchers';
 import { z } from 'zod';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -147,26 +147,20 @@ export default () => {
         try {
             setLoading(true);
 
-            // 1. Fetch Indents (Stage 7 Pending)
-            // Note: We used to filter by planned_7 not null, actual_7 null.
-            // But if we want to show partial receipts that haven't reached Stage 7 "planning" yet (if that's how it works),
-            // we might need to broaden this.
-            // EXCEPT: The user workflow likely assumes planned_7 is generated when it's ready for billing.
-            // So we keep the filter but check 'received' table for quantities.
-            const { data: indentData, error: indentError } = await supabase
-                .from('indent')
-                .select('*')
-                .not('planned_7', 'is', null);
-            // Removed .is('actual_7', null) to handle partials - we'll filter in memory based on remainingQty
+            // 1. Fetch Indents with pagination (Stage 7 Pending/Partials)
+            const indentData = await fetchFromSupabasePaginated(
+                'indent',
+                '*',
+                { column: 'planned_7', options: { ascending: false } },
+                (q) => q.not('planned_7', 'is', null)
+            );
 
-            if (indentError) throw indentError;
-
-            // 2. Fetch Received Data to calculate what's available for billing
-            const { data: receivedData, error: receivedError } = await supabase
-                .from('received')
-                .select('indent_number, received_quantity, bill_number'); // Fetch bill_number to check if billed
-
-            if (receivedError) throw receivedError;
+            // 2. Fetch Received Data with pagination to calculate what's available for billing
+            const receivedData = await fetchFromSupabasePaginated(
+                'received',
+                'indent_number, received_quantity, bill_number',
+                { column: 'timestamp', options: { ascending: false } }
+            );
 
             if (indentData) {
                 const seenPoNumbers = new Set();
@@ -381,8 +375,12 @@ export default () => {
         const max = product?.remainingQty || 0;
         let val = parseFloat(value) || 0;
 
-        // Strict Validation logic could be here, but input max usually handles UI.
-        // We'll trust the onSubmit for strict validation.
+        if (val > max) {
+            val = max;
+        }
+        if (val < 0) {
+            val = 0;
+        }
 
         setProductQty((prev) => ({
             ...prev,
@@ -565,7 +563,8 @@ export default () => {
                 console.log('Uploading photo...');
                 photoUrl = await uploadFile(
                     values.photoOfBill,
-                    import.meta.env.VITE_BILL_PHOTO_FOLDER || 'bill-photos'
+                    'bill_photo',
+                    'supabase'
                 );
                 console.log('Photo uploaded successfully:', photoUrl);
             }

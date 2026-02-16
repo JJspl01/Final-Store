@@ -27,49 +27,49 @@ export default ({ items }: { items: RouteAttributes[] }) => {
     // Fix the permission checking logic
     const hasPermission = useMemo(() => {
         return (routeItem: RouteAttributes) => {
-          // In the Sidebar component, update the pathToPermissionMap:
+            // In the Sidebar component, update the pathToPermissionMap:
 
-const pathToPermissionMap: Record<string, keyof UserPermissions> = {
-    '': 'dashboard', // Dashboard route
-    'dashboard': 'dashboard',
-    'inventory': 'inventory',
-    'administration': 'administrate',
-    'create-indent': 'createIndent',
-    'all-indent': 'allIndent',
-    'create-po': 'createPo',
-    'get-purchase': 'getPurchase',
-    'approve-indent': 'indentApprovalView',
-    'po-history': 'ordersView',
-    // 'po-master': 'poMaster',
-    'pending-pos': 'pendingIndentsView',
-    'receive-items': 'receiveItemView',
-    'store-out-approval': 'storeOutApprovalView',
-    'quotation': 'quotation',
-    'three-party-approval': 'threePartyApprovalView',
-    'vendor-rate-update': 'updateVendorView',
-};
+            const pathToPermissionMap: Record<string, keyof UserPermissions> = {
+                '': 'dashboard', // Dashboard route
+                'dashboard': 'dashboard',
+                // 'inventory': 'inventory',
+                'setting': 'setting',
+                'create-indent': 'createIndent',
+                'all-indent': 'allIndent',
+                'create-po': 'createPo',
+                'get-purchase': 'getPurchase',
+                'approve-indent': 'indentApprovalView',
+                'po-history': 'ordersView',
+                // 'po-master': 'poMaster',
+                'pending-pos': 'pendingIndentsView',
+                'receive-items': 'receiveItemView',
+                'store-out-approval': 'storeOutApprovalView',
+                'quotation': 'quotation',
+                'three-party-approval': 'threePartyApprovalView',
+                'vendor-rate-update': 'updateVendorView',
+            };
 
             const permissionKey = pathToPermissionMap[routeItem.path];
             if (!permissionKey) return true; // Show by default if no mapping found
-            
+
             // Fix: Handle both string and boolean values safely with type assertion
             const userPermission = (user as any)?.[permissionKey];
-            
+
             // Handle string values like 'TRUE', 'FALSE', 'No Access'
             if (typeof userPermission === 'string') {
                 return userPermission.toUpperCase() === 'TRUE';
             }
-            
+
             // Handle boolean values
             if (typeof userPermission === 'boolean') {
                 return userPermission;
             }
-            
+
             // Handle numbers (0 = false, 1 = true) or other types
             if (typeof userPermission === 'number') {
                 return userPermission !== 0;
             }
-            
+
             // Default to false if undefined or null
             return false;
         };
@@ -78,13 +78,13 @@ const pathToPermissionMap: Record<string, keyof UserPermissions> = {
     // Memoize filtered items to prevent unnecessary re-renders
     const filteredItems = useMemo(() => {
         if (!user) return [];
-        
+
         return items.filter((item) => {
             // First check existing gateKey condition
             if (item.gateKey && (user as any)[item.gateKey] === 'No Access') {
                 return false;
             }
-            
+
             // Then check new permission-based condition
             return hasPermission(item);
         });
@@ -106,10 +106,10 @@ const pathToPermissionMap: Record<string, keyof UserPermissions> = {
                             <p className="text-sm">Management System</p>
                         </div>
                     </div>
-                    <Button 
-                        variant="ghost" 
-                        className="size-7" 
-                        onClick={() => updateAll()} 
+                    <Button
+                        variant="ghost"
+                        className="size-7"
+                        onClick={() => updateAll()}
                         disabled={allLoading}
                     >
                         <RotateCw />

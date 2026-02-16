@@ -82,12 +82,12 @@ export default function DataTable<TData, TValue>({
                 {extraActions && extraActions}
             </div>
 
-            <div className="relative max-w-full overflow-x-auto">
-                <Table>
-                    <ScrollArea
-                        className={cn('rounded-sm border h-[74dvh] w-full', className)}
-                    >
-                        <TableHeader className="sticky top-0 z-10 bg-muted">
+            <div className="relative max-w-full">
+                <ScrollArea
+                    className={cn('rounded-sm border h-[74dvh] w-full', className)}
+                >
+                    <Table>
+                        <TableHeader className="sticky top-0 z-10 bg-muted shadow-sm">
                             {table.getHeaderGroups().map((headerGroup) => (
                                 <TableRow key={headerGroup.id}>
                                     {headerGroup.headers.map((header) => {
@@ -145,15 +145,15 @@ export default function DataTable<TData, TValue>({
                                         <div className="flex flex-col justify-center items-center w-full gap-1">
                                             <Package className="text-gray-400" size={50} />
                                             <p className="text-muted-foreground font-semibold">
-                                                No Indents Found.
+                                                No Records Found.
                                             </p>
                                         </div>
                                     </TableCell>
                                 </TableRow>
                             )}
                         </TableBody>
-                    </ScrollArea>
-                </Table>
+                    </Table>
+                </ScrollArea>
             </div>
         </div>
     );

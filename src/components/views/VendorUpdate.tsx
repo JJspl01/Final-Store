@@ -12,7 +12,7 @@ import {
     DialogFooter,
     DialogClose,
 } from '../ui/dialog';
-import { postToSheet, uploadFile, fetchVendors } from '@/lib/fetchers';
+import { postToSheet, uploadFile, fetchVendors, fetchFromSupabasePaginated } from '@/lib/fetchers';
 import { z } from 'zod';
 import { useFieldArray, useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -24,6 +24,7 @@ import { toast } from 'sonner';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../ui/tabs';
 import { UserCheck, PenSquare } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
+import { useSheets } from '@/context/SheetsContext';
 import Heading from '../element/Heading';
 import { Pill } from '../ui/pill';
 import { formatDate } from '@/lib/utils';
@@ -55,6 +56,7 @@ interface HistoryData {
 
 export default () => {
     const { user } = useAuth();
+    const { updateIndentSheet } = useSheets();
 
     const [selectedIndent, setSelectedIndent] = useState<VendorUpdateData | null>(null);
     const [selectedHistory, setSelectedHistory] = useState<HistoryData | null>(null);
@@ -83,15 +85,13 @@ export default () => {
         const fetchData = async () => {
             setDataLoading(true);
             try {
-                // Fetch pending data (planned_2 not null and actual_2 null)
-                const { data: pendingData, error: pendingError } = await supabase
-                    .from('indent')
-                    .select('*')
-                    .not('planned_2', 'is', null)
-                    .is('actual_2', null)
-                    .order('created_at', { ascending: false });
-
-                if (pendingError) throw pendingError;
+                // Fetch pending data with pagination
+                const pendingData = await fetchFromSupabasePaginated(
+                    'indent',
+                    '*',
+                    { column: 'created_at', options: { ascending: false } },
+                    (q) => q.not('planned_2', 'is', null).is('actual_2', null)
+                );
 
                 if (pendingData) {
                     const pendingTableData = pendingData.map((record: any) => ({
@@ -107,15 +107,13 @@ export default () => {
                     setTableData(pendingTableData);
                 }
 
-                // Fetch history data (planned_2 not null and actual_2 not null)
-                const { data: historyDataResult, error: historyError } = await supabase
-                    .from('indent')
-                    .select('*')
-                    .not('planned_2', 'is', null)
-                    .not('actual_2', 'is', null)
-                    .order('created_at', { ascending: false });
-
-                if (historyError) throw historyError;
+                // Fetch history data with pagination
+                const historyDataResult = await fetchFromSupabasePaginated(
+                    'indent',
+                    '*',
+                    { column: 'created_at', options: { ascending: false } },
+                    (q) => q.not('planned_2', 'is', null).not('actual_2', 'is', null)
+                );
 
                 if (historyDataResult) {
                     const historyTableData = historyDataResult.map((record: any) => ({
@@ -195,6 +193,7 @@ export default () => {
             if (error) throw error;
 
             toast.success(`Updated indent ${indentNo}`);
+            updateIndentSheet(); // Update context to sync sidebar counts
 
             // Refresh the data after update
             const { data: historyDataResult, error: historyError } = await supabase
@@ -623,6 +622,7 @@ export default () => {
             if (error) throw error;
 
             toast.success(`Updated vendor of ${selectedIndent?.indentNo}`);
+            updateIndentSheet(); // Update context to sync sidebar counts
             setOpenDialog(false);
             regularForm.reset();
 
@@ -726,6 +726,7 @@ export default () => {
             if (error) throw error;
 
             toast.success(`Updated vendors of ${selectedIndent?.indentNo}`);
+            updateIndentSheet(); // Update context to sync sidebar counts
             setOpenDialog(false);
             threePartyForm.reset();
 
@@ -795,15 +796,13 @@ export default () => {
             setOpenDialog(false);
             historyUpdateForm.reset({ rate: undefined });
 
-            // Refresh the data after update
-            const { data: historyDataResult, error: historyError } = await supabase
-                .from('indent')
-                .select('*')
-                .not('planned_2', 'is', null)
-                .not('actual_2', 'is', null)
-                .order('created_at', { ascending: false });
-
-            if (historyError) throw historyError;
+            // Refresh the data after update with pagination
+            const historyDataResult = await fetchFromSupabasePaginated(
+                'indent',
+                '*',
+                { column: 'created_at', options: { ascending: false } },
+                (q) => q.not('planned_2', 'is', null).not('actual_2', 'is', null)
+            );
 
             if (historyDataResult) {
                 const historyTableData = historyDataResult.map((record: any) => ({

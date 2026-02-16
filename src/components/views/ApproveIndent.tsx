@@ -5,13 +5,14 @@ import { useEffect, useState } from 'react';
 import { DownloadOutlined } from "@ant-design/icons";
 import { Button } from '../ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select';
-import { postToSheet } from '@/lib/fetchers';
+import { postToSheet, fetchFromSupabasePaginated } from '@/lib/fetchers';
 import { toast } from 'sonner';
 import { PuffLoader as Loader } from 'react-spinners';
 import { Tabs, TabsContent } from '../ui/tabs';
 import { ClipboardCheck, PenSquare } from 'lucide-react';
 import { formatDate } from '@/lib/utils';
 import { useAuth } from '@/context/AuthContext';
+import { useSheets } from '@/context/SheetsContext';
 import Heading from '../element/Heading';
 import { Pill } from '../ui/pill';
 import { Input } from '../ui/input';
@@ -48,6 +49,7 @@ interface HistoryData {
 
 export default () => {
     const { user } = useAuth();
+    const { updateIndentSheet } = useSheets();
 
     const [tableData, setTableData] = useState<ApproveTableData[]>([]);
     const [historyData, setHistoryData] = useState<HistoryData[]>([]);
@@ -64,13 +66,8 @@ export default () => {
         const fetchData = async () => {
             setDataLoading(true);
             try {
-                // First, let's fetch ALL data to see what's available
-                const { data: allData, error: allError } = await supabase
-                    .from('indent')
-                    .select('*')
-                    .order('created_at', { ascending: false });
-
-                if (allError) throw allError;
+                // Fetch ALL data using pagination
+                const allData = await fetchFromSupabasePaginated('indent', '*', { column: 'created_at', options: { ascending: false } });
 
                 if (allData) {
                     // Filter pending indents (planned_1 not null and actual_1 null)
@@ -275,17 +272,15 @@ export default () => {
             }
 
             toast.success(`Updated ${updatesToProcess.length} indents successfully`);
+            updateIndentSheet(); // Update context to sync sidebar counts
 
-            // Refresh the data after updates
-            const { data: pendingData, error: pendingError } = await supabase
-                .from('indent')
-                .select('*')
-                .not('planned_1', 'is', null)
-                .is('actual_1', null)
-                .eq('indent_type', 'Purchase')
-                .order('created_at', { ascending: false });
-
-            if (pendingError) throw pendingError;
+            // Refresh the data after updates with pagination
+            const pendingData = await fetchFromSupabasePaginated(
+                'indent',
+                '*',
+                { column: 'created_at', options: { ascending: false } },
+                (q) => q.not('planned_1', 'is', null).is('actual_1', null).eq('indent_type', 'Purchase')
+            );
 
             if (pendingData) {
                 const pendingTableData = pendingData.map((record: any) => ({
@@ -922,7 +917,7 @@ export default () => {
 
     return (
         <div className="w-full overflow-hidden">
-            <Tabs defaultValue="" className="w-full">
+            <Tabs defaultValue="pending" className="w-full">
                 <Heading
                     heading="Approve Indent"
                     subtext="Update Indent status to Approve or Reject them"
@@ -930,7 +925,7 @@ export default () => {
                 >
                     <ClipboardCheck size={50} className="text-primary" />
                 </Heading>
-                <TabsContent value="" className="w-full">
+                <TabsContent value="pending" className="w-full">
                     <div className="space-y-4">
                         {selectedRows.size > 0 && (
                             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center p-3 sm:p-4 bg-blue-50 rounded-lg gap-2 sm:gap-0">
