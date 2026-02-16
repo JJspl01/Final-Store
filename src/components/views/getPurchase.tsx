@@ -164,57 +164,52 @@ export default () => {
 
             if (indentData) {
                 const seenPoNumbers = new Set();
+
+                // Pre-calculate stats for all indents
+                const indentStats = new Map();
+                indentData.forEach((sheet) => {
+                    const indentReceipts = receivedData?.filter(r => r.indent_number === sheet.indent_number) || [];
+                    const totalReceived = indentReceipts.reduce((sum, r) => sum + (Number(r.received_quantity) || 0), 0);
+                    const totalBilled = indentReceipts
+                        .filter(r => r.bill_number)
+                        .reduce((sum, r) => sum + (Number(r.received_quantity) || 0), 0);
+                    const remainingToBill = Math.max(0, totalReceived - totalBilled);
+
+                    indentStats.set(sheet.indent_number, {
+                        totalReceived,
+                        totalBilled,
+                        remainingToBill
+                    });
+                });
+
                 const uniqueTableData = indentData
                     .filter((sheet) => {
-                        // Calculate stats for this indent
-                        const indentReceipts = receivedData?.filter(r => r.indent_number === sheet.indent_number) || [];
-                        const totalReceived = indentReceipts.reduce((sum, r) => sum + (Number(r.received_quantity) || 0), 0);
-                        const totalBilled = indentReceipts
-                            .filter(r => r.bill_number) // Items that already have a bill number
-                            .reduce((sum, r) => sum + (Number(r.received_quantity) || 0), 0);
+                        // Skip if no PO number
+                        if (!sheet.po_number) return false;
 
-                        const remainingToBill = Math.max(0, totalReceived - totalBilled);
+                        // Skip if we've already processed this PO
+                        if (seenPoNumbers.has(sheet.po_number)) return false;
 
-                        // We only show items if they have something ready to bill OR if the indent is arguably heavily pending
-                        // But strictly: Show if RemainingToBill > 0 OR (Approved > Billed if we want to track against order)
-                        // User request: "Ordered 90, Received 80, Remaining 10". Input should be restricted.
-                        // Implication: getPurchase handles "Billing the Received items".
-
-                        // Filter logic:
-                        // Show if not fully billed (i.e., remainingToBill > 0) AND planned_7 is present.
-
-                        // Also, handle the PO grouping.
-                        // Logic: If ANY item in the PO has remainingToBill > 0, show the PO.
-
-                        // For the filter here (which is row-based initially per indent):
-                        // We'll calculate these and attach to the object, then filter later or let the UI handle it.
-                        // But duplicate PO check needs to be aware.
-
-                        // Let's attach the calcs first.
-                        (sheet as any)._stats = { totalReceived, totalBilled, remainingToBill };
-
-                        if (remainingToBill === 0) return false; // Hide if nothing pending to bill
-
-                        if (!sheet.po_number || seenPoNumbers.has(sheet.po_number)) {
-                            return false;
-                        }
-
-                        // Check if this PO has ANY pending items
+                        // Check if this PO has ANY items with pending quantity to bill
                         const poIndents = indentData.filter(i => i.po_number === sheet.po_number);
                         const hasPending = poIndents.some(i => {
-                            const iReceipts = receivedData?.filter(r => r.indent_number === i.indent_number) || [];
-                            const iRec = iReceipts.reduce((sum, r) => sum + (Number(r.received_quantity) || 0), 0);
-                            const iBilled = iReceipts.filter(r => r.bill_number).reduce((sum, r) => sum + (Number(r.received_quantity) || 0), 0);
-                            return (iRec - iBilled) > 0;
+                            const stats = indentStats.get(i.indent_number);
+                            return stats && stats.remainingToBill > 0;
                         });
 
-                        if (!hasPending) return false; // Hide if no pending items in this PO
+                        // Only show this PO if it has at least one pending item
+                        if (!hasPending) return false;
 
                         seenPoNumbers.add(sheet.po_number);
                         return true;
                     })
                     .map((sheet) => {
-                        const stats = (sheet as any)._stats;
+                        const stats = indentStats.get(sheet.indent_number) || {
+                            totalReceived: 0,
+                            totalBilled: 0,
+                            remainingToBill: 0
+                        };
+
                         return {
                             indentNo: sheet.indent_number || '',
                             indenter: sheet.indenter_name || '',
@@ -581,11 +576,12 @@ export default () => {
                 }
 
                 // Fetch unbilled received items for this indent
+                // Check for both NULL and empty string bill_number
                 const { data: unbilledItems, error: fetchError } = await supabase
                     .from('received')
                     .select('id, received_quantity')
                     .eq('indent_number', product.indentNo)
-                    .is('bill_number', null)
+                    .or('bill_number.is.null,bill_number.eq.')
                     .order('timestamp', { ascending: true }); // FIFO
 
                 if (fetchError) throw fetchError;
@@ -654,14 +650,18 @@ export default () => {
             }
 
             toast.success(`Updated purchase details for PO ${selectedIndent?.poNumber}`);
+
+            // Close dialog and reset form first
             setOpenDialog(false);
             form.reset();
             setProductRates({});
             setProductQty({});
+
+            // Refresh data after brief delay to allow DB operations to complete
             setTimeout(() => {
-                updateIndentSheet();
                 fetchTableData();
-            }, 1000);
+                updateIndentSheet();
+            }, 500);
         } catch (error: any) {
             console.error('Detailed submission error:', error);
             toast.error(`Failed to update: ${error.message || 'Unknown error'}`);
