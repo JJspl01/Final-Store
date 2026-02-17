@@ -18,7 +18,7 @@ import { Button } from '@/components/ui/button';
 import Logo from './Logo';
 import { useMemo } from 'react';
 
-export default ({ items }: { items: RouteAttributes[] }) => {
+export default ({ items, variant, collapsible }: { items: RouteAttributes[]; variant?: 'sidebar' | 'floating' | 'inset'; collapsible?: 'offcanvas' | 'icon' | 'none' }) => {
     const navigate = useNavigate();
     const { indentSheet, updateAll, allLoading } = useSheets();
     const { user, logout } = useAuth();
@@ -96,7 +96,7 @@ export default ({ items }: { items: RouteAttributes[] }) => {
     }
 
     return (
-        <Sidebar side="left" variant="inset" collapsible="offcanvas">
+        <Sidebar side="left" variant={variant || 'inset'} collapsible={collapsible || 'offcanvas'}>
             <SidebarHeader className="p-3 border-b-1">
                 <div className="flex justify-between items-start">
                     <div className="flex items-center gap-2">

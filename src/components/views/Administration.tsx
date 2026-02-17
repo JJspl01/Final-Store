@@ -280,7 +280,7 @@ export default () => {
                     </DataTable>
                 </div>
 
-                <DialogContent className="sm:max-w-3xl">
+                <DialogContent className="w-full max-w-[95vw] sm:max-w-3xl max-h-[90vh] overflow-y-auto">
                     <Form {...form}>
                         <form onSubmit={form.handleSubmit(onSubmit, onError)} className="space-y-7">
                             <DialogHeader className="space-y-1">
@@ -375,15 +375,15 @@ export default () => {
                                                                             field.value || [];
                                                                         checked
                                                                             ? field.onChange([
-                                                                                  ...values,
-                                                                                  perm,
-                                                                              ])
+                                                                                ...values,
+                                                                                perm,
+                                                                            ])
                                                                             : field.onChange(
-                                                                                  values.filter(
-                                                                                      (p) =>
-                                                                                          p !== perm
-                                                                                  )
-                                                                              );
+                                                                                values.filter(
+                                                                                    (p) =>
+                                                                                        p !== perm
+                                                                                )
+                                                                            );
                                                                     }}
                                                                 />
                                                             </FormControl>

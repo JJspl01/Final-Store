@@ -248,9 +248,25 @@ const ReceiveItems = () => {
             accessorFn: (x) => formatDate(new Date(x.poDate)),
         },
         { accessorKey: 'poNumber', header: 'PO Number' },
-        { accessorKey: 'vendor', header: 'Vendor' },
+        {
+            accessorKey: 'vendor',
+            header: 'Vendor',
+            cell: ({ row }) => (
+                <div className="whitespace-normal break-words min-w-[150px] max-w-[250px]">
+                    {row.original.vendor}
+                </div>
+            ),
+        },
         { accessorKey: 'indentNumber', header: 'Indent No.' },
-        { accessorKey: 'product', header: 'Product' },
+        {
+            accessorKey: 'product',
+            header: 'Product',
+            cell: ({ row }) => (
+                <div className="whitespace-normal break-words min-w-[200px] max-w-[300px]">
+                    {row.original.product}
+                </div>
+            ),
+        },
         { accessorKey: 'uom', header: 'UOM' },
         { accessorKey: 'quantity', header: 'Ordered Qty' },
         { accessorKey: 'receivedQty', header: 'Received Qty' },
@@ -283,8 +299,24 @@ const ReceiveItems = () => {
                 return <Pill variant={variant}>{status}</Pill>;
             },
         },
-        { accessorKey: 'vendor', header: 'Vendor' },
-        { accessorKey: 'product', header: 'Product' },
+        {
+            accessorKey: 'vendor',
+            header: 'Vendor',
+            cell: ({ row }) => (
+                <div className="whitespace-normal break-words min-w-[150px] max-w-[250px]">
+                    {row.original.vendor}
+                </div>
+            ),
+        },
+        {
+            accessorKey: 'product',
+            header: 'Product',
+            cell: ({ row }) => (
+                <div className="whitespace-normal break-words min-w-[200px] max-w-[300px]">
+                    {row.original.product}
+                </div>
+            ),
+        },
         { accessorKey: 'orderQuantity', header: 'Order Quantity' },
         { accessorKey: 'uom', header: 'UOM' },
         { accessorKey: 'receivedDate', header: 'Received Date' },
@@ -613,7 +645,7 @@ const ReceiveItems = () => {
                 </Tabs>
 
                 {selectedIndent && (
-                    <DialogContent className="sm:max-w-4xl max-h-[90vh] overflow-y-auto">
+                    <DialogContent className="w-full max-w-[95vw] sm:max-w-3xl lg:max-w-4xl max-h-[90vh] overflow-y-auto">
                         <Form {...form}>
                             <form
                                 onSubmit={form.handleSubmit(onSubmit, onError)}
@@ -630,8 +662,8 @@ const ReceiveItems = () => {
                                 </DialogHeader>
 
                                 {/* PO Number Display */}
-                                <div className="bg-primary/10 p-3 rounded-md">
-                                    <p className="text-lg font-bold">
+                                <div className="bg-primary/10 p-3 sm:p-4 rounded-md">
+                                    <p className="text-sm sm:text-base md:text-lg font-bold break-words">
                                         PO Number: {selectedIndent.poNumber}
                                     </p>
                                 </div>
@@ -669,9 +701,9 @@ const ReceiveItems = () => {
 
                                 {/* Common fields */}
                                 <div className="space-y-4">
-                                    <h3 className="font-semibold">Common Fields for All Items</h3>
+                                    <h3 className="text-sm sm:text-base font-semibold">Common Fields for All Items</h3>
 
-                                    <div className="grid md:grid-cols-2 gap-4">
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
                                         <FormField
                                             control={form.control}
                                             name="billReceived"
@@ -739,37 +771,97 @@ const ReceiveItems = () => {
                                     </div>
                                 </div>
 
-                                {/* Table for matching indents - NICHE */}
-                                <div className="border rounded-md overflow-x-auto mt-6">
-                                    <h3 className="font-semibold p-3 bg-muted">Items in this PO</h3>
-                                    <table className="w-full">
-                                        <thead className="bg-muted">
-                                            <tr>
-                                                <th className="p-2 text-left text-sm font-medium">Indent Number</th>
-                                                <th className="p-2 text-left text-sm font-medium">Item Name</th>
-                                                <th className="p-2 text-left text-sm font-medium">Ordered Qty</th>
-                                                <th className="p-2 text-left text-sm font-medium">UOM</th>
-                                                <th className="p-2 text-left text-sm font-medium">Received Qty</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody>
-                                            {matchingIndents.map((indent, index) => (
-                                                <tr key={indent.indentNumber} className="border-t">
-                                                    <td className="p-2 text-sm">{indent.indentNumber}</td>
-                                                    <td className="p-2 text-sm">{indent.product}</td>
-                                                    <td className="p-2 text-sm">{indent.quantity}</td>
-                                                    <td className="p-2 text-sm">{indent.uom}</td>
-                                                    <td className="p-2">
+                                {/* Table for matching indents - Responsive */}
+                                <div className="border rounded-md mt-6">
+                                    <h3 className="font-semibold p-3 bg-muted text-sm sm:text-base">Items in this PO</h3>
+
+                                    {/* Desktop Table View */}
+                                    <div className="hidden md:block overflow-x-auto">
+                                        <table className="w-full">
+                                            <thead className="bg-muted">
+                                                <tr>
+                                                    <th className="p-2 text-left text-sm font-medium">Indent Number</th>
+                                                    <th className="p-2 text-left text-sm font-medium">Item Name</th>
+                                                    <th className="p-2 text-left text-sm font-medium">Ordered Qty</th>
+                                                    <th className="p-2 text-left text-sm font-medium">UOM</th>
+                                                    <th className="p-2 text-left text-sm font-medium">Received Qty</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {matchingIndents.map((indent, index) => (
+                                                    <tr key={indent.indentNumber} className="border-t">
+                                                        <td className="p-2 text-sm">{indent.indentNumber}</td>
+                                                        <td className="p-2 text-sm">{indent.product}</td>
+                                                        <td className="p-2 text-sm">{indent.quantity}</td>
+                                                        <td className="p-2 text-sm">{indent.uom}</td>
+                                                        <td className="p-2">
+                                                            <FormField
+                                                                control={form.control}
+                                                                name={`items.${index}.quantity`}
+                                                                render={({ field }) => (
+                                                                    <FormItem>
+                                                                        <FormControl>
+                                                                            <div className="flex flex-col">
+                                                                                <Input
+                                                                                    type="number"
+                                                                                    className="h-8"
+                                                                                    placeholder="Qty"
+                                                                                    max={indent.remainingQty}
+                                                                                    disabled={status !== 'Received'}
+                                                                                    {...field}
+                                                                                />
+                                                                                <span className="text-xs text-muted-foreground mt-1">
+                                                                                    Max: {indent.remainingQty}
+                                                                                </span>
+                                                                            </div>
+                                                                        </FormControl>
+                                                                    </FormItem>
+                                                                )}
+                                                            />
+                                                        </td>
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                        </table>
+                                    </div>
+
+                                    {/* Mobile Card View */}
+                                    <div className="md:hidden space-y-3 p-3">
+                                        {matchingIndents.map((indent, index) => (
+                                            <div key={indent.indentNumber} className="bg-muted/50 p-3 rounded-lg space-y-2">
+                                                <div className="grid grid-cols-2 gap-2 text-sm">
+                                                    <div>
+                                                        <p className="text-xs text-muted-foreground">Indent Number</p>
+                                                        <p className="font-medium break-words">{indent.indentNumber}</p>
+                                                    </div>
+                                                    <div>
+                                                        <p className="text-xs text-muted-foreground">UOM</p>
+                                                        <p className="font-medium">{indent.uom}</p>
+                                                    </div>
+                                                </div>
+                                                <div>
+                                                    <p className="text-xs text-muted-foreground">Item Name</p>
+                                                    <p className="font-medium text-sm break-words">{indent.product}</p>
+                                                </div>
+                                                <div className="grid grid-cols-2 gap-2">
+                                                    <div>
+                                                        <p className="text-xs text-muted-foreground">Ordered Qty</p>
+                                                        <p className="font-medium">{indent.quantity}</p>
+                                                    </div>
+                                                    <div>
                                                         <FormField
                                                             control={form.control}
                                                             name={`items.${index}.quantity`}
                                                             render={({ field }) => (
                                                                 <FormItem>
+                                                                    <FormLabel className="text-xs text-muted-foreground">
+                                                                        Received Qty
+                                                                    </FormLabel>
                                                                     <FormControl>
                                                                         <div className="flex flex-col">
                                                                             <Input
                                                                                 type="number"
-                                                                                className="h-8"
+                                                                                className="h-9"
                                                                                 placeholder="Qty"
                                                                                 max={indent.remainingQty}
                                                                                 disabled={status !== 'Received'}
@@ -783,11 +875,11 @@ const ReceiveItems = () => {
                                                                 </FormItem>
                                                             )}
                                                         />
-                                                    </td>
-                                                </tr>
-                                            ))}
-                                        </tbody>
-                                    </table>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
                                 </div>
 
                                 <DialogFooter>

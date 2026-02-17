@@ -547,7 +547,7 @@ export default () => {
                 </TabsContent>
             </Tabs>
             {selectedIndent && (
-                <DialogContent className="sm:max-w-3xl">
+                <DialogContent className="w-full max-w-[95vw] sm:max-w-3xl max-h-[90vh] overflow-y-auto">
                     <Form {...form}>
                         <form onSubmit={form.handleSubmit(onSubmit, onError)} className="space-y-5">
                             <DialogHeader className="space-y-1">

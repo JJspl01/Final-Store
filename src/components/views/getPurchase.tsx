@@ -707,7 +707,7 @@ export default () => {
 
 
                 {selectedIndent && (
-                    <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+                    <DialogContent className="w-full max-w-[95vw] sm:max-w-2xl lg:max-w-3xl max-h-[90vh] overflow-y-auto">
                         <Form {...form}>
                             <form
                                 onSubmit={(e) => {

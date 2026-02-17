@@ -20,7 +20,7 @@ import { useState, type ReactNode } from 'react';
 import { Input } from '../ui/input';
 import { Package } from 'lucide-react';
 import { Skeleton } from '../ui/skeleton';
-import { ScrollArea } from '../ui/scroll-area';
+import { ScrollArea, ScrollBar } from '../ui/scroll-area';
 import { cn } from '@/lib/utils';
 
 interface DataTableProps<TData, TValue> {
@@ -67,7 +67,7 @@ export default function DataTable<TData, TValue>({
     });
 
     return (
-        <div className="p-5 grid gap-4">
+        <div className="p-5 grid gap-4 max-w-full overflow-hidden min-w-0">
             <div className="flex justify-between items-center w-full gap-3">
                 {searchFields.length !== 0 && (
                     <div className="flex items-center w-full">
@@ -75,18 +75,18 @@ export default function DataTable<TData, TValue>({
                             placeholder={`Search...`}
                             value={globalFilter}
                             onChange={(e) => setGlobalFilter(e.target.value)}
-                            className="w-230"
+                            className="w-full max-w-xs"
                         />
                     </div>
                 )}
                 {extraActions && extraActions}
             </div>
 
-            <div className="relative max-w-full">
+            <div className="relative w-full overflow-hidden min-w-0">
                 <ScrollArea
                     className={cn('rounded-sm border h-[74dvh] w-full', className)}
                 >
-                    <Table>
+                    <Table containerClassName="overflow-visible">
                         <TableHeader className="sticky top-0 z-10 bg-muted shadow-sm">
                             {table.getHeaderGroups().map((headerGroup) => (
                                 <TableRow key={headerGroup.id}>
@@ -153,6 +153,7 @@ export default function DataTable<TData, TValue>({
                             )}
                         </TableBody>
                     </Table>
+                    <ScrollBar orientation="horizontal" />
                 </ScrollArea>
             </div>
         </div>
