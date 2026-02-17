@@ -724,9 +724,9 @@ export default function QuotationPage() {
 
                 {/* Table with checkboxes and Unit column */}
                 <div className="mx-4 grid">
-                  <div className="rounded-[3px] w-full min-w-full overflow-x-auto">
-                    <Table>
-                      <TableHeader className="bg-muted">
+                  <div className="grid overflow-hidden">
+                    <Table containerClassName="overflow-visible">
+                      <TableHeader>
                         <TableRow>
                           <TableHead className="w-12">
                             <Checkbox

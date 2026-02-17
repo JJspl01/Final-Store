@@ -34,56 +34,80 @@ interface AllIndentTableData {
 
 export default () => {
     const { user } = useAuth();
-
     const [tableData, setTableData] = useState<AllIndentTableData[]>([]);
     const [selectedRows, setSelectedRows] = useState<Set<string>>(new Set());
     const [bulkUpdates, setBulkUpdates] = useState<Map<string, Partial<AllIndentTableData>>>(new Map());
     const [submitting, setSubmitting] = useState(false);
-    const [loading, setLoading] = useState(false);
     const [searchTermDepartment, setSearchTermDepartment] = useState('');
     const [searchTermGroupHead, setSearchTermGroupHead] = useState('');
     const [searchTermProduct, setSearchTermProduct] = useState('');
+
+    const [loading, setLoading] = useState(false);
     const [indentLoading, setIndentLoading] = useState(true);
+    const [page, setPage] = useState(0);
+    const [hasMore, setHasMore] = useState(true);
+    const PAGE_SIZE = 50;
 
-    useEffect(() => {
-        const fetchIndents = async () => {
+    const fetchIndents = async (isLoadMore = false) => {
+        if (isLoadMore && !hasMore) return;
+
+        if (!isLoadMore) {
             setIndentLoading(true);
-            try {
-                const data = await fetchFromSupabasePaginated(
-                    'indent',
-                    '*',
-                    { column: 'created_at', options: { ascending: false } }
-                );
+        } else {
+            setLoading(true);
+        }
 
-                if (data) {
-                    const transformedData = data.map((record: any) => ({
-                        id: record.id ? record.id.toString() : Math.random().toString(), // fallback to random ID if record.id is null/undefined
-                        timestamp: formatDate(new Date(record.created_at)),
-                        indentNumber: record.indent_number || '',
-                        indenterName: record.indenter_name || '',
-                        indentApproveBy: record.indent_approve_by || '',
-                        indentType: record.indent_type as 'Purchase' | 'Store Out' || 'Purchase',
-                        department: record.department || '',
-                        groupHead: record.group_head || '',
-                        productName: record.product_name || '',
-                        quantity: record.quantity || 0,
-                        uom: record.uom || '',
-                        areaOfUse: record.area_of_use || '',
-                        specifications: record.specifications || '',
-                        attachment: record.attachment || '',
-                        vendorType: record.vendor_type || 'Pending',
-                    }));
+        try {
+            const currentPage = isLoadMore ? page + 1 : 0;
+            const from = currentPage * PAGE_SIZE;
+            const to = from + PAGE_SIZE - 1;
 
+            const data = await fetchFromSupabasePaginated(
+                'indent',
+                '*',
+                { column: 'created_at', options: { ascending: false } },
+                undefined,
+                { from, to }
+            );
+
+            if (data) {
+                const transformedData = data.map((record: any) => ({
+                    id: record.id ? record.id.toString() : Math.random().toString(),
+                    timestamp: formatDate(new Date(record.created_at)),
+                    indentNumber: record.indent_number || '',
+                    indenterName: record.indenter_name || '',
+                    indentApproveBy: record.indent_approve_by || '',
+                    indentType: record.indent_type as 'Purchase' | 'Store Out' || 'Purchase',
+                    department: record.department || '',
+                    groupHead: record.group_head || '',
+                    productName: record.product_name || '',
+                    quantity: record.quantity || 0,
+                    uom: record.uom || '',
+                    areaOfUse: record.area_of_use || '',
+                    specifications: record.specifications || '',
+                    attachment: record.attachment || '',
+                    vendorType: record.vendor_type || 'Pending',
+                }));
+
+                if (isLoadMore) {
+                    setTableData(prev => [...prev, ...transformedData]);
+                } else {
                     setTableData(transformedData);
                 }
-            } catch (error: any) {
-                console.error('Error fetching indents:', error);
-                toast.error('Failed to fetch indents: ' + error.message);
-            } finally {
-                setIndentLoading(false);
-            }
-        };
 
+                setPage(currentPage);
+                setHasMore(data.length === PAGE_SIZE);
+            }
+        } catch (error: any) {
+            console.error('Error fetching indents:', error);
+            toast.error('Failed to fetch indents: ' + error.message);
+        } finally {
+            setIndentLoading(false);
+            setLoading(false);
+        }
+    };
+
+    useEffect(() => {
         fetchIndents();
     }, []);
     const handleRowSelect = (id: string, checked: boolean) => {
@@ -208,34 +232,8 @@ export default () => {
 
             toast.success(`Updated ${updatesToProcess.length} indents successfully`);
 
-            // Refresh the data after updates with pagination
-            const data = await fetchFromSupabasePaginated(
-                'indent',
-                '*',
-                { column: 'created_at', options: { ascending: false } }
-            );
-
-            if (data) {
-                const transformedData = data.map((record: any) => ({
-                    id: record.id ? record.id.toString() : Math.random().toString(), // fallback to random ID if record.id is null/undefined
-                    timestamp: formatDate(new Date(record.created_at)),
-                    indentNumber: record.indent_number || '',
-                    indenterName: record.indenter_name || '',
-                    indentApproveBy: record.indent_approve_by || '',
-                    indentType: record.indent_type as 'Purchase' | 'Store Out' || 'Purchase',
-                    department: record.department || '',
-                    groupHead: record.group_head || '',
-                    productName: record.product_name || '',
-                    quantity: record.quantity || 0,
-                    uom: record.uom || '',
-                    areaOfUse: record.area_of_use || '',
-                    specifications: record.specifications || '',
-                    attachment: record.attachment || '',
-                    vendorType: record.vendor_type || 'Pending',
-                }));
-
-                setTableData(transformedData);
-            }
+            // Refresh the data after updates with pagination (refresh only loaded pages or just reset)
+            await fetchIndents(false);
 
             setSelectedRows(new Set());
             setBulkUpdates(new Map());
@@ -523,17 +521,17 @@ export default () => {
     ];
 
     return (
-        <div className="w-full overflow-hidden">
-            <Heading
-                heading="All Indents"
-                subtext="View and manage all indent records"
-            >
-                <ClipboardList size={50} className="text-primary" />
-            </Heading>
+        <div className="w-full">
+            <div className="sticky top-0 z-20 bg-background -mx-5 -mt-5 p-5 pb-2 shadow-sm">
+                <Heading
+                    heading="All Indents"
+                    subtext="View and manage all indent records"
+                >
+                    <ClipboardList size={50} className="text-primary" />
+                </Heading>
 
-            <div className="space-y-4 p-5">
                 {selectedRows.size > 0 && (
-                    <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center p-3 sm:p-4 bg-blue-50 rounded-lg gap-2 sm:gap-0">
+                    <div className="mt-4 flex flex-col sm:flex-row justify-between items-start sm:items-center p-3 sm:p-4 bg-blue-50 rounded-lg gap-2 sm:gap-0 border border-blue-100">
                         <span className="text-sm font-medium">
                             {selectedRows.size} row(s) selected for update
                         </span>
@@ -553,6 +551,9 @@ export default () => {
                         </Button>
                     </div>
                 )}
+            </div>
+
+            <div className="space-y-4 p-5 pt-2">
 
                 <div className="w-full overflow-x-auto">
                     <DataTable
@@ -560,6 +561,31 @@ export default () => {
                         columns={columns}
                         searchFields={['indentNumber', 'indenterName', 'department', 'productName', 'groupHead']}
                         dataLoading={indentLoading}
+                        footer={
+                            <div className="flex flex-col items-center gap-2 p-4 pt-0">
+                                {hasMore && (
+                                    <Button
+                                        variant="outline"
+                                        onClick={() => fetchIndents(true)}
+                                        disabled={loading}
+                                        className="w-full sm:w-64"
+                                    >
+                                        {loading ? (
+                                            <div className="flex items-center gap-2">
+                                                <Loader size={16} color="currentColor" />
+                                                Loading...
+                                            </div>
+                                        ) : (
+                                            'Load More Records'
+                                        )}
+                                    </Button>
+                                )}
+                                <p className="text-xs text-muted-foreground">
+                                    Displaying {tableData.length} records
+                                    {!hasMore && tableData.length > 0 && " (All records loaded)"}
+                                </p>
+                            </div>
+                        }
                     />
                 </div>
             </div>

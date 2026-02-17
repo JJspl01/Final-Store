@@ -72,8 +72,8 @@ export default function UsersTable() {
     const [allProducts, setAllProducts] = useState<string[]>([]);
 
     useEffect(() => {
-        setAllVendors(Array.from(new Set(indentSheet.map((item) => item.approvedVendorName))));
-        setAllProducts(Array.from(new Set(indentSheet.map((item) => item.productName))));
+        setAllVendors(Array.from(new Set(indentSheet.map((item) => item.approvedVendorName).filter(Boolean))));
+        setAllProducts(Array.from(new Set(indentSheet.map((item) => item.productName).filter(Boolean))));
         const {
             topVendors,
             topProducts,
@@ -102,7 +102,7 @@ export default function UsersTable() {
         setOut({ quantity: totalIssuedQuantity, count: issuedIndentCount });
     }, [startDate, endDate, filteredProducts, filteredVendors, indentSheet, receivedSheet]);
 
-   
+
 
     const chartConfig = {
         quantity: {

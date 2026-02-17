@@ -1011,126 +1011,124 @@ export default () => {
 
                             <hr />
 
-                            <div className="mx-4 grid">
-                                <div className="rounded-[3px] w-full min-w-full overflow-x-auto">
-                                    <Table>
-                                        <TableHeader className="bg-muted">
-                                            <TableRow>
-                                                <TableHead>S/N</TableHead>
-                                                <TableHead>Internal Code</TableHead>
-                                                <TableHead>Product</TableHead>
-                                                <TableHead>Description</TableHead>
-                                                <TableHead>Qty</TableHead>
-                                                <TableHead>Unit</TableHead>
-                                                <TableHead>Rate</TableHead>
-                                                <TableHead>GST (%)</TableHead>
-                                                <TableHead>Discount (%)</TableHead>
-                                                <TableHead>Amount</TableHead>
-                                                <TableHead></TableHead>
-                                            </TableRow>
-                                        </TableHeader>
-                                        <TableBody>
-                                            {itemsArray.fields.map((field, index) => {
-                                                const value = indents[index];
-                                                const indent = indentSheetData.find(
-                                                    (i: any) => i.indent_number === value.indentNumber
-                                                );
-                                                return (
-                                                    <TableRow key={field.id}>
-                                                        <TableCell>{index + 1}</TableCell>
-                                                        <TableCell>
-                                                            {indent?.indent_number}
-                                                        </TableCell>
-                                                        <TableCell>{indent?.product_name}</TableCell>
-                                                        <TableCell>
-                                                            {indent?.specifications || (
-                                                                <span className="text-muted-foreground">
-                                                                    No Description
-                                                                </span>
-                                                            )}
-                                                        </TableCell>
-                                                        <TableCell>
-                                                            {indent?.approved_quantity}
-                                                        </TableCell>
-                                                        <TableCell>{indent?.uom}</TableCell>
-                                                        <TableCell>
-                                                            {indent?.approved_rate}
-                                                        </TableCell>
-                                                        <TableCell>
-                                                            <FormField
-                                                                control={form.control}
-                                                                name={`indents.${index}.gst`}
-                                                                render={({ field: indentField }) => (
-                                                                    <FormItem>
-                                                                        <Select
-                                                                            onValueChange={(value) => indentField.onChange(Number(value))}
-                                                                            value={indentField.value?.toString()}
-                                                                        >
-                                                                            <FormControl>
-                                                                                <SelectTrigger className="h-9 w-20">
-                                                                                    <SelectValue placeholder="GST%" />
-                                                                                </SelectTrigger>
-                                                                            </FormControl>
-                                                                            <SelectContent>
-                                                                                <SelectItem value="18">18%</SelectItem>
-                                                                                <SelectItem value="5">5%</SelectItem>
-                                                                                <SelectItem value="0">0%</SelectItem>
-                                                                            </SelectContent>
-                                                                        </Select>
-                                                                    </FormItem>
-                                                                )}
-                                                            />
-                                                        </TableCell>
-                                                        <TableCell>
-                                                            <FormField
-                                                                control={form.control}
-                                                                name={`indents.${index}.discount`} // Assuming productName is in your schema
-                                                                render={({
-                                                                    field: indentField,
-                                                                }) => (
-                                                                    <FormItem className="flex justify-center items-center">
+                            <div className="mx-4 grid overflow-hidden">
+                                <Table containerClassName="overflow-visible">
+                                    <TableHeader>
+                                        <TableRow>
+                                            <TableHead>S/N</TableHead>
+                                            <TableHead>Internal Code</TableHead>
+                                            <TableHead>Product</TableHead>
+                                            <TableHead>Description</TableHead>
+                                            <TableHead>Qty</TableHead>
+                                            <TableHead>Unit</TableHead>
+                                            <TableHead>Rate</TableHead>
+                                            <TableHead>GST (%)</TableHead>
+                                            <TableHead>Discount (%)</TableHead>
+                                            <TableHead>Amount</TableHead>
+                                            <TableHead></TableHead>
+                                        </TableRow>
+                                    </TableHeader>
+                                    <TableBody>
+                                        {itemsArray.fields.map((field, index) => {
+                                            const value = indents[index];
+                                            const indent = indentSheetData.find(
+                                                (i: any) => i.indent_number === value.indentNumber
+                                            );
+                                            return (
+                                                <TableRow key={field.id}>
+                                                    <TableCell>{index + 1}</TableCell>
+                                                    <TableCell>
+                                                        {indent?.indent_number}
+                                                    </TableCell>
+                                                    <TableCell>{indent?.product_name}</TableCell>
+                                                    <TableCell>
+                                                        {indent?.specifications || (
+                                                            <span className="text-muted-foreground">
+                                                                No Description
+                                                            </span>
+                                                        )}
+                                                    </TableCell>
+                                                    <TableCell>
+                                                        {indent?.approved_quantity}
+                                                    </TableCell>
+                                                    <TableCell>{indent?.uom}</TableCell>
+                                                    <TableCell>
+                                                        {indent?.approved_rate}
+                                                    </TableCell>
+                                                    <TableCell>
+                                                        <FormField
+                                                            control={form.control}
+                                                            name={`indents.${index}.gst`}
+                                                            render={({ field: indentField }) => (
+                                                                <FormItem>
+                                                                    <Select
+                                                                        onValueChange={(value) => indentField.onChange(Number(value))}
+                                                                        value={indentField.value?.toString()}
+                                                                    >
                                                                         <FormControl>
-                                                                            <Input
-                                                                                type="number"
-                                                                                className="rounded-sm h-9 max-w-15 p-0 text-center"
-                                                                                max="100"
-                                                                                {...indentField}
-                                                                            />
-                                                                        </FormControl>{' '}
-                                                                        %
-                                                                    </FormItem>
-                                                                )}
-                                                            />
-                                                        </TableCell>
-                                                        <TableCell>
-                                                            {calculateTotal(
-                                                                indent?.approved_rate || 0,
-                                                                value.gst,
-                                                                value.discount || 0,
-                                                                indent?.approved_quantity || 0
+                                                                            <SelectTrigger className="h-9 w-20">
+                                                                                <SelectValue placeholder="GST%" />
+                                                                            </SelectTrigger>
+                                                                        </FormControl>
+                                                                        <SelectContent>
+                                                                            <SelectItem value="18">18%</SelectItem>
+                                                                            <SelectItem value="5">5%</SelectItem>
+                                                                            <SelectItem value="0">0%</SelectItem>
+                                                                        </SelectContent>
+                                                                    </Select>
+                                                                </FormItem>
                                                             )}
-                                                        </TableCell>
-                                                        <TableCell>
-                                                            <Button
-                                                                type="button"
-                                                                variant="ghost"
-                                                                onClick={(e) => {
-                                                                    e.preventDefault();
-                                                                    itemsArray.remove(index);
-                                                                }}
-                                                            >
-                                                                <Trash
-                                                                    size={20}
-                                                                    className="text-red-300"
-                                                                />
-                                                            </Button>
-                                                        </TableCell>
-                                                    </TableRow>
-                                                );
-                                            })}
-                                        </TableBody>
-                                    </Table>
-                                </div>
+                                                        />
+                                                    </TableCell>
+                                                    <TableCell>
+                                                        <FormField
+                                                            control={form.control}
+                                                            name={`indents.${index}.discount`} // Assuming productName is in your schema
+                                                            render={({
+                                                                field: indentField,
+                                                            }) => (
+                                                                <FormItem className="flex justify-center items-center">
+                                                                    <FormControl>
+                                                                        <Input
+                                                                            type="number"
+                                                                            className="rounded-sm h-9 max-w-15 p-0 text-center"
+                                                                            max="100"
+                                                                            {...indentField}
+                                                                        />
+                                                                    </FormControl>{' '}
+                                                                    %
+                                                                </FormItem>
+                                                            )}
+                                                        />
+                                                    </TableCell>
+                                                    <TableCell>
+                                                        {calculateTotal(
+                                                            indent?.approved_rate || 0,
+                                                            value.gst,
+                                                            value.discount || 0,
+                                                            indent?.approved_quantity || 0
+                                                        )}
+                                                    </TableCell>
+                                                    <TableCell>
+                                                        <Button
+                                                            type="button"
+                                                            variant="ghost"
+                                                            onClick={(e) => {
+                                                                e.preventDefault();
+                                                                itemsArray.remove(index);
+                                                            }}
+                                                        >
+                                                            <Trash
+                                                                size={20}
+                                                                className="text-red-300"
+                                                            />
+                                                        </Button>
+                                                    </TableCell>
+                                                </TableRow>
+                                            );
+                                        })}
+                                    </TableBody>
+                                </Table>
                                 <div className="flex justify-end p-4">
                                     <div className="w-80 rounded-[3px] bg-muted">
                                         <p className="flex px-7 py-2 justify-between">

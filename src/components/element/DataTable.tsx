@@ -31,6 +31,7 @@ interface DataTableProps<TData, TValue> {
     children?: ReactNode;
     className?: string;
     extraActions?: ReactNode;
+    footer?: ReactNode;
 }
 
 function globalFilterFn<TData>(row: TData, columnIds: string[], filterValue: string) {
@@ -50,6 +51,7 @@ export default function DataTable<TData, TValue>({
     children: _children, // <-- underscore avoids TS unused variable error
     className,
     extraActions,
+    footer,
 }: DataTableProps<TData, TValue>) {
     const [globalFilter, setGlobalFilter] = useState('');
     const table = useReactTable({
@@ -67,7 +69,7 @@ export default function DataTable<TData, TValue>({
     });
 
     return (
-        <div className="p-5 grid gap-4 max-w-full overflow-hidden min-w-0">
+        <div className="p-5 grid gap-4">
             <div className="flex justify-between items-center w-full gap-3">
                 {searchFields.length !== 0 && (
                     <div className="flex items-center w-full">
@@ -75,19 +77,19 @@ export default function DataTable<TData, TValue>({
                             placeholder={`Search...`}
                             value={globalFilter}
                             onChange={(e) => setGlobalFilter(e.target.value)}
-                            className="w-full max-w-xs"
+                            className="w-230"
                         />
                     </div>
                 )}
                 {extraActions && extraActions}
             </div>
 
-            <div className="relative w-full overflow-hidden min-w-0">
+            <div className="relative max-w-full">
                 <ScrollArea
                     className={cn('rounded-sm border h-[74dvh] w-full', className)}
                 >
                     <Table containerClassName="overflow-visible">
-                        <TableHeader className="sticky top-0 z-10 bg-muted shadow-sm">
+                        <TableHeader>
                             {table.getHeaderGroups().map((headerGroup) => (
                                 <TableRow key={headerGroup.id}>
                                     {headerGroup.headers.map((header) => {
@@ -156,6 +158,7 @@ export default function DataTable<TData, TValue>({
                     <ScrollBar orientation="horizontal" />
                 </ScrollArea>
             </div>
+            {footer && <div>{footer}</div>}
         </div>
     );
 }

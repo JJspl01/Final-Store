@@ -5,11 +5,11 @@ import type { RouteAttributes } from './types';
 
 export default ({ routes }: { routes: RouteAttributes[] }) => {
     return (
-        <div className="flex w-full h-screen overflow-hidden">
+        <div className="flex w-full h-screen">
             <SidebarProvider>
                 <Sidebar items={routes} variant="inset" collapsible="icon" />
                 <SidebarInset className="min-w-0 overflow-hidden flex flex-col h-screen">
-                    <div className="flex-1 overflow-auto p-4 min-w-0">
+                    <div className="flex-1 overflow-y-auto p-4">
                         <Outlet />
                     </div>
                 </SidebarInset>

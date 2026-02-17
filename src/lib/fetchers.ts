@@ -173,8 +173,34 @@ export async function fetchFromSupabasePaginated(
     tableName: string,
     select: string = '*',
     orderBy: { column: string; options?: { ascending?: boolean } } = { column: 'created_at', options: { ascending: false } },
-    queryBuilder?: (query: any) => any
+    queryBuilder?: (query: any) => any,
+    pagination?: { from: number; to: number }
 ) {
+    // If pagination is provided, fetch just that range
+    if (pagination) {
+        let query = supabase
+            .from(tableName)
+            .select(select)
+            .range(pagination.from, pagination.to);
+
+        if (queryBuilder) {
+            query = queryBuilder(query);
+        }
+
+        if (orderBy.column) {
+            query = query.order(orderBy.column, orderBy.options || { ascending: false });
+        }
+
+        const { data, error } = await query;
+
+        if (error) {
+            console.error(`Error fetching from ${tableName}:`, error);
+            throw error;
+        }
+
+        return data || [];
+    }
+
     let allData: any[] = [];
     let from = 0;
     let hasMore = true;
