@@ -600,47 +600,51 @@ const ReceiveItems = () => {
                     </Heading>
 
                     <TabsContent value="pending">
-                        <DataTable
-                            data={tableData}
-                            columns={columns}
-                            searchFields={['product', 'department', 'indenter', 'vendorType']}
-                            dataLoading={localIndentLoading}
-                            extraActions={
-                                <Button
-                                    variant="default"
-                                    onClick={onDownloadClick}
-                                    style={{
-                                        background: "linear-gradient(90deg, #4CAF50, #2E7D32)",
-                                        border: "none",
-                                        borderRadius: "8px",
-                                        padding: "0 16px",
-                                        fontWeight: "bold",
-                                        boxShadow: "0 4px 8px rgba(0,0,0,0.15)",
-                                        display: "flex",
-                                        alignItems: "center",
-                                        gap: "8px",
-                                    }}
-                                >
-                                    <DownloadOutlined />
-                                    {loading ? "Downloading..." : "Download"}
-                                </Button>
-                            }
-                        />
+                        <div className="w-full overflow-x-auto">
+                            <DataTable
+                                data={tableData}
+                                columns={columns}
+                                searchFields={['product', 'department', 'indenter', 'vendorType']}
+                                dataLoading={localIndentLoading}
+                                extraActions={
+                                    <Button
+                                        variant="default"
+                                        onClick={onDownloadClick}
+                                        style={{
+                                            background: "linear-gradient(90deg, #4CAF50, #2E7D32)",
+                                            border: "none",
+                                            borderRadius: "8px",
+                                            padding: "0 16px",
+                                            fontWeight: "bold",
+                                            boxShadow: "0 4px 8px rgba(0,0,0,0.15)",
+                                            display: "flex",
+                                            alignItems: "center",
+                                            gap: "8px",
+                                        }}
+                                    >
+                                        <DownloadOutlined />
+                                        {loading ? "Downloading..." : "Download"}
+                                    </Button>
+                                }
+                            />
+                        </div>
                     </TabsContent>
 
                     <TabsContent value="history">
-                        <DataTable
-                            data={historyData}
-                            columns={historyColumns}
-                            searchFields={[
-                                'receiveStatus',
-                                'poNumber',
-                                'indentNumber',
-                                'poDate',
-                                'product',
-                            ]}
-                            dataLoading={localReceivedLoading}
-                        />
+                        <div className="w-full overflow-x-auto">
+                            <DataTable
+                                data={historyData}
+                                columns={historyColumns}
+                                searchFields={[
+                                    'receiveStatus',
+                                    'poNumber',
+                                    'indentNumber',
+                                    'poDate',
+                                    'product',
+                                ]}
+                                dataLoading={localReceivedLoading}
+                            />
+                        </div>
                     </TabsContent>
                 </Tabs>
 
@@ -777,52 +781,54 @@ const ReceiveItems = () => {
 
                                     {/* Desktop Table View */}
                                     <div className="hidden md:block overflow-x-auto">
-                                        <table className="w-full">
-                                            <thead className="bg-muted">
-                                                <tr>
-                                                    <th className="p-2 text-left text-sm font-medium">Indent Number</th>
-                                                    <th className="p-2 text-left text-sm font-medium">Item Name</th>
-                                                    <th className="p-2 text-left text-sm font-medium">Ordered Qty</th>
-                                                    <th className="p-2 text-left text-sm font-medium">UOM</th>
-                                                    <th className="p-2 text-left text-sm font-medium">Received Qty</th>
-                                                </tr>
-                                            </thead>
-                                            <tbody>
-                                                {matchingIndents.map((indent, index) => (
-                                                    <tr key={indent.indentNumber} className="border-t">
-                                                        <td className="p-2 text-sm">{indent.indentNumber}</td>
-                                                        <td className="p-2 text-sm">{indent.product}</td>
-                                                        <td className="p-2 text-sm">{indent.quantity}</td>
-                                                        <td className="p-2 text-sm">{indent.uom}</td>
-                                                        <td className="p-2">
-                                                            <FormField
-                                                                control={form.control}
-                                                                name={`items.${index}.quantity`}
-                                                                render={({ field }) => (
-                                                                    <FormItem>
-                                                                        <FormControl>
-                                                                            <div className="flex flex-col">
-                                                                                <Input
-                                                                                    type="number"
-                                                                                    className="h-8"
-                                                                                    placeholder="Qty"
-                                                                                    max={indent.remainingQty}
-                                                                                    disabled={status !== 'Received'}
-                                                                                    {...field}
-                                                                                />
-                                                                                <span className="text-xs text-muted-foreground mt-1">
-                                                                                    Max: {indent.remainingQty}
-                                                                                </span>
-                                                                            </div>
-                                                                        </FormControl>
-                                                                    </FormItem>
-                                                                )}
-                                                            />
-                                                        </td>
+                                        <div className="w-full overflow-x-auto">
+                                            <table className="w-full">
+                                                <thead className="bg-muted">
+                                                    <tr>
+                                                        <th className="p-2 text-left text-sm font-medium">Indent Number</th>
+                                                        <th className="p-2 text-left text-sm font-medium">Item Name</th>
+                                                        <th className="p-2 text-left text-sm font-medium">Ordered Qty</th>
+                                                        <th className="p-2 text-left text-sm font-medium">UOM</th>
+                                                        <th className="p-2 text-left text-sm font-medium">Received Qty</th>
                                                     </tr>
-                                                ))}
-                                            </tbody>
-                                        </table>
+                                                </thead>
+                                                <tbody>
+                                                    {matchingIndents.map((indent, index) => (
+                                                        <tr key={indent.indentNumber} className="border-t">
+                                                            <td className="p-2 text-sm">{indent.indentNumber}</td>
+                                                            <td className="p-2 text-sm">{indent.product}</td>
+                                                            <td className="p-2 text-sm">{indent.quantity}</td>
+                                                            <td className="p-2 text-sm">{indent.uom}</td>
+                                                            <td className="p-2">
+                                                                <FormField
+                                                                    control={form.control}
+                                                                    name={`items.${index}.quantity`}
+                                                                    render={({ field }) => (
+                                                                        <FormItem>
+                                                                            <FormControl>
+                                                                                <div className="flex flex-col">
+                                                                                    <Input
+                                                                                        type="number"
+                                                                                        className="h-8"
+                                                                                        placeholder="Qty"
+                                                                                        max={indent.remainingQty}
+                                                                                        disabled={status !== 'Received'}
+                                                                                        {...field}
+                                                                                    />
+                                                                                    <span className="text-xs text-muted-foreground mt-1">
+                                                                                        Max: {indent.remainingQty}
+                                                                                    </span>
+                                                                                </div>
+                                                                            </FormControl>
+                                                                        </FormItem>
+                                                                    )}
+                                                                />
+                                                            </td>
+                                                        </tr>
+                                                    ))}
+                                                </tbody>
+                                            </table>
+                                        </div>
                                     </div>
 
                                     {/* Mobile Card View */}

@@ -12,7 +12,7 @@ import { formatDate } from '@/lib/utils';
 import { useAuth } from '@/context/AuthContext';
 import Heading from '../element/Heading';
 import { supabase } from '@/lib/supabaseClient';
-import { fetchFromSupabasePaginated } from '@/lib/fetchers';
+import { fetchIndentMasterData, fetchFromSupabasePaginated } from '@/lib/fetchers';
 
 interface AllIndentTableData {
     id: string;
@@ -41,6 +41,7 @@ export default () => {
     const [searchTermDepartment, setSearchTermDepartment] = useState('');
     const [searchTermGroupHead, setSearchTermGroupHead] = useState('');
     const [searchTermProduct, setSearchTermProduct] = useState('');
+    const [master, setMaster] = useState<any>(null);
 
     const [loading, setLoading] = useState(false);
     const [indentLoading, setIndentLoading] = useState(true);
@@ -109,6 +110,7 @@ export default () => {
 
     useEffect(() => {
         fetchIndents();
+        fetchIndentMasterData().then(setMaster);
     }, []);
     const handleRowSelect = (id: string, checked: boolean) => {
         setSelectedRows(prev => {
@@ -351,13 +353,34 @@ export default () => {
                 const currentValue = bulkUpdates.get(indent.id)?.department || indent.department;
 
                 return (
-                    <Input
+                    <Select
                         value={currentValue}
-                        onChange={(e) => handleBulkUpdate(indent.id, 'department', e.target.value)}
+                        onValueChange={(value) => handleBulkUpdate(indent.id, 'department', value)}
                         disabled={!isSelected}
-                        className={`w-36 text-xs sm:text-sm ${!isSelected ? 'opacity-50' : ''}`}
-                        placeholder="Department"
-                    />
+                    >
+                        <SelectTrigger className={`w-36 text-xs sm:text-sm ${!isSelected ? 'opacity-50' : ''}`}>
+                            <SelectValue placeholder="Department" />
+                        </SelectTrigger>
+                        <SelectContent>
+                            <div className="flex items-center border-b px-3 pb-3">
+                                <Search className="mr-2 h-4 w-4 shrink-0 opacity-50" />
+                                <input
+                                    placeholder="Search department..."
+                                    value={searchTermDepartment}
+                                    onChange={(e) => setSearchTermDepartment(e.target.value)}
+                                    onKeyDown={(e) => e.stopPropagation()}
+                                    className="flex h-10 w-full rounded-md border-0 bg-transparent py-3 text-sm outline-none placeholder:text-muted-foreground"
+                                />
+                            </div>
+                            <div className="max-h-[300px] overflow-y-auto">
+                                {master?.departments
+                                    ?.filter((d: string) => d.toLowerCase().includes(searchTermDepartment.toLowerCase()))
+                                    .map((d: string, i: number) => (
+                                        <SelectItem key={i} value={d}>{d}</SelectItem>
+                                    ))}
+                            </div>
+                        </SelectContent>
+                    </Select>
                 );
             },
             size: 160,
@@ -371,13 +394,34 @@ export default () => {
                 const currentValue = bulkUpdates.get(indent.id)?.groupHead || indent.groupHead;
 
                 return (
-                    <Input
+                    <Select
                         value={currentValue}
-                        onChange={(e) => handleBulkUpdate(indent.id, 'groupHead', e.target.value)}
+                        onValueChange={(value) => handleBulkUpdate(indent.id, 'groupHead', value)}
                         disabled={!isSelected}
-                        className={`w-36 text-xs sm:text-sm ${!isSelected ? 'opacity-50' : ''}`}
-                        placeholder="Group head"
-                    />
+                    >
+                        <SelectTrigger className={`w-36 text-xs sm:text-sm ${!isSelected ? 'opacity-50' : ''}`}>
+                            <SelectValue placeholder="Group head" />
+                        </SelectTrigger>
+                        <SelectContent>
+                            <div className="flex items-center border-b px-3 pb-3">
+                                <Search className="mr-2 h-4 w-4 shrink-0 opacity-50" />
+                                <input
+                                    placeholder="Search group head..."
+                                    value={searchTermGroupHead}
+                                    onChange={(e) => setSearchTermGroupHead(e.target.value)}
+                                    onKeyDown={(e) => e.stopPropagation()}
+                                    className="flex h-10 w-full rounded-md border-0 bg-transparent py-3 text-sm outline-none placeholder:text-muted-foreground"
+                                />
+                            </div>
+                            <div className="max-h-[300px] overflow-y-auto">
+                                {master?.createGroupHeads
+                                    ?.filter((gh: string) => gh.toLowerCase().includes(searchTermGroupHead.toLowerCase()))
+                                    .map((gh: string, i: number) => (
+                                        <SelectItem key={i} value={gh}>{gh}</SelectItem>
+                                    ))}
+                            </div>
+                        </SelectContent>
+                    </Select>
                 );
             },
             size: 160,
@@ -388,16 +432,40 @@ export default () => {
             cell: ({ row }) => {
                 const indent = row.original;
                 const isSelected = selectedRows.has(indent.id);
+                const currentGroupHead = bulkUpdates.get(indent.id)?.groupHead || indent.groupHead;
                 const currentValue = bulkUpdates.get(indent.id)?.productName || indent.productName;
 
+                const availableProducts = master?.groupHeadItems?.[currentGroupHead] || [];
+
                 return (
-                    <Input
+                    <Select
                         value={currentValue}
-                        onChange={(e) => handleBulkUpdate(indent.id, 'productName', e.target.value)}
-                        disabled={!isSelected}
-                        className={`w-52 text-xs sm:text-sm ${!isSelected ? 'opacity-50' : ''}`}
-                        placeholder="Product name"
-                    />
+                        onValueChange={(value) => handleBulkUpdate(indent.id, 'productName', value)}
+                        disabled={!isSelected || !currentGroupHead}
+                    >
+                        <SelectTrigger className={`w-52 text-xs sm:text-sm ${(!isSelected || !currentGroupHead) ? 'opacity-50' : ''}`}>
+                            <SelectValue placeholder="Product name" />
+                        </SelectTrigger>
+                        <SelectContent>
+                            <div className="flex items-center border-b px-3 pb-3">
+                                <Search className="mr-2 h-4 w-4 shrink-0 opacity-50" />
+                                <input
+                                    placeholder="Search product..."
+                                    value={searchTermProduct}
+                                    onChange={(e) => setSearchTermProduct(e.target.value)}
+                                    onKeyDown={(e) => e.stopPropagation()}
+                                    className="flex h-10 w-full rounded-md border-0 bg-transparent py-3 text-sm outline-none placeholder:text-muted-foreground"
+                                />
+                            </div>
+                            <div className="max-h-[300px] overflow-y-auto">
+                                {availableProducts
+                                    ?.filter((p: string) => p.toLowerCase().includes(searchTermProduct.toLowerCase()))
+                                    .map((p: string, i: number) => (
+                                        <SelectItem key={i} value={p}>{p}</SelectItem>
+                                    ))}
+                            </div>
+                        </SelectContent>
+                    </Select>
                 );
             },
             size: 220,

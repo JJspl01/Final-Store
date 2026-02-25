@@ -394,20 +394,24 @@ export default () => {
                         <Users size={50} className="text-primary" />
                     </Heading>
                     <TabsContent value="pending">
-                        <DataTable
-                            data={tableData}
-                            columns={columns}
-                            searchFields={['product', 'department', 'indenter']}
-                            dataLoading={dataLoading}
-                        />
+                        <div className="w-full overflow-x-auto">
+                            <DataTable
+                                data={tableData}
+                                columns={columns}
+                                searchFields={['product', 'department', 'indenter']}
+                                dataLoading={dataLoading}
+                            />
+                        </div>
                     </TabsContent>
                     <TabsContent value="history">
-                        <DataTable
-                            data={historyData}
-                            columns={historyColumns}
-                            searchFields={['product', 'department', 'indenter']}
-                            dataLoading={dataLoading}
-                        />
+                        <div className="w-full overflow-x-auto">
+                            <DataTable
+                                data={historyData}
+                                columns={historyColumns}
+                                searchFields={['product', 'department', 'indenter']}
+                                dataLoading={dataLoading}
+                            />
+                        </div>
                     </TabsContent>
                 </Tabs>
 

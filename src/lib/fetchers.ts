@@ -128,8 +128,8 @@ export async function fetchIndentMasterData() {
     // Fetch all records from 'master' table with pagination
     const allData = await fetchFromSupabasePaginated(
         'master',
-        'department, create_group_head, group_head, item_name',
-        { column: 'id', options: { ascending: true } }
+        '*',
+        { column: 'item_name', options: { ascending: true } }
     );
 
     const data = allData;

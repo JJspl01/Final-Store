@@ -1,7 +1,4 @@
 
-
-
-
 import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useForm, useFieldArray } from 'react-hook-form';
@@ -27,6 +24,70 @@ import Heading from '../element/Heading';
 import { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabaseClient';
 
+const AddMasterDataSection = ({
+    placeholder,
+    onAdd,
+}: {
+    placeholder: string;
+    onAdd: (name: string) => Promise<void>;
+}) => {
+    const [name, setName] = useState('');
+    const [isAdding, setIsAdding] = useState(false);
+
+    const handleAdd = async () => {
+        if (!name.trim()) {
+            toast.error(`${placeholder} name cannot be empty`);
+            return;
+        }
+        setIsAdding(true);
+        try {
+            await onAdd(name.trim());
+            toast.success(`${placeholder} added successfully`);
+            setName('');
+        } catch (error: any) {
+            toast.error('Failed to add: ' + error.message);
+        } finally {
+            setIsAdding(false);
+        }
+    };
+
+    return (
+        <div
+            className="flex items-center gap-2 p-2 border-b sticky top-0 bg-popover z-10"
+            onClick={(e) => e.stopPropagation()}
+            onKeyDown={(e) => e.stopPropagation()}
+            onPointerDown={(e) => e.stopPropagation()}
+        >
+            <Input
+                placeholder={`Add new ${placeholder.toLowerCase()}...`}
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                        e.preventDefault();
+                        handleAdd();
+                    }
+                }}
+                className="h-8"
+            />
+            <Button
+                size="icon"
+                variant="ghost"
+                type="button"
+                disabled={isAdding}
+                onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    handleAdd();
+                }}
+                className="h-8 w-8"
+            >
+                {isAdding ? <Loader size={12} color="currentColor" /> : <Plus className="h-4 w-4" />}
+            </Button>
+        </div>
+    );
+};
+
 
 export default () => {
     const { indentSheet: sheet, updateIndentSheet } = useSheets();
@@ -35,9 +96,11 @@ export default () => {
     const [searchTerm, setSearchTerm] = useState('');
     const [searchTermGroupHead, setSearchTermGroupHead] = useState('');
     const [searchTermProductName, setSearchTermProductName] = useState('');
-    const [newProductName, setNewProductName] = useState<{ [key: number]: string }>({});
-    const [showAddProduct, setShowAddProduct] = useState<{ [key: number]: boolean }>({});
-    const [localProducts, setLocalProducts] = useState<{ [key: string]: string[] }>({});
+
+    const refreshMaster = async () => {
+        const data = await fetchIndentMasterData();
+        setMaster(data);
+    };
 
     useEffect(() => {
         setIndentSheet(sheet);
@@ -130,56 +193,14 @@ export default () => {
     };
 
     // Function to submit new product to Supabase master table
-    const submitProductToMasterSheet = async (productName: string, createGroupHead: string) => {
-        try {
-            const { error } = await supabase.from('master').insert({
-                item_name: productName,
-                create_group_head: createGroupHead,
-                group_head: createGroupHead,
-            });
+    const handleAddMasterData = async (columnName: string, value: string, additionalData: any = {}) => {
+        const { error } = await supabase.from('master').insert({
+            [columnName]: value,
+            ...additionalData
+        });
 
-            if (error) {
-                console.error('Error adding product to master data:', error);
-                // We don't throw here to not block the local UI update,
-                // but we log it.
-            }
-        } catch (err) {
-            console.error('Failed to submit product:', err);
-        }
-        return Promise.resolve(true);
-    };
-
-    // Update addNewProductLocally - sync version
-    const addNewProductLocally = (index: number, createGroupHead: string) => {
-        const productName = newProductName[index]?.trim();
-
-        if (!productName) {
-            toast.error('Please enter a product name');
-            return;
-        }
-
-        if (!createGroupHead) {
-            toast.error('Please select a category first');
-            return;
-        }
-
-        // Add to local state
-        setLocalProducts((prev) => ({
-            ...prev,
-            [createGroupHead]: [...(prev[createGroupHead] || []), productName],
-        }));
-
-        // Set the value in form
-        form.setValue(`products.${index}.productName`, productName);
-
-        // Reset states
-        setNewProductName((prev) => ({ ...prev, [index]: '' }));
-        setShowAddProduct((prev) => ({ ...prev, [index]: false }));
-
-        // Submit to master sheet
-        submitProductToMasterSheet(productName, createGroupHead);
-
-        toast.success('Product added successfully');
+        if (error) throw error;
+        await refreshMaster();
     };
 
     async function onSubmit(data: z.infer<typeof schema>) {
@@ -263,10 +284,6 @@ export default () => {
                 ],
             });
 
-            // Reset local products and states
-            setLocalProducts({});
-            setNewProductName({});
-            setShowAddProduct({});
         } catch (_) {
             toast.error('Error while creating indent! Please try again');
         }
@@ -372,10 +389,7 @@ export default () => {
 
                             // Get products from the corrected master data structure
                             // The createGroupHead field in the form represents create_group_head
-                            const masterProducts = master?.groupHeadItems?.[createGroupHead] || [];
-
-                            const localGroupProducts = localProducts[createGroupHead] || [];
-                            const productOptions = [...masterProducts, ...localGroupProducts];
+                            const productOptions = master?.groupHeadItems?.[createGroupHead] || [];
 
                             return (
                                 <div
@@ -418,6 +432,18 @@ export default () => {
                                                                 </SelectTrigger>
                                                             </FormControl>
                                                             <SelectContent>
+                                                                <AddMasterDataSection
+                                                                    placeholder="Department"
+                                                                    onAdd={async (val) => {
+                                                                        await handleAddMasterData('department', val, {
+                                                                            item_name: '-', // Satisfy not-null constraint
+                                                                            create_group_head: '-', // Optional placeholder
+                                                                            group_head: '-', // Optional placeholder
+                                                                            inventory_status: 'Show' // Satisfy not-null constraint
+                                                                        });
+                                                                        form.setValue(`products.${index}.department`, val);
+                                                                    }}
+                                                                />
                                                                 <div className="flex items-center border-b px-3 pb-3">
                                                                     <Search className="mr-2 h-4 w-4 shrink-0 opacity-50" />
                                                                     <input
@@ -434,22 +460,24 @@ export default () => {
                                                                         className="flex h-10 w-full rounded-md border-0 bg-transparent py-3 text-sm outline-none placeholder:text-muted-foreground"
                                                                     />
                                                                 </div>
-                                                                {master?.departments
-                                                                    .filter((dep: string) =>
-                                                                        dep
-                                                                            .toLowerCase()
-                                                                            .includes(
-                                                                                searchTerm.toLowerCase()
-                                                                            )
-                                                                    )
-                                                                    .map((dep: string, i: number) => (
-                                                                        <SelectItem
-                                                                            key={i}
-                                                                            value={dep}
-                                                                        >
-                                                                            {dep}
-                                                                        </SelectItem>
-                                                                    ))}
+                                                                <div className="max-h-[300px] overflow-y-auto">
+                                                                    {master?.departments
+                                                                        ?.filter((dep: string) =>
+                                                                            dep
+                                                                                .toLowerCase()
+                                                                                .includes(
+                                                                                    searchTerm.toLowerCase()
+                                                                                )
+                                                                        )
+                                                                        .map((dep: string, i: number) => (
+                                                                            <SelectItem
+                                                                                key={i}
+                                                                                value={dep}
+                                                                            >
+                                                                                {dep}
+                                                                            </SelectItem>
+                                                                        ))}
+                                                                </div>
                                                             </SelectContent>
                                                         </Select>
                                                     </FormItem>
@@ -476,6 +504,17 @@ export default () => {
                                                                 </SelectTrigger>
                                                             </FormControl>
                                                             <SelectContent>
+                                                                <AddMasterDataSection
+                                                                    placeholder="Category"
+                                                                    onAdd={async (val) => {
+                                                                        await handleAddMasterData('create_group_head', val, {
+                                                                            group_head: val, // Keep both in sync
+                                                                            item_name: '-', // Satisfy not-null constraint
+                                                                            inventory_status: 'Show' // Satisfy not-null constraint
+                                                                        });
+                                                                        form.setValue(`products.${index}.createGroupHead`, val);
+                                                                    }}
+                                                                />
                                                                 <div className="flex items-center border-b px-3 pb-3">
                                                                     <Search className="mr-2 h-4 w-4 shrink-0 opacity-50" />
                                                                     <input
@@ -492,22 +531,24 @@ export default () => {
                                                                         className="flex h-10 w-full rounded-md border-0 bg-transparent py-3 text-sm outline-none placeholder:text-muted-foreground"
                                                                     />
                                                                 </div>
-                                                                {master?.createGroupHeads
-                                                                    .filter((gh) =>
-                                                                        gh
-                                                                            .toLowerCase()
-                                                                            .includes(
-                                                                                searchTermGroupHead.toLowerCase()
-                                                                            )
-                                                                    )
-                                                                    .map((gh, i) => (
-                                                                        <SelectItem
-                                                                            key={i}
-                                                                            value={gh}
-                                                                        >
-                                                                            {gh}
-                                                                        </SelectItem>
-                                                                    ))}
+                                                                <div className="max-h-[300px] overflow-y-auto">
+                                                                    {master?.createGroupHeads
+                                                                        ?.filter((gh: string) =>
+                                                                            gh
+                                                                                .toLowerCase()
+                                                                                .includes(
+                                                                                    searchTermGroupHead.toLowerCase()
+                                                                                )
+                                                                        )
+                                                                        .map((gh: string, i: number) => (
+                                                                            <SelectItem
+                                                                                key={i}
+                                                                                value={gh}
+                                                                            >
+                                                                                {gh}
+                                                                            </SelectItem>
+                                                                        ))}
+                                                                </div>
                                                             </SelectContent>
                                                         </Select>
                                                     </FormItem>
@@ -555,6 +596,21 @@ export default () => {
                                                                 </SelectTrigger>
                                                             </FormControl>
                                                             <SelectContent>
+                                                                <AddMasterDataSection
+                                                                    placeholder="Product"
+                                                                    onAdd={async (val) => {
+                                                                        if (!createGroupHead) {
+                                                                            toast.error('Please select a category first');
+                                                                            return;
+                                                                        }
+                                                                        await handleAddMasterData('item_name', val, {
+                                                                            create_group_head: createGroupHead,
+                                                                            group_head: createGroupHead, // Satisfy not-null constraint
+                                                                            inventory_status: 'Show' // Satisfy not-null constraint
+                                                                        });
+                                                                        form.setValue(`products.${index}.productName`, val);
+                                                                    }}
+                                                                />
                                                                 <div className="flex items-center border-b px-3 pb-3">
                                                                     <Search className="mr-2 h-4 w-4 shrink-0 opacity-50" />
                                                                     <input
@@ -574,111 +630,24 @@ export default () => {
                                                                     />
                                                                 </div>
 
-                                                                {!showAddProduct[index] && (
-                                                                    <div
-                                                                        className="flex items-center px-3 py-2 cursor-pointer hover:bg-accent"
-                                                                        onClick={() =>
-                                                                            setShowAddProduct(
-                                                                                (prev) => ({
-                                                                                    ...prev,
-                                                                                    [index]: true,
-                                                                                })
-                                                                            )
-                                                                        }
-                                                                    >
-                                                                        <Plus className="mr-2 h-4 w-4" />
-                                                                        <span className="text-sm font-medium">
-                                                                            Add New Product
-                                                                        </span>
-                                                                    </div>
-                                                                )}
-
-                                                                {showAddProduct[index] && (
-                                                                    <div className="flex items-center gap-2 px-3 py-2 border-b">
-                                                                        <Input
-                                                                            placeholder="Enter new product name"
-                                                                            value={
-                                                                                newProductName[
-                                                                                index
-                                                                                ] || ''
-                                                                            }
-                                                                            onChange={(e) =>
-                                                                                setNewProductName(
-                                                                                    (prev) => ({
-                                                                                        ...prev,
-                                                                                        [index]:
-                                                                                            e.target
-                                                                                                .value,
-                                                                                    })
+                                                                <div className="max-h-[300px] overflow-y-auto">
+                                                                    {productOptions
+                                                                        ?.filter((dep: string) =>
+                                                                            dep
+                                                                                .toLowerCase()
+                                                                                .includes(
+                                                                                    searchTermProductName.toLowerCase()
                                                                                 )
-                                                                            }
-                                                                            onKeyDown={(e) => {
-                                                                                e.stopPropagation();
-                                                                                if (
-                                                                                    e.key ===
-                                                                                    'Enter'
-                                                                                ) {
-                                                                                    e.preventDefault();
-                                                                                    addNewProductLocally(
-                                                                                        index,
-                                                                                        createGroupHead
-                                                                                    );
-                                                                                }
-                                                                            }}
-                                                                            className="flex-1"
-                                                                        />
-                                                                        <Button
-                                                                            type="button"
-                                                                            size="sm"
-                                                                            onClick={() =>
-                                                                                addNewProductLocally(
-                                                                                    index,
-                                                                                    createGroupHead
-                                                                                )
-                                                                            }
-                                                                        >
-                                                                            Add
-                                                                        </Button>
-                                                                        <Button
-                                                                            type="button"
-                                                                            size="sm"
-                                                                            variant="ghost"
-                                                                            onClick={() => {
-                                                                                setShowAddProduct(
-                                                                                    (prev) => ({
-                                                                                        ...prev,
-                                                                                        [index]: false,
-                                                                                    })
-                                                                                );
-                                                                                setNewProductName(
-                                                                                    (prev) => ({
-                                                                                        ...prev,
-                                                                                        [index]: '',
-                                                                                    })
-                                                                                );
-                                                                            }}
-                                                                        >
-                                                                            Cancel
-                                                                        </Button>
-                                                                    </div>
-                                                                )}
-
-                                                                {productOptions
-                                                                    .filter((dep) =>
-                                                                        dep
-                                                                            .toLowerCase()
-                                                                            .includes(
-                                                                                searchTermProductName.toLowerCase()
-                                                                            )
-                                                                    )
-                                                                    .map((dep, i) => (
-                                                                        <SelectItem
-                                                                            key={i}
-                                                                            value={dep}
-                                                                        >
-                                                                            {dep}
-                                                                        </SelectItem>
-                                                                    ))}
+                                                                        )
+                                                                        .map((dep: string, i: number) => (
+                                                                            <SelectItem
+                                                                                key={i}
+                                                                                value={dep}
+                                                                            >
+                                                                                {dep}
+                                                                            </SelectItem>
+                                                                        ))}
+                                                                </div>
                                                             </SelectContent>
                                                         </Select>
                                                     </FormItem>

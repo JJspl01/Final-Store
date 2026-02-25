@@ -22,13 +22,76 @@ import { Input } from '../ui/input';
 import { PuffLoader as Loader } from 'react-spinners';
 import { toast } from 'sonner';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../ui/tabs';
-import { UserCheck, PenSquare } from 'lucide-react';
+import { UserCheck, PenSquare, Plus } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { useSheets } from '@/context/SheetsContext';
 import Heading from '../element/Heading';
 import { Pill } from '../ui/pill';
 import { formatDate } from '@/lib/utils';
 import { supabase } from '@/lib/supabaseClient';
+
+const AddVendorSection = ({ onVendorAdded }: { onVendorAdded: () => Promise<void> }) => {
+    const [name, setName] = useState('');
+    const [isAdding, setIsAdding] = useState(false);
+
+    const handleAdd = async () => {
+        if (!name.trim()) {
+            toast.error('Vendor name cannot be empty');
+            return;
+        }
+        setIsAdding(true);
+        try {
+            const { error } = await supabase
+                .from('master_data')
+                .insert([{ vendor_name: name.trim() }]);
+
+            if (error) throw error;
+            toast.success('New vendor added');
+            setName('');
+            await onVendorAdded();
+        } catch (error: any) {
+            toast.error('Failed to add vendor: ' + error.message);
+        } finally {
+            setIsAdding(false);
+        }
+    };
+
+    return (
+        <div
+            className="flex items-center gap-2 p-2 border-b"
+            onClick={(e) => e.stopPropagation()}
+            onKeyDown={(e) => e.stopPropagation()}
+            onPointerDown={(e) => e.stopPropagation()}
+        >
+            <Input
+                placeholder="Add new vendor..."
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                        e.preventDefault();
+                        handleAdd();
+                    }
+                }}
+                className="h-8"
+            />
+            <Button
+                size="icon"
+                variant="ghost"
+                type="button"
+                disabled={isAdding}
+                onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    handleAdd();
+                }}
+                className="h-8 w-8"
+            >
+                {isAdding ? <Loader size={12} color="currentColor" /> : <Plus className="h-4 w-4" />}
+            </Button>
+        </div>
+    );
+};
 
 interface VendorUpdateData {
     indentNo: string;
@@ -47,6 +110,7 @@ interface HistoryData {
     product: string;
     quantity: number;
     uom: string;
+    placeholder?: string;
     rate: number;
     vendorType: 'Three Party' | 'Regular';
     date: string;
@@ -66,9 +130,14 @@ export default () => {
     const [editingRow, setEditingRow] = useState<string | null>(null);
     const [editValues, setEditValues] = useState<Partial<HistoryData>>({});
     const [vendorSearch, setVendorSearch] = useState('');
-    const [vendors, setVendors] = useState([]);
+    const [vendors, setVendors] = useState<any[]>([]);
     const [vendorsLoading, setVendorsLoading] = useState(true);
     const [dataLoading, setDataLoading] = useState(true);
+
+    const refreshVendors = async () => {
+        const vendorsList = await fetchVendors();
+        setVendors(vendorsList);
+    };
 
     useEffect(() => {
         const loadVendors = async () => {
@@ -473,11 +542,34 @@ export default () => {
             cell: ({ row }) => {
                 const isEditing = editingRow === row.original.indentNo;
                 return isEditing ? (
-                    <Input
+                    <Select
                         value={editValues.vendorName ?? row.original.vendorName}
-                        onChange={(e) => handleInputChange('vendorName', e.target.value)}
-                        className="w-[150px]"
-                    />
+                        onValueChange={(value) => handleInputChange('vendorName', value)}
+                    >
+                        <SelectTrigger className="w-[200px]">
+                            <SelectValue placeholder="Select vendor" />
+                        </SelectTrigger>
+                        <SelectContent>
+                            <AddVendorSection onVendorAdded={refreshVendors} />
+                            <div className="max-h-[200px] overflow-y-auto">
+                                {vendorsLoading ? (
+                                    <div className="py-6 text-center text-sm text-muted-foreground">
+                                        Loading vendors...
+                                    </div>
+                                ) : vendors?.length > 0 ? (
+                                    vendors.map((vendor, i) => (
+                                        <SelectItem key={i} value={vendor.vendorName}>
+                                            {vendor.vendorName}
+                                        </SelectItem>
+                                    ))
+                                ) : (
+                                    <div className="py-6 text-center text-sm text-muted-foreground">
+                                        No vendors found
+                                    </div>
+                                )}
+                            </div>
+                        </SelectContent>
+                    </Select>
                 ) : (
                     <div className="flex items-center gap-2">
                         {row.original.vendorName}
@@ -510,7 +602,7 @@ export default () => {
                             <SelectValue placeholder="Select type" />
                         </SelectTrigger>
                         <SelectContent>
-                            <SelectItem value="Regular Vendor">Regular</SelectItem>
+                            <SelectItem value="Regular">Regular</SelectItem>
                             <SelectItem value="Three Party">Three Party</SelectItem>
                         </SelectContent>
                     </Select>
@@ -927,6 +1019,7 @@ export default () => {
                                                                         </SelectTrigger>
                                                                     </FormControl>
                                                                     <SelectContent>
+                                                                        <AddVendorSection onVendorAdded={refreshVendors} />
                                                                         <div className="max-h-[300px] overflow-y-auto">
                                                                             {vendorsLoading ? (
                                                                                 <div className="py-6 text-center text-sm text-muted-foreground">
@@ -1139,15 +1232,18 @@ export default () => {
                                                                 </SelectTrigger>
                                                             </FormControl>
                                                             <SelectContent>
-                                                                <div className="flex items-center border-b px-3 pb-2">
-                                                                    <Input
-                                                                        placeholder="Search vendors..."
-                                                                        className="h-8 border-0 focus-visible:ring-0 focus-visible:ring-offset-0"
-                                                                        value={vendorSearch}
-                                                                        onChange={(e) => setVendorSearch(e.target.value)}
-                                                                        onClick={(e) => e.stopPropagation()}
-                                                                        onKeyDown={(e) => e.stopPropagation()}
-                                                                    />
+                                                                <div className="p-2 border-b space-y-2">
+                                                                    <div className="flex items-center border-b px-2 pb-1">
+                                                                        <Input
+                                                                            placeholder="Search vendors..."
+                                                                            className="h-8 border-0 focus-visible:ring-0 focus-visible:ring-offset-0"
+                                                                            value={vendorSearch}
+                                                                            onChange={(e) => setVendorSearch(e.target.value)}
+                                                                            onClick={(e) => e.stopPropagation()}
+                                                                            onKeyDown={(e) => e.stopPropagation()}
+                                                                        />
+                                                                    </div>
+                                                                    <AddVendorSection onVendorAdded={refreshVendors} />
                                                                 </div>
                                                                 <div className="max-h-[200px] overflow-y-auto">
                                                                     {vendorsLoading ? (

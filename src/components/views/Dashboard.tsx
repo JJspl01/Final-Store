@@ -36,7 +36,7 @@ function CustomChartTooltipContent({
     return (
         <div className="rounded-md border bg-white px-3 py-2 shadow-sm text-sm">
             <p className="font-medium">{label}</p>
-            <p>Quantity: {data.quantity}</p>
+            <p>Quantity: {Math.floor(data.quantity)}</p>
             <p>Frequency: {data.frequency}</p>
         </div>
     );
@@ -178,7 +178,7 @@ export default function UsersTable() {
                             <p className="text-3xl font-bold text-blue-800">{indent.count}</p>
                             <div className="text-blue-500 flex justify-between">
                                 <p className="text-sm ">Indented Quantity</p>
-                                <p>{indent.quantity}</p>
+                                <p>{Math.floor(indent.quantity)}</p>
                             </div>
                         </CardContent>
                     </Card>
@@ -191,7 +191,7 @@ export default function UsersTable() {
                             <p className="text-3xl font-bold text-green-800">{purchase.count}</p>
                             <div className="text-green-500 flex justify-between">
                                 <p className="text-sm ">Purchased Quantity</p>
-                                <p>{purchase.quantity}</p>
+                                <p>{Math.floor(purchase.quantity)}</p>
                             </div>
                         </CardContent>
                     </Card>
@@ -205,7 +205,7 @@ export default function UsersTable() {
 
                             <div className="text-orange-500 flex justify-between">
                                 <p className="text-sm ">Out Quantity</p>
-                                <p>{out.quantity}</p>
+                                <p>{Math.floor(out.quantity)}</p>
                             </div>
                         </CardContent>
                     </Card>
@@ -221,7 +221,7 @@ export default function UsersTable() {
 
                             <div className="text-yellow-500 flex justify-between">
                                 <p className="text-sm ">Low in Stock</p>
-                                <p>{alerts.lowStock}</p >
+                                <p>{Math.floor(alerts.lowStock)}</p >
                             </div>
                         </CardContent>
                     </Card>
@@ -305,7 +305,7 @@ export default function UsersTable() {
                                     <p className="font-semibold text-md">{vendor.name}</p>
                                     <div className="flex gap-5">
                                         <p>{vendor.orders} Orders</p>
-                                        <p>{vendor.quantity} Items</p>
+                                        <p>{Math.floor(vendor.quantity)} Items</p>
                                     </div>
                                 </div>
                             ))}

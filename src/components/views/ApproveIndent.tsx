@@ -5,11 +5,11 @@ import { useEffect, useState } from 'react';
 import { DownloadOutlined } from "@ant-design/icons";
 import { Button } from '../ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select';
-import { postToSheet, fetchFromSupabasePaginated } from '@/lib/fetchers';
+import { fetchIndentMasterData, fetchFromSupabasePaginated } from '@/lib/fetchers';
 import { toast } from 'sonner';
 import { PuffLoader as Loader } from 'react-spinners';
 import { Tabs, TabsContent } from '../ui/tabs';
-import { ClipboardCheck, PenSquare } from 'lucide-react';
+import { ClipboardCheck, PenSquare, Search } from 'lucide-react';
 import { formatDate } from '@/lib/utils';
 import { useAuth } from '@/context/AuthContext';
 import { useSheets } from '@/context/SheetsContext';
@@ -57,9 +57,11 @@ export default () => {
     const [editValues, setEditValues] = useState<Partial<HistoryData>>({});
     const [loading, setLoading] = useState(false);
     const [selectedRows, setSelectedRows] = useState<Set<string>>(new Set());
-    const [bulkUpdates, setBulkUpdates] = useState<Map<string, { vendorType?: string; quantity?: number }>>(new Map());
+    const [bulkUpdates, setBulkUpdates] = useState<Map<string, { vendorType?: string; quantity?: number; product?: string }>>(new Map());
+    const [searchTermProduct, setSearchTermProduct] = useState('');
     const [submitting, setSubmitting] = useState(false);
     const [dataLoading, setDataLoading] = useState(true);
+    const [master, setMaster] = useState<any>(null);
 
     // Fetching table data
     useEffect(() => {
@@ -125,6 +127,7 @@ export default () => {
         };
 
         fetchData();
+        fetchIndentMasterData().then(setMaster);
     }, []);
 
     const getCurrentFormattedDate = () => {
@@ -150,7 +153,8 @@ export default () => {
                         const newUpdates = new Map(prevUpdates);
                         newUpdates.set(indentNo, {
                             vendorType: currentRow.vendorType,
-                            quantity: currentRow.quantity
+                            quantity: currentRow.quantity,
+                            product: currentRow.product
                         });
                         return newUpdates;
                     });
@@ -177,7 +181,8 @@ export default () => {
             tableData.forEach(row => {
                 newUpdates.set(row.indentNo, {
                     vendorType: row.vendorType,
-                    quantity: row.quantity
+                    quantity: row.quantity,
+                    product: row.product
                 });
             });
             setBulkUpdates(newUpdates);
@@ -189,7 +194,7 @@ export default () => {
 
     const handleBulkUpdate = (
         indentNo: string,
-        field: 'vendorType' | 'quantity',
+        field: 'vendorType' | 'quantity' | 'product',
         value: string | number
     ) => {
         setBulkUpdates((prevUpdates) => {
@@ -250,6 +255,7 @@ export default () => {
                     approved_quantity: update.quantity !== undefined ? update.quantity : originalRecord.quantity,
                     // H column (quantity) bhi approved ke equal
                     quantity: update.quantity !== undefined ? update.quantity : originalRecord.quantity,
+                    product_name: update.product || originalRecord.product,
                     actual_1: formattedDate,
                 };
 
@@ -351,6 +357,7 @@ export default () => {
             uom: row.uom,
             vendorType: row.vendorType,
             product: row.product,
+            specifications: row.specifications,
         });
     };
 
@@ -391,6 +398,9 @@ export default () => {
                 }
                 if (editValues.product) {
                     updatePayload.product_name = editValues.product;
+                }
+                if (editValues.specifications !== undefined) {
+                    updatePayload.specifications = editValues.specifications;
                 }
 
                 const { error } = await supabase
@@ -552,11 +562,47 @@ export default () => {
         {
             accessorKey: 'product',
             header: 'Product',
-            cell: ({ getValue }) => (
-                <div className="max-w-[120px] sm:max-w-[150px] break-words whitespace-normal text-xs sm:text-sm">
-                    {getValue() as string}
-                </div>
-            ),
+            cell: ({ row }) => {
+                const indent = row.original;
+                const isSelected = selectedRows.has(indent.indentNo);
+                const currentValue = bulkUpdates.get(indent.indentNo)?.product || indent.product;
+
+                return (
+                    <Select
+                        value={currentValue}
+                        onValueChange={(value) => handleBulkUpdate(indent.indentNo, 'product', value)}
+                        disabled={!isSelected}
+                    >
+                        <SelectTrigger className={`w-[150px] sm:w-[200px] text-xs sm:text-sm ${!isSelected ? 'opacity-50' : ''}`}>
+                            <SelectValue placeholder="Product" />
+                        </SelectTrigger>
+                        <SelectContent className="w-[300px] sm:w-[500px]">
+                            <div className="sticky top-0 z-10 bg-popover p-2 border-b">
+                                <div className="flex items-center bg-muted rounded-md px-3 py-1">
+                                    <Search className="h-4 w-4 shrink-0 opacity-50" />
+                                    <input
+                                        placeholder="Search product..."
+                                        value={searchTermProduct}
+                                        onChange={(e) => setSearchTermProduct(e.target.value)}
+                                        onKeyDown={(e) => e.stopPropagation()}
+                                        className="flex h-9 w-full bg-transparent py-2 text-sm outline-none placeholder:text-muted-foreground ml-2"
+                                    />
+                                </div>
+                            </div>
+                            <div className="max-h-[300px] overflow-y-auto p-1">
+                                {Object.values(master?.groupHeadItems || {})
+                                    .flat()
+                                    .filter((p: any) => p.toLowerCase().includes(searchTermProduct.toLowerCase()))
+                                    .map((p: any, i: number) => (
+                                        <SelectItem key={i} value={p} className="cursor-pointer">
+                                            {p}
+                                        </SelectItem>
+                                    ))}
+                            </div>
+                        </SelectContent>
+                    </Select>
+                );
+            },
             size: 150,
         },
         {
@@ -722,12 +768,41 @@ export default () => {
             header: 'Product',
             cell: ({ row }) => {
                 const isEditing = editingRow === row.original.indentNo;
+                const currentValue = editValues.product ?? row.original.product;
+
                 return isEditing ? (
-                    <Input
-                        value={editValues.product ?? row.original.product}
-                        onChange={(e) => handleInputChange('product', e.target.value)}
-                        className="max-w-[120px] sm:max-w-[150px] text-xs sm:text-sm"
-                    />
+                    <Select
+                        value={currentValue}
+                        onValueChange={(value) => handleInputChange('product', value)}
+                    >
+                        <SelectTrigger className="w-[150px] sm:w-[200px] text-xs sm:text-sm">
+                            <SelectValue placeholder="Product" />
+                        </SelectTrigger>
+                        <SelectContent className="w-[300px] sm:w-[500px]">
+                            <div className="sticky top-0 z-10 bg-popover p-2 border-b">
+                                <div className="flex items-center bg-muted rounded-md px-3 py-1">
+                                    <Search className="h-4 w-4 shrink-0 opacity-50" />
+                                    <input
+                                        placeholder="Search product..."
+                                        value={searchTermProduct}
+                                        onChange={(e) => setSearchTermProduct(e.target.value)}
+                                        onKeyDown={(e) => e.stopPropagation()}
+                                        className="flex h-9 w-full bg-transparent py-2 text-sm outline-none placeholder:text-muted-foreground ml-2"
+                                    />
+                                </div>
+                            </div>
+                            <div className="max-h-[300px] overflow-y-auto p-1">
+                                {Object.values(master?.groupHeadItems || {})
+                                    .flat()
+                                    .filter((p: any) => p.toLowerCase().includes(searchTermProduct.toLowerCase()))
+                                    .map((p: any, i: number) => (
+                                        <SelectItem key={i} value={p} className="cursor-pointer">
+                                            {p}
+                                        </SelectItem>
+                                    ))}
+                            </div>
+                        </SelectContent>
+                    </Select>
                 ) : (
                     <div className="flex items-center gap-1 sm:gap-2 max-w-[120px] sm:max-w-[150px] break-words whitespace-normal">
                         <span className="text-xs sm:text-sm">{row.original.product}</span>
@@ -808,11 +883,30 @@ export default () => {
         {
             accessorKey: 'specifications',
             header: 'Specifications',
-            cell: ({ getValue }) => (
-                <div className="max-w-[120px] sm:max-w-[150px] break-words whitespace-normal text-xs sm:text-sm">
-                    {getValue() as string}
-                </div>
-            ),
+            cell: ({ row }) => {
+                const isEditing = editingRow === row.original.indentNo;
+                return isEditing ? (
+                    <Input
+                        value={editValues.specifications ?? row.original.specifications}
+                        onChange={(e) => handleInputChange('specifications', e.target.value)}
+                        className="max-w-[120px] sm:max-w-[150px] text-xs sm:text-sm"
+                    />
+                ) : (
+                    <div className="flex items-center gap-1 sm:gap-2 max-w-[120px] sm:max-w-[150px] break-words whitespace-normal">
+                        <span className="text-xs sm:text-sm">{row.original.specifications}</span>
+                        {user.indentApprovalAction && (
+                            <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-6 w-6 sm:h-8 sm:w-8"
+                                onClick={() => handleEditClick(row.original)}
+                            >
+                                <PenSquare className="h-2 w-2 sm:h-3 sm:w-3" />
+                            </Button>
+                        )}
+                    </div>
+                );
+            },
             size: 150,
         },
         {
@@ -829,7 +923,7 @@ export default () => {
                             <SelectValue placeholder="Select type" />
                         </SelectTrigger>
                         <SelectContent>
-                            <SelectItem value="Regular Vendor">Regular</SelectItem>
+                            <SelectItem value="Regular">Regular</SelectItem>
                             <SelectItem value="Three Party">Three Party</SelectItem>
                             <SelectItem value="Reject">Reject</SelectItem>
                         </SelectContent>

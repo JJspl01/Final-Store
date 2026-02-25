@@ -180,13 +180,15 @@ export default () => {
             </Heading>
 
 
-            <DataTable
-                data={historyData}
-                columns={historyColumns}
-                searchFields={['vendorName', 'poNumber', 'indentNumber']}
-                dataLoading={poMasterLoading}
-                className='h-[80dvh]'
-            />
+            <div className="w-full overflow-x-auto">
+                <DataTable
+                    data={historyData}
+                    columns={historyColumns}
+                    searchFields={['vendorName', 'poNumber', 'indentNumber']}
+                    dataLoading={poMasterLoading}
+                    className='h-[80dvh]'
+                />
+            </div>
         </div>
     );
 };
