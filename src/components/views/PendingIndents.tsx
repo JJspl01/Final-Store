@@ -130,7 +130,7 @@ export default () => {
             <DataTable
                 data={tableData}
                 columns={columns}
-                searchFields={['product', 'vendorName', 'paymentTerm', 'specifications']}
+                searchFields={['indentNo', 'date', 'product', 'vendorName', 'paymentTerm', 'specifications']}
                 dataLoading={dataLoading}
                 className="h-[80dvh]"
             />

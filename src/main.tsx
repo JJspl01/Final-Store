@@ -20,6 +20,7 @@ import TrainnigVideo from './components/views/TrainingVideo';
 import License from './components/views/License';
 import AllIndent from './components/views/AllIndent';
 import Quotation from './components/views/Quotation';
+import MasterData from './components/views/MasterData';
 import type { RouteAttributes } from './types';
 
 import {
@@ -38,6 +39,7 @@ import {
     Video,
     KeyRound,
     Settings,
+    Database,
 
 } from 'lucide-react';
 import type { UserPermissions } from './types/sheets';
@@ -262,6 +264,13 @@ const routes: RouteAttributes[] = [
         name: 'Quotation',
         icon: <ClipboardList size={20} />,
         element: <Quotation />,
+        notifications: () => 0,
+    },
+    {
+        path: 'master-data',
+        name: 'Master Data',
+        icon: <Database size={20} />,
+        element: <MasterData />,
         notifications: () => 0,
     },
     {

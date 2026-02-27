@@ -5,8 +5,11 @@ import {
     flexRender,
     getCoreRowModel,
     getFilteredRowModel,
+    getPaginationRowModel,
     useReactTable,
 } from '@tanstack/react-table';
+
+import { Button } from '../ui/button';
 
 import {
     Table,
@@ -32,6 +35,7 @@ interface DataTableProps<TData, TValue> {
     className?: string;
     extraActions?: ReactNode;
     footer?: ReactNode;
+    pagination?: boolean;
 }
 
 function globalFilterFn<TData>(row: TData, columnIds: string[], filterValue: string) {
@@ -52,6 +56,7 @@ export default function DataTable<TData, TValue>({
     className,
     extraActions,
     footer,
+    pagination = false,
 }: DataTableProps<TData, TValue>) {
     const [globalFilter, setGlobalFilter] = useState('');
     const table = useReactTable({
@@ -59,6 +64,7 @@ export default function DataTable<TData, TValue>({
         columns,
         getCoreRowModel: getCoreRowModel(),
         getFilteredRowModel: getFilteredRowModel(),
+        getPaginationRowModel: pagination ? getPaginationRowModel() : undefined,
         globalFilterFn: (row, _, filterValue) =>
             globalFilterFn(row.original, searchFields, filterValue),
 
@@ -158,6 +164,30 @@ export default function DataTable<TData, TValue>({
                     <ScrollBar orientation="horizontal" />
                 </ScrollArea>
             </div>
+            {pagination && (
+                <div className="flex items-center justify-end space-x-2 mt-2">
+                    <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => table.previousPage()}
+                        disabled={!table.getCanPreviousPage()}
+                    >
+                        Previous
+                    </Button>
+                    <div className="text-sm font-medium">
+                        Page {table.getState().pagination.pageIndex + 1} of{' '}
+                        {table.getPageCount()}
+                    </div>
+                    <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => table.nextPage()}
+                        disabled={!table.getCanNextPage()}
+                    >
+                        Next
+                    </Button>
+                </div>
+            )}
             {footer && <div>{footer}</div>}
         </div>
     );

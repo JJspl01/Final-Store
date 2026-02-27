@@ -476,7 +476,7 @@ export default function QuotationPage() {
 
   return (
     <div className="w-full h-screen overflow-hidden bg-gradient-to-br from-blue-100 via-purple-50 to-blue-50 rounded-md flex flex-col">
-      <div className="flex justify-between p-5 w-full flex-shrink-0">
+      <div className="flex justify-between items-center p-5 w-full flex-shrink-0">
         <div className="flex gap-2 items-center">
           <FilePlus2 size={50} className="text-primary" />
           <div>
@@ -488,7 +488,7 @@ export default function QuotationPage() {
       </div>
 
       <div className="flex-1 overflow-y-auto px-4 pb-4">
-        <div className="max-w-6xl w-full mx-auto">
+        <div className="w-full mx-auto">
           <div className="w-full">
             <Tabs defaultValue="create" onValueChange={(v) => setMode(v === 'create' ? 'create' as Mode : 'revise' as Mode)}>
               <TabsList className="h-10 w-full rounded-none">

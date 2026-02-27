@@ -393,22 +393,22 @@ export default () => {
                     >
                         <Users size={50} className="text-primary" />
                     </Heading>
-                    <TabsContent value="pending">
-                        <div className="w-full overflow-x-auto">
+                    <TabsContent value="pending" className="overflow-hidden w-full">
+                        <div className="overflow-x-auto max-w-[calc(100vw-3rem)] md:max-w-full">
                             <DataTable
                                 data={tableData}
                                 columns={columns}
-                                searchFields={['product', 'department', 'indenter']}
+                                searchFields={['indentNo', 'product', 'department', 'indenter', 'date']}
                                 dataLoading={dataLoading}
                             />
                         </div>
                     </TabsContent>
-                    <TabsContent value="history">
-                        <div className="w-full overflow-x-auto">
+                    <TabsContent value="history" className="overflow-hidden w-full">
+                        <div className="overflow-x-auto max-w-[calc(100vw-3rem)] md:max-w-full">
                             <DataTable
                                 data={historyData}
                                 columns={historyColumns}
-                                searchFields={['product', 'department', 'indenter']}
+                                searchFields={['indentNo', 'product', 'department', 'indenter', 'date']}
                                 dataLoading={dataLoading}
                             />
                         </div>

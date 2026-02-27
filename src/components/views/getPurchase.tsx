@@ -26,7 +26,7 @@ import { Input } from '../ui/input';
 import { PuffLoader as Loader } from 'react-spinners';
 import { toast } from 'sonner';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../ui/tabs';
-import { ShoppingCart } from 'lucide-react';
+import { ShoppingCart, SquarePen, Check, X, Search } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import Heading from '../element/Heading';
 import { Pill } from '../ui/pill';
@@ -132,6 +132,10 @@ export default () => {
     const [productQty, setProductQty] = useState<{ [indentNo: string]: number }>({});
     const [editingRow, setEditingRow] = useState<string | null>(null);
     const [editedData, setEditedData] = useState<{ [indentNo: string]: EditedData }>({});
+    const [editingCell, setEditingCell] = useState<{ rowId: string; field: 'product' | 'billedQty' | 'billAmount' } | null>(null);
+    const [editCellValue, setEditCellValue] = useState<string | number>('');
+    const [masterItems, setMasterItems] = useState<string[]>([]);
+    const [productSearch, setProductSearch] = useState('');
 
 
 
@@ -300,6 +304,99 @@ export default () => {
 
         fetchHistoryData();
     }, [openDialog]); // Refresh when dialog closes (which updates table)
+
+    // Fetch master items for product dropdown in history tab
+    useEffect(() => {
+        const fetchMasterItems = async () => {
+            try {
+                const data = await fetchFromSupabasePaginated(
+                    'master',
+                    'item_name',
+                    { column: 'item_name', options: { ascending: true } }
+                );
+                const items = data
+                    .map((d: any) => d.item_name)
+                    .filter(Boolean);
+                setMasterItems([...new Set(items)] as string[]);
+            } catch (error) {
+                console.error('Error fetching master items:', error);
+            }
+        };
+        fetchMasterItems();
+    }, []);
+
+    // Per-cell inline edit handlers for history tab
+    const handleStartCellEdit = (rowId: string, field: 'product' | 'billedQty' | 'billAmount', currentValue: string | number) => {
+        setEditingCell({ rowId, field });
+        setEditCellValue(currentValue);
+        setProductSearch('');
+    };
+
+    const handleCancelCellEdit = () => {
+        setEditingCell(null);
+        setEditCellValue('');
+        setProductSearch('');
+    };
+
+    const handleSaveCellEdit = async () => {
+        if (!editingCell) return;
+        try {
+            const updatePayload: any = {};
+            const localUpdate: any = {};
+            let updateTable = 'indent'; // default
+
+            if (editingCell.field === 'product') {
+                updatePayload.product_name = editCellValue;
+                localUpdate.product = editCellValue;
+                updateTable = 'indent';
+            } else if (editingCell.field === 'billedQty') {
+                updatePayload.received_quantity = Number(editCellValue) || 0;
+                localUpdate.billedQty = Number(editCellValue) || 0;
+                updateTable = 'received';
+            } else if (editingCell.field === 'billAmount') {
+                updatePayload.bill_amount = Number(editCellValue) || 0;
+                localUpdate.billAmount = Number(editCellValue) || 0;
+                updateTable = 'received';
+            }
+
+            if (updateTable === 'indent') {
+                const { error } = await supabase
+                    .from('indent')
+                    .update(updatePayload)
+                    .eq('indent_number', editingCell.rowId);
+                if (error) throw error;
+            } else {
+                // For received table, find the row by indent_number and bill_number
+                const historyRow = historyData.find(h => h.indentNo === editingCell.rowId);
+                if (historyRow) {
+                    const { error } = await supabase
+                        .from('received')
+                        .update(updatePayload)
+                        .eq('indent_number', editingCell.rowId)
+                        .eq('bill_number', historyRow.billNumber);
+                    if (error) throw error;
+                }
+            }
+
+            toast.success(`Updated ${editingCell.field} for ${editingCell.rowId}`);
+
+            // Update local state
+            setHistoryData(prev =>
+                prev.map(item =>
+                    item.indentNo === editingCell.rowId
+                        ? { ...item, ...localUpdate }
+                        : item
+                )
+            );
+
+            setEditingCell(null);
+            setEditCellValue('');
+            setProductSearch('');
+        } catch (error: any) {
+            console.error('Error saving edit:', error);
+            toast.error('Failed to save: ' + error.message);
+        }
+    };
 
     // Fetch related products when dialog opens
     useEffect(() => {
@@ -486,15 +583,147 @@ export default () => {
         {
             accessorKey: 'product',
             header: 'Product',
+            cell: ({ row }: { row: Row<HistoryData> }) => {
+                const item = row.original;
+                const isCellEditing = editingCell?.rowId === item.indentNo && editingCell?.field === 'product';
+
+                if (isCellEditing) {
+                    const filteredItems = masterItems.filter(p =>
+                        p.toLowerCase().includes(productSearch.toLowerCase())
+                    );
+                    return (
+                        <div className="flex items-center gap-1">
+                            <Select
+                                value={editCellValue as string}
+                                onValueChange={(value) => setEditCellValue(value)}
+                            >
+                                <SelectTrigger className="w-[180px] text-xs sm:text-sm">
+                                    <SelectValue placeholder="Select Product" />
+                                </SelectTrigger>
+                                <SelectContent className="w-[300px] sm:w-[400px]">
+                                    <div className="sticky top-0 z-10 bg-popover p-2 border-b">
+                                        <div className="flex items-center bg-muted rounded-md px-3 py-1">
+                                            <Search className="h-4 w-4 shrink-0 opacity-50" />
+                                            <input
+                                                placeholder="Search product..."
+                                                value={productSearch}
+                                                onChange={(e) => setProductSearch(e.target.value)}
+                                                onKeyDown={(e) => e.stopPropagation()}
+                                                className="flex h-9 w-full bg-transparent py-2 text-sm outline-none placeholder:text-muted-foreground ml-2"
+                                            />
+                                        </div>
+                                    </div>
+                                    <div className="max-h-[300px] overflow-y-auto p-1">
+                                        {filteredItems.map((p, i) => (
+                                            <SelectItem key={i} value={p} className="cursor-pointer">
+                                                {p}
+                                            </SelectItem>
+                                        ))}
+                                    </div>
+                                </SelectContent>
+                            </Select>
+                            <Button variant="ghost" size="icon" className="h-6 w-6 text-green-600 hover:bg-green-50" onClick={handleSaveCellEdit}>
+                                <Check className="h-3.5 w-3.5" />
+                            </Button>
+                            <Button variant="ghost" size="icon" className="h-6 w-6 text-red-600 hover:bg-red-50" onClick={handleCancelCellEdit}>
+                                <X className="h-3.5 w-3.5" />
+                            </Button>
+                        </div>
+                    );
+                }
+
+                return (
+                    <div className="flex items-center gap-1 max-w-[150px] break-words whitespace-normal">
+                        <span>{item.product}</span>
+                        <button
+                            className="ml-1 text-black hover:text-gray-700 shrink-0"
+                            onClick={() => handleStartCellEdit(item.indentNo, 'product', item.product)}
+                        >
+                            <SquarePen className="h-3.5 w-3.5" />
+                        </button>
+                    </div>
+                );
+            },
         },
         {
             accessorKey: 'billedQty',
             header: 'Billed Qty',
+            cell: ({ row }: { row: Row<HistoryData> }) => {
+                const item = row.original;
+                const isCellEditing = editingCell?.rowId === item.indentNo && editingCell?.field === 'billedQty';
+
+                if (isCellEditing) {
+                    return (
+                        <div className="flex items-center gap-1">
+                            <Input
+                                type="number"
+                                value={editCellValue}
+                                onChange={(e) => setEditCellValue(Number(e.target.value) || 0)}
+                                className="w-20 text-xs sm:text-sm"
+                                min="0"
+                            />
+                            <Button variant="ghost" size="icon" className="h-6 w-6 text-green-600 hover:bg-green-50" onClick={handleSaveCellEdit}>
+                                <Check className="h-3.5 w-3.5" />
+                            </Button>
+                            <Button variant="ghost" size="icon" className="h-6 w-6 text-red-600 hover:bg-red-50" onClick={handleCancelCellEdit}>
+                                <X className="h-3.5 w-3.5" />
+                            </Button>
+                        </div>
+                    );
+                }
+
+                return (
+                    <div className="flex items-center gap-1">
+                        <span>{item.billedQty}</span>
+                        <button
+                            className="ml-1 text-black hover:text-gray-700 shrink-0"
+                            onClick={() => handleStartCellEdit(item.indentNo, 'billedQty', item.billedQty)}
+                        >
+                            <SquarePen className="h-3.5 w-3.5" />
+                        </button>
+                    </div>
+                );
+            },
         },
         {
             accessorKey: 'billAmount',
             header: 'Bill Amount',
-            cell: ({ getValue }) => `₹${getValue()}`,
+            cell: ({ row }: { row: Row<HistoryData> }) => {
+                const item = row.original;
+                const isCellEditing = editingCell?.rowId === item.indentNo && editingCell?.field === 'billAmount';
+
+                if (isCellEditing) {
+                    return (
+                        <div className="flex items-center gap-1">
+                            <Input
+                                type="number"
+                                value={editCellValue}
+                                onChange={(e) => setEditCellValue(Number(e.target.value) || 0)}
+                                className="w-24 text-xs sm:text-sm"
+                                min="0"
+                            />
+                            <Button variant="ghost" size="icon" className="h-6 w-6 text-green-600 hover:bg-green-50" onClick={handleSaveCellEdit}>
+                                <Check className="h-3.5 w-3.5" />
+                            </Button>
+                            <Button variant="ghost" size="icon" className="h-6 w-6 text-red-600 hover:bg-red-50" onClick={handleCancelCellEdit}>
+                                <X className="h-3.5 w-3.5" />
+                            </Button>
+                        </div>
+                    );
+                }
+
+                return (
+                    <div className="flex items-center gap-1">
+                        <span>₹{item.billAmount}</span>
+                        <button
+                            className="ml-1 text-black hover:text-gray-700 shrink-0"
+                            onClick={() => handleStartCellEdit(item.indentNo, 'billAmount', item.billAmount)}
+                        >
+                            <SquarePen className="h-3.5 w-3.5" />
+                        </button>
+                    </div>
+                );
+            },
         },
         {
             accessorKey: 'photoOfBill',
@@ -691,7 +920,7 @@ export default () => {
                         <DataTable
                             data={tableData}
                             columns={columns}
-                            searchFields={['product', 'department', 'indenter', 'poNumber']}
+                            searchFields={['indentNo', 'poNumber', 'product', 'department', 'indenter', 'date', 'billNumber']}
                             dataLoading={loading}
                         />
                     </TabsContent>
@@ -699,7 +928,7 @@ export default () => {
                         <DataTable
                             data={historyData}
                             columns={historyColumns}
-                            searchFields={['product', 'department', 'indenter', 'poNumber']}
+                            searchFields={['indentNo', 'poNumber', 'product', 'department', 'indenter', 'date', 'billNumber']}
                             dataLoading={indentLoading}
                         />
                     </TabsContent>

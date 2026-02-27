@@ -461,7 +461,7 @@ export default () => {
             });
             const email = vendorsData.find((v: any) => v.vendor_name?.trim().toLowerCase() === values.supplierName?.trim().toLowerCase())?.vendor_email; // Fixed logic to use correct column names and robust matching
 
-            let url = '';
+            let url = ''; 0
 
             if (email) {
                 // Email hai to PDF upload + email send
@@ -584,7 +584,7 @@ export default () => {
 
     return (
         <div className="grid place-items-center w-full bg-gradient-to-br from-blue-100 via-purple-50 to-blue-50 rounder-md">
-            <div className="flex justify-between p-5 w-full">
+            <div className="flex justify-between items-center w-full p-5">
                 <div className="flex gap-2 items-center">
                     <FilePlus2 size={50} className="text-primary" />
                     <div>
@@ -596,7 +596,7 @@ export default () => {
                 </div>
                 <SidebarTrigger />
             </div>
-            <div className="sm:p-4 max-w-6xl">
+            <div className="sm:p-4 w-full">
                 <div className="w-full">
                     <Tabs
                         defaultValue="create"
@@ -621,10 +621,10 @@ export default () => {
                                     className="w-20 h-20 object-contain"
                                 />
                                 <div className="text-center">
-                                    <h1 className="text-2xl font-bold">{detailsData?.companyName}</h1>
+                                    <h1 className="text-2xl font-bold">Jay Jagannath Steel & Power Limited</h1>
                                     <div>
-                                        <p className="text-sm">{detailsData?.companyAddress}</p>
-                                        <p className="text-sm">Phone No: +{detailsData?.companyPhone}</p>
+                                        <p className="text-sm">N-2, Civil Township, Rourkela-769004</p>
+                                        <p className="text-sm">Phone No: +919437961872</p>
                                     </div>
                                 </div>
                             </div>
@@ -1326,7 +1326,9 @@ export default () => {
                                         </FormItem>
                                     )}
                                 />
-                                <p className="break-words min-w-1/4">For {detailsData?.company_name}</p>
+                                <div className="text-center">
+                                    <p className="font-semibold text-sm">For Jay Jagannath Steel & Power Limited</p>
+                                </div>
                             </div>
                         </div>
 

@@ -133,6 +133,9 @@ export default () => {
     const [vendors, setVendors] = useState<any[]>([]);
     const [vendorsLoading, setVendorsLoading] = useState(true);
     const [dataLoading, setDataLoading] = useState(true);
+    const [paymentTerms, setPaymentTerms] = useState<string[]>([]);
+    const [paymentTermsLoading, setPaymentTermsLoading] = useState(true);
+    const [newPaymentTerm, setNewPaymentTerm] = useState('');
 
     const refreshVendors = async () => {
         const vendorsList = await fetchVendors();
@@ -142,12 +145,58 @@ export default () => {
     useEffect(() => {
         const loadVendors = async () => {
             setVendorsLoading(true);
-            const vendorsList = await fetchVendors();
-            setVendors(vendorsList);
+            const v = await fetchVendors();
+            setVendors(v || []);
             setVendorsLoading(false);
         };
         loadVendors();
     }, []);
+
+    // Fetch payment terms from master_data
+    useEffect(() => {
+        const fetchPaymentTerms = async () => {
+            setPaymentTermsLoading(true);
+            try {
+                const { data, error } = await supabase
+                    .from('master_data')
+                    .select('payment_term')
+                    .not('payment_term', 'is', null);
+                if (error) throw error;
+                const terms = [...new Set(
+                    (data || []).map((d: any) => d.payment_term).filter(Boolean)
+                )] as string[];
+                setPaymentTerms(terms);
+            } catch (err) {
+                console.error('Error fetching payment terms:', err);
+            } finally {
+                setPaymentTermsLoading(false);
+            }
+        };
+        fetchPaymentTerms();
+    }, []);
+
+    const handleAddPaymentTerm = async () => {
+        const trimmed = newPaymentTerm.trim();
+        if (!trimmed) {
+            toast.error('Please enter a payment term');
+            return;
+        }
+        if (paymentTerms.includes(trimmed)) {
+            toast.error('Payment term already exists');
+            return;
+        }
+        try {
+            const { error } = await supabase
+                .from('master_data')
+                .insert([{ vendor_name: '-', payment_term: trimmed }]);
+            if (error) throw error;
+            setPaymentTerms(prev => [...prev, trimmed]);
+            setNewPaymentTerm('');
+            toast.success(`Added payment term: ${trimmed}`);
+        } catch (err: any) {
+            toast.error('Failed to add: ' + err.message);
+        }
+    };
 
     // Fetching table data
     useEffect(() => {
@@ -936,7 +985,7 @@ export default () => {
                         <DataTable
                             data={tableData}
                             columns={columns}
-                            searchFields={['product', 'department', 'indenter', 'vendorType', 'vendorName']}
+                            searchFields={['indentNo', 'product', 'department', 'indenter', 'vendorType', 'vendorName', 'date']}
                             dataLoading={dataLoading}
                         />
                     </TabsContent>
@@ -944,7 +993,7 @@ export default () => {
                         <DataTable
                             data={historyData}
                             columns={historyColumns}
-                            searchFields={['product', 'department', 'indenter', 'vendorType', 'vendorName']}
+                            searchFields={['indentNo', 'product', 'department', 'indenter', 'vendorType', 'vendorName', 'date']}
                             dataLoading={dataLoading}
                         />
                     </TabsContent>
@@ -1066,12 +1115,49 @@ export default () => {
                                                         render={({ field }) => (
                                                             <FormItem>
                                                                 <FormLabel>Payment Term</FormLabel>
-                                                                <FormControl>
-                                                                    <Input
-                                                                        placeholder="Enter payment term"
-                                                                        {...field}
-                                                                    />
-                                                                </FormControl>
+                                                                <Select
+                                                                    onValueChange={field.onChange}
+                                                                    value={field.value}
+                                                                >
+                                                                    <FormControl>
+                                                                        <SelectTrigger className="w-full">
+                                                                            <SelectValue placeholder="Select payment term" />
+                                                                        </SelectTrigger>
+                                                                    </FormControl>
+                                                                    <SelectContent>
+                                                                        <div className="p-2 border-b">
+                                                                            <div className="flex items-center gap-1">
+                                                                                <Input
+                                                                                    placeholder="New payment term..."
+                                                                                    className="h-8 text-sm"
+                                                                                    value={newPaymentTerm}
+                                                                                    onChange={(e) => setNewPaymentTerm(e.target.value)}
+                                                                                    onClick={(e) => e.stopPropagation()}
+                                                                                    onKeyDown={(e) => e.stopPropagation()}
+                                                                                />
+                                                                                <Button
+                                                                                    type="button"
+                                                                                    size="icon"
+                                                                                    className="h-8 w-8 shrink-0"
+                                                                                    onClick={(e) => { e.stopPropagation(); handleAddPaymentTerm(); }}
+                                                                                >
+                                                                                    <Plus className="h-4 w-4" />
+                                                                                </Button>
+                                                                            </div>
+                                                                        </div>
+                                                                        <div className="max-h-[200px] overflow-y-auto">
+                                                                            {paymentTermsLoading ? (
+                                                                                <div className="py-6 text-center text-sm text-muted-foreground">Loading...</div>
+                                                                            ) : paymentTerms.length > 0 ? (
+                                                                                paymentTerms.map((term, i) => (
+                                                                                    <SelectItem key={i} value={term}>{term}</SelectItem>
+                                                                                ))
+                                                                            ) : (
+                                                                                <div className="py-6 text-center text-sm text-muted-foreground">No payment terms found</div>
+                                                                            )}
+                                                                        </div>
+                                                                    </SelectContent>
+                                                                </Select>
                                                             </FormItem>
                                                         )}
                                                     />
@@ -1297,20 +1383,37 @@ export default () => {
                                                             </SelectTrigger>
                                                         </FormControl>
                                                         <SelectContent>
-                                                            {[
-                                                                "Immediate Payment",
-                                                                "Net 30 Days",
-                                                                "Net 60 Days",
-                                                                "Net 90 Days",
-                                                                "Other"
-                                                            ].map((term, i) => (
-                                                                <SelectItem
-                                                                    key={i}
-                                                                    value={term}
-                                                                >
-                                                                    {term}
-                                                                </SelectItem>
-                                                            ))}
+                                                            <div className="p-2 border-b">
+                                                                <div className="flex items-center gap-1">
+                                                                    <Input
+                                                                        placeholder="New payment term..."
+                                                                        className="h-8 text-sm"
+                                                                        value={newPaymentTerm}
+                                                                        onChange={(e) => setNewPaymentTerm(e.target.value)}
+                                                                        onClick={(e) => e.stopPropagation()}
+                                                                        onKeyDown={(e) => e.stopPropagation()}
+                                                                    />
+                                                                    <Button
+                                                                        type="button"
+                                                                        size="icon"
+                                                                        className="h-8 w-8 shrink-0"
+                                                                        onClick={(e) => { e.stopPropagation(); handleAddPaymentTerm(); }}
+                                                                    >
+                                                                        <Plus className="h-4 w-4" />
+                                                                    </Button>
+                                                                </div>
+                                                            </div>
+                                                            <div className="max-h-[200px] overflow-y-auto">
+                                                                {paymentTermsLoading ? (
+                                                                    <div className="py-6 text-center text-sm text-muted-foreground">Loading...</div>
+                                                                ) : paymentTerms.length > 0 ? (
+                                                                    paymentTerms.map((term, i) => (
+                                                                        <SelectItem key={i} value={term}>{term}</SelectItem>
+                                                                    ))
+                                                                ) : (
+                                                                    <div className="py-6 text-center text-sm text-muted-foreground">No payment terms found</div>
+                                                                )}
+                                                            </div>
                                                         </SelectContent>
                                                     </Select>
                                                 </FormItem>

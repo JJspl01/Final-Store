@@ -1047,7 +1047,7 @@ export default () => {
                             <DataTable
                                 data={tableData}
                                 columns={columns}
-                                searchFields={['product', 'department', 'indenter', 'vendorType']}
+                                searchFields={['indentNo', 'product', 'department', 'indenter', 'vendorType', 'date', 'specifications', 'quantity', 'uom']}
                                 dataLoading={dataLoading}
                                 extraActions={
                                     <Button
@@ -1077,7 +1077,7 @@ export default () => {
                         <DataTable
                             data={historyData}
                             columns={historyColumns}
-                            searchFields={['product', 'department', 'indenter', 'vendorType']}
+                            searchFields={['indentNo', 'product', 'department', 'indenter', 'vendorType', 'date', 'approvedDate', 'specifications', 'approvedQuantity', 'uom']}
                             dataLoading={dataLoading}
                         />
                     </div>

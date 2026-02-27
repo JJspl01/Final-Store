@@ -87,7 +87,7 @@ export default () => {
                     areaOfUse: record.area_of_use || '',
                     specifications: record.specifications || '',
                     attachment: record.attachment || '',
-                    vendorType: record.vendor_type || 'Pending',
+                    vendorType: record.vendor_type || '',
                 }));
 
                 if (isLoadMore) {
@@ -577,9 +577,10 @@ export default () => {
             header: 'Vendor Type',
             cell: ({ getValue }) => {
                 const value = getValue() as string;
+                const displayValue = (!value || value === 'Pending') ? '-' : value;
                 return (
-                    <div className={`text-xs sm:text-sm ${!value || value === '' ? 'text-gray-400' : 'font-medium'}`}>
-                        {value || '-'}
+                    <div className={`text-xs sm:text-sm ${displayValue === '-' ? 'text-gray-400' : 'font-medium'}`}>
+                        {displayValue}
                     </div>
                 );
             },

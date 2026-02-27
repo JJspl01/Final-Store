@@ -25,7 +25,7 @@ import { PuffLoader as Loader } from 'react-spinners';
 import { toast } from 'sonner';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select';
 import { Input } from '../ui/input';
-import { Truck } from 'lucide-react';
+import { Truck, SquarePen, Check, X, Search } from 'lucide-react';
 import { Tabs, TabsContent } from '../ui/tabs';
 import { useAuth } from '@/context/AuthContext';
 import Heading from '../element/Heading';
@@ -47,6 +47,7 @@ interface RecieveItemsData {
 }
 
 interface HistoryData {
+    indentNumber: string;
     receiveStatus: string;
     poNumber: string;
     poDate: string;
@@ -82,6 +83,10 @@ const ReceiveItems = () => {
     const [matchingIndents, setMatchingIndents] = useState<RecieveItemsData[]>([]);
     const [openDialog, setOpenDialog] = useState(false);
     const [loading, setLoading] = useState(false);
+    const [editingCell, setEditingCell] = useState<{ rowId: string; field: 'product' | 'orderQuantity' | 'uom' } | null>(null);
+    const [editCellValue, setEditCellValue] = useState<string | number>('');
+    const [masterItems, setMasterItems] = useState<string[]>([]);
+    const [productSearch, setProductSearch] = useState('');
 
     useEffect(() => {
         const fetchPendingItems = async () => {
@@ -163,6 +168,7 @@ const ReceiveItems = () => {
                 const remainingQty = Math.max(0, approvedQty - totalReceivedForIndent);
 
                 return {
+                    indentNumber: receivedRecord.indent_number || indent?.indent_number || '',
                     receiveStatus: receivedRecord.received_status || 'Unknown',
                     poNumber: receivedRecord.po_number || indent?.po_number,
                     poDate: receivedRecord.po_date ? formatDate(new Date(receivedRecord.po_date)) : (indent ? formatDate(new Date(indent.actual_4)) : ''),
@@ -193,6 +199,83 @@ const ReceiveItems = () => {
 
         fetchHistoryItems();
     }, []);
+
+    // Fetch master items for product dropdown
+    useEffect(() => {
+        const fetchMasterItems = async () => {
+            try {
+                const data = await fetchFromSupabasePaginated(
+                    'master',
+                    'item_name',
+                    { column: 'item_name', options: { ascending: true } }
+                );
+                const items = data
+                    .map((d: any) => d.item_name)
+                    .filter(Boolean);
+                setMasterItems([...new Set(items)] as string[]);
+            } catch (error) {
+                console.error('Error fetching master items:', error);
+            }
+        };
+        fetchMasterItems();
+    }, []);
+
+    // Per-cell inline edit handlers for history tab
+    const handleStartCellEdit = (rowId: string, field: 'product' | 'orderQuantity' | 'uom', currentValue: string | number) => {
+        setEditingCell({ rowId, field });
+        setEditCellValue(currentValue);
+        setProductSearch('');
+    };
+
+    const handleCancelCellEdit = () => {
+        setEditingCell(null);
+        setEditCellValue('');
+        setProductSearch('');
+    };
+
+    const handleSaveCellEdit = async () => {
+        if (!editingCell) return;
+        try {
+            const updatePayload: any = {};
+            const localUpdate: any = {};
+
+            if (editingCell.field === 'product') {
+                updatePayload.product_name = editCellValue;
+                localUpdate.product = editCellValue;
+            } else if (editingCell.field === 'orderQuantity') {
+                updatePayload.approved_quantity = Number(editCellValue) || 0;
+                localUpdate.orderQuantity = Number(editCellValue) || 0;
+            } else if (editingCell.field === 'uom') {
+                updatePayload.uom = editCellValue;
+                localUpdate.uom = editCellValue;
+            }
+
+            const { error } = await supabase
+                .from('indent')
+                .update(updatePayload)
+                .eq('indent_number', editingCell.rowId);
+
+            if (error) throw error;
+
+            toast.success(`Updated ${editingCell.field} for ${editingCell.rowId}`);
+
+            // Update local state
+            setHistoryData(prev =>
+                prev.map(item =>
+                    item.indentNumber === editingCell.rowId
+                        ? { ...item, ...localUpdate }
+                        : item
+                )
+            );
+
+            setEditingCell(null);
+            setEditCellValue('');
+            setProductSearch('');
+        } catch (error: any) {
+            console.error('Error saving edit:', error);
+            toast.error('Failed to save: ' + error.message);
+        }
+    };
 
     const handleDownload = (data: (RecieveItemsData | HistoryData)[]) => {
         if (!data || data.length === 0) {
@@ -288,6 +371,7 @@ const ReceiveItems = () => {
     ];
 
     const historyColumns: ColumnDef<HistoryData>[] = [
+        { accessorKey: 'indentNumber', header: 'Indent No.' },
         { accessorKey: 'poDate', header: 'PO Date' },
         { accessorKey: 'poNumber', header: 'PO Number' },
         {
@@ -311,14 +395,147 @@ const ReceiveItems = () => {
         {
             accessorKey: 'product',
             header: 'Product',
-            cell: ({ row }) => (
-                <div className="whitespace-normal break-words min-w-[200px] max-w-[300px]">
-                    {row.original.product}
-                </div>
-            ),
+            cell: ({ row }: { row: Row<HistoryData> }) => {
+                const item = row.original;
+                const isCellEditing = editingCell?.rowId === item.indentNumber && editingCell?.field === 'product';
+
+                if (isCellEditing) {
+                    const filteredItems = masterItems.filter(p =>
+                        p.toLowerCase().includes(productSearch.toLowerCase())
+                    );
+                    return (
+                        <div className="flex items-center gap-1">
+                            <Select
+                                value={editCellValue as string}
+                                onValueChange={(value) => setEditCellValue(value)}
+                            >
+                                <SelectTrigger className="w-[180px] text-xs sm:text-sm">
+                                    <SelectValue placeholder="Select Product" />
+                                </SelectTrigger>
+                                <SelectContent className="w-[300px] sm:w-[400px]">
+                                    <div className="sticky top-0 z-10 bg-popover p-2 border-b">
+                                        <div className="flex items-center bg-muted rounded-md px-3 py-1">
+                                            <Search className="h-4 w-4 shrink-0 opacity-50" />
+                                            <input
+                                                placeholder="Search product..."
+                                                value={productSearch}
+                                                onChange={(e) => setProductSearch(e.target.value)}
+                                                onKeyDown={(e) => e.stopPropagation()}
+                                                className="flex h-9 w-full bg-transparent py-2 text-sm outline-none placeholder:text-muted-foreground ml-2"
+                                            />
+                                        </div>
+                                    </div>
+                                    <div className="max-h-[300px] overflow-y-auto p-1">
+                                        {filteredItems.map((p, i) => (
+                                            <SelectItem key={i} value={p} className="cursor-pointer">
+                                                {p}
+                                            </SelectItem>
+                                        ))}
+                                    </div>
+                                </SelectContent>
+                            </Select>
+                            <Button variant="ghost" size="icon" className="h-6 w-6 text-green-600 hover:bg-green-50" onClick={handleSaveCellEdit}>
+                                <Check className="h-3.5 w-3.5" />
+                            </Button>
+                            <Button variant="ghost" size="icon" className="h-6 w-6 text-red-600 hover:bg-red-50" onClick={handleCancelCellEdit}>
+                                <X className="h-3.5 w-3.5" />
+                            </Button>
+                        </div>
+                    );
+                }
+
+                return (
+                    <div className="flex items-center gap-1 whitespace-normal break-words min-w-[200px] max-w-[300px]">
+                        <span>{item.product}</span>
+                        <button
+                            className="ml-1 text-black hover:text-gray-700 shrink-0"
+                            onClick={() => handleStartCellEdit(item.indentNumber, 'product', item.product)}
+                        >
+                            <SquarePen className="h-3.5 w-3.5" />
+                        </button>
+                    </div>
+                );
+            },
         },
-        { accessorKey: 'orderQuantity', header: 'Order Quantity' },
-        { accessorKey: 'uom', header: 'UOM' },
+        {
+            accessorKey: 'orderQuantity',
+            header: 'Order Quantity',
+            cell: ({ row }: { row: Row<HistoryData> }) => {
+                const item = row.original;
+                const isCellEditing = editingCell?.rowId === item.indentNumber && editingCell?.field === 'orderQuantity';
+
+                if (isCellEditing) {
+                    return (
+                        <div className="flex items-center gap-1">
+                            <Input
+                                type="number"
+                                value={editCellValue}
+                                onChange={(e) => setEditCellValue(Number(e.target.value) || 0)}
+                                className="w-20 text-xs sm:text-sm"
+                                min="0"
+                            />
+                            <Button variant="ghost" size="icon" className="h-6 w-6 text-green-600 hover:bg-green-50" onClick={handleSaveCellEdit}>
+                                <Check className="h-3.5 w-3.5" />
+                            </Button>
+                            <Button variant="ghost" size="icon" className="h-6 w-6 text-red-600 hover:bg-red-50" onClick={handleCancelCellEdit}>
+                                <X className="h-3.5 w-3.5" />
+                            </Button>
+                        </div>
+                    );
+                }
+
+                return (
+                    <div className="flex items-center gap-1">
+                        <span>{item.orderQuantity}</span>
+                        <button
+                            className="ml-1 text-black hover:text-gray-700 shrink-0"
+                            onClick={() => handleStartCellEdit(item.indentNumber, 'orderQuantity', item.orderQuantity)}
+                        >
+                            <SquarePen className="h-3.5 w-3.5" />
+                        </button>
+                    </div>
+                );
+            },
+        },
+        {
+            accessorKey: 'uom',
+            header: 'UOM',
+            cell: ({ row }: { row: Row<HistoryData> }) => {
+                const item = row.original;
+                const isCellEditing = editingCell?.rowId === item.indentNumber && editingCell?.field === 'uom';
+
+                if (isCellEditing) {
+                    return (
+                        <div className="flex items-center gap-1">
+                            <Input
+                                value={editCellValue}
+                                onChange={(e) => setEditCellValue(e.target.value)}
+                                className="w-20 text-xs sm:text-sm"
+                                placeholder="UOM"
+                            />
+                            <Button variant="ghost" size="icon" className="h-6 w-6 text-green-600 hover:bg-green-50" onClick={handleSaveCellEdit}>
+                                <Check className="h-3.5 w-3.5" />
+                            </Button>
+                            <Button variant="ghost" size="icon" className="h-6 w-6 text-red-600 hover:bg-red-50" onClick={handleCancelCellEdit}>
+                                <X className="h-3.5 w-3.5" />
+                            </Button>
+                        </div>
+                    );
+                }
+
+                return (
+                    <div className="flex items-center gap-1">
+                        <span>{item.uom}</span>
+                        <button
+                            className="ml-1 text-black hover:text-gray-700 shrink-0"
+                            onClick={() => handleStartCellEdit(item.indentNumber, 'uom', item.uom)}
+                        >
+                            <SquarePen className="h-3.5 w-3.5" />
+                        </button>
+                    </div>
+                );
+            },
+        },
         { accessorKey: 'receivedDate', header: 'Received Date' },
         { accessorKey: 'receivedQuantity', header: 'Received Qty' },
         { accessorKey: 'remainingQty', header: 'Remaining Qty' },
@@ -600,51 +817,50 @@ const ReceiveItems = () => {
                     </Heading>
 
                     <TabsContent value="pending">
-                        <div className="w-full overflow-x-auto">
-                            <DataTable
-                                data={tableData}
-                                columns={columns}
-                                searchFields={['product', 'department', 'indenter', 'vendorType']}
-                                dataLoading={localIndentLoading}
-                                extraActions={
-                                    <Button
-                                        variant="default"
-                                        onClick={onDownloadClick}
-                                        style={{
-                                            background: "linear-gradient(90deg, #4CAF50, #2E7D32)",
-                                            border: "none",
-                                            borderRadius: "8px",
-                                            padding: "0 16px",
-                                            fontWeight: "bold",
-                                            boxShadow: "0 4px 8px rgba(0,0,0,0.15)",
-                                            display: "flex",
-                                            alignItems: "center",
-                                            gap: "8px",
-                                        }}
-                                    >
-                                        <DownloadOutlined />
-                                        {loading ? "Downloading..." : "Download"}
-                                    </Button>
-                                }
-                            />
-                        </div>
+                        <DataTable
+                            data={tableData}
+                            columns={columns}
+                            searchFields={['indentNumber', 'poNumber', 'poDate', 'vendor', 'product', 'department', 'indenter', 'vendorType']}
+                            dataLoading={localIndentLoading}
+                            extraActions={
+                                <Button
+                                    variant="default"
+                                    onClick={onDownloadClick}
+                                    style={{
+                                        background: "linear-gradient(90deg, #4CAF50, #2E7D32)",
+                                        border: "none",
+                                        borderRadius: "8px",
+                                        padding: "0 16px",
+                                        fontWeight: "bold",
+                                        boxShadow: "0 4px 8px rgba(0,0,0,0.15)",
+                                        display: "flex",
+                                        alignItems: "center",
+                                        gap: "8px",
+                                    }}
+                                >
+                                    <DownloadOutlined />
+                                    {loading ? "Downloading..." : "Download"}
+                                </Button>
+                            }
+                        />
                     </TabsContent>
 
                     <TabsContent value="history">
-                        <div className="w-full overflow-x-auto">
-                            <DataTable
-                                data={historyData}
-                                columns={historyColumns}
-                                searchFields={[
-                                    'receiveStatus',
-                                    'poNumber',
-                                    'indentNumber',
-                                    'poDate',
-                                    'product',
-                                ]}
-                                dataLoading={localReceivedLoading}
-                            />
-                        </div>
+                        <DataTable
+                            data={historyData}
+                            columns={historyColumns}
+                            searchFields={[
+                                'indentNumber',
+                                'poNumber',
+                                'poDate',
+                                'vendor',
+                                'receiveStatus',
+                                'product',
+                                'receivedDate',
+                                'billNumber'
+                            ]}
+                            dataLoading={localReceivedLoading}
+                        />
                     </TabsContent>
                 </Tabs>
 
