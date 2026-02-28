@@ -63,17 +63,16 @@ export function analyzeData(
     }
 
     // -------------------------------
-    // Approved Indents
-    const approvedIndents = indentSheet.filter(
+    // Total Indents (all indents)
+    const allIndents = indentSheet.filter(
         (i) =>
-            ['three party', 'regular'].includes((i.vendorType ?? '').toLowerCase()) &&
             isWithinDate(i.timestamp) &&
             isProductMatch(i.productName) &&
             isVendorMatch(i.approvedVendorName)
     );
 
-    const totalApprovedQuantity = approvedIndents.reduce(
-        (sum, i) => sum + (i.approvedQuantity ?? 0),
+    const totalIndentedQuantity = allIndents.reduce(
+        (sum, i) => sum + (i.quantity ?? 0),
         0
     );
 
@@ -155,8 +154,8 @@ export function analyzeData(
 
     // -------------------------------
     return {
-        approvedIndentCount: approvedIndents.length,
-        totalApprovedQuantity,
+        totalIndentCount: allIndents.length,
+        totalIndentedQuantity,
         receivedPurchaseCount: receivedPurchases.length,
         totalPurchasedQuantity,
         issuedIndentCount: issuedIndents.length,

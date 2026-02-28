@@ -130,9 +130,9 @@ export default ({ items, variant, collapsible }: { items: RouteAttributes[]; var
                     </Button>
                 </div>
             </SidebarHeader>
-            <SidebarContent className="py-1 border-b-1">
-                <SidebarGroup>
-                    <SidebarMenu>
+            <SidebarContent className="py-2 border-b-1">
+                <SidebarGroup className="px-3">
+                    <SidebarMenu className="gap-2">
                         {filteredItems.map((item, i) => (
                             <SidebarMenuItem key={`${item.path}-${i}`}>
                                 <SidebarMenuButton

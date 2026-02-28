@@ -78,10 +78,10 @@ export default function UsersTable() {
             topVendors,
             topProducts,
             issuedIndentCount,
-            approvedIndentCount,
+            totalIndentCount,
             totalIssuedQuantity,
             receivedPurchaseCount,
-            totalApprovedQuantity,
+            totalIndentedQuantity,
             totalPurchasedQuantity,
         } = analyzeData(
             { receivedSheet, indentSheet },
@@ -97,7 +97,7 @@ export default function UsersTable() {
             topProducts.map((p) => ({ frequency: p.freq, quantity: p.quantity, name: p.name }))
         );
         setTopVendors(topVendors);
-        setIndent({ quantity: totalApprovedQuantity, count: approvedIndentCount });
+        setIndent({ quantity: totalIndentedQuantity, count: totalIndentCount });
         setPurchase({ quantity: totalPurchasedQuantity, count: receivedPurchaseCount });
         setOut({ quantity: totalIssuedQuantity, count: issuedIndentCount });
     }, [startDate, endDate, filteredProducts, filteredVendors, indentSheet, receivedSheet]);
