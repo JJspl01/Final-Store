@@ -136,6 +136,9 @@ export default () => {
     const [paymentTerms, setPaymentTerms] = useState<string[]>([]);
     const [paymentTermsLoading, setPaymentTermsLoading] = useState(true);
     const [newPaymentTerm, setNewPaymentTerm] = useState('');
+    const [products, setProducts] = useState<string[]>([]);
+    const [productsLoading, setProductsLoading] = useState(true);
+    const [productSearch, setProductSearch] = useState('');
 
     const refreshVendors = async () => {
         const vendorsList = await fetchVendors();
@@ -173,6 +176,29 @@ export default () => {
             }
         };
         fetchPaymentTerms();
+    }, []);
+
+    // Fetch products from master
+    useEffect(() => {
+        const fetchProducts = async () => {
+            setProductsLoading(true);
+            try {
+                const { data, error } = await supabase
+                    .from('master')
+                    .select('item_name')
+                    .not('item_name', 'is', null);
+                if (error) throw error;
+                const items = [...new Set(
+                    (data || []).map((d: any) => d.item_name).filter(Boolean)
+                )] as string[];
+                setProducts(items);
+            } catch (err) {
+                console.error('Error fetching products:', err);
+            } finally {
+                setProductsLoading(false);
+            }
+        };
+        fetchProducts();
     }, []);
 
     const handleAddPaymentTerm = async () => {
@@ -465,12 +491,55 @@ export default () => {
             header: 'Product',
             cell: ({ row }) => {
                 const isEditing = editingRow === row.original.indentNo;
+                const currentValue = editValues.product ?? row.original.product;
+
+                // Ensure current value is included in list of options to display it correctly
+                const selectOptions = Array.from(new Set([...(products || []), currentValue])).filter(Boolean);
+                const filteredProducts = selectOptions.filter(p => p.toLowerCase().includes(productSearch.toLowerCase()));
+
                 return isEditing ? (
-                    <Input
-                        value={editValues.product ?? row.original.product}
-                        onChange={(e) => handleInputChange('product', e.target.value)}
-                        className="w-[150px]"
-                    />
+                    <Select
+                        value={currentValue}
+                        onValueChange={(value) => handleInputChange('product', value)}
+                        onOpenChange={(open) => {
+                            if (!open) setProductSearch("");
+                        }}
+                    >
+                        <SelectTrigger className="w-[200px]">
+                            <SelectValue placeholder="Select product" />
+                        </SelectTrigger>
+                        <SelectContent className="w-[300px]">
+                            <div className="p-2 border-b space-y-2">
+                                <div className="flex items-center border-b px-2 pb-1">
+                                    <Input
+                                        placeholder="Search products..."
+                                        className="h-8 border-0 focus-visible:ring-0 focus-visible:ring-offset-0"
+                                        value={productSearch}
+                                        onChange={(e) => setProductSearch(e.target.value)}
+                                        onClick={(e) => e.stopPropagation()}
+                                        onKeyDown={(e) => e.stopPropagation()}
+                                    />
+                                </div>
+                            </div>
+                            <div className="max-h-[200px] overflow-y-auto">
+                                {productsLoading ? (
+                                    <div className="py-6 text-center text-sm text-muted-foreground">
+                                        Loading products...
+                                    </div>
+                                ) : filteredProducts.length > 0 ? (
+                                    filteredProducts.map((product, i) => (
+                                        <SelectItem key={i} value={product}>
+                                            {product}
+                                        </SelectItem>
+                                    ))
+                                ) : (
+                                    <div className="py-6 text-center text-sm text-muted-foreground">
+                                        No products found
+                                    </div>
+                                )}
+                            </div>
+                        </SelectContent>
+                    </Select>
                 ) : (
                     <div className="max-w-[150px] break-words whitespace-normal flex items-center gap-2">
                         {row.original.product}

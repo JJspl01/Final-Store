@@ -47,6 +47,7 @@ interface RecieveItemsData {
 }
 
 interface HistoryData {
+    id?: string | number;
     indentNumber: string;
     receiveStatus: string;
     poNumber: string;
@@ -83,7 +84,7 @@ const ReceiveItems = () => {
     const [matchingIndents, setMatchingIndents] = useState<RecieveItemsData[]>([]);
     const [openDialog, setOpenDialog] = useState(false);
     const [loading, setLoading] = useState(false);
-    const [editingCell, setEditingCell] = useState<{ rowId: string; field: 'product' | 'orderQuantity' | 'uom' } | null>(null);
+    const [editingCell, setEditingCell] = useState<{ rowId: string; field: 'product' | 'orderQuantity' | 'uom' | 'receivedQuantity' | 'warrantyStatus' | 'billStatus' | 'billAmount'; recordId?: string | number } | null>(null);
     const [editCellValue, setEditCellValue] = useState<string | number>('');
     const [masterItems, setMasterItems] = useState<string[]>([]);
     const [productSearch, setProductSearch] = useState('');
@@ -168,6 +169,7 @@ const ReceiveItems = () => {
                 const remainingQty = Math.max(0, approvedQty - totalReceivedForIndent);
 
                 return {
+                    id: receivedRecord.id,
                     indentNumber: receivedRecord.indent_number || indent?.indent_number || '',
                     receiveStatus: receivedRecord.received_status || 'Unknown',
                     poNumber: receivedRecord.po_number || indent?.po_number,
@@ -221,8 +223,8 @@ const ReceiveItems = () => {
     }, []);
 
     // Per-cell inline edit handlers for history tab
-    const handleStartCellEdit = (rowId: string, field: 'product' | 'orderQuantity' | 'uom', currentValue: string | number) => {
-        setEditingCell({ rowId, field });
+    const handleStartCellEdit = (rowId: string, field: 'product' | 'orderQuantity' | 'uom' | 'receivedQuantity' | 'warrantyStatus' | 'billStatus' | 'billAmount', currentValue: string | number, recordId?: string | number) => {
+        setEditingCell({ rowId, field, recordId });
         setEditCellValue(currentValue);
         setProductSearch('');
     };
@@ -236,38 +238,73 @@ const ReceiveItems = () => {
     const handleSaveCellEdit = async () => {
         if (!editingCell) return;
         try {
-            const updatePayload: any = {};
+            const isIndentUpdate = ['product', 'orderQuantity', 'uom'].includes(editingCell.field);
             const localUpdate: any = {};
 
-            if (editingCell.field === 'product') {
-                updatePayload.product_name = editCellValue;
-                localUpdate.product = editCellValue;
-            } else if (editingCell.field === 'orderQuantity') {
-                updatePayload.approved_quantity = Number(editCellValue) || 0;
-                localUpdate.orderQuantity = Number(editCellValue) || 0;
-            } else if (editingCell.field === 'uom') {
-                updatePayload.uom = editCellValue;
-                localUpdate.uom = editCellValue;
+            if (isIndentUpdate) {
+                const updatePayload: any = {};
+                if (editingCell.field === 'product') {
+                    updatePayload.product_name = editCellValue;
+                    localUpdate.product = editCellValue;
+                } else if (editingCell.field === 'orderQuantity') {
+                    updatePayload.approved_quantity = Number(editCellValue) || 0;
+                    localUpdate.orderQuantity = Number(editCellValue) || 0;
+                } else if (editingCell.field === 'uom') {
+                    updatePayload.uom = editCellValue;
+                    localUpdate.uom = editCellValue;
+                }
+
+                const { error } = await supabase
+                    .from('indent')
+                    .update(updatePayload)
+                    .eq('indent_number', editingCell.rowId);
+
+                if (error) throw error;
+
+                // Update local state for matching indentNumber
+                setHistoryData(prev =>
+                    prev.map(item =>
+                        item.indentNumber === editingCell.rowId
+                            ? { ...item, ...localUpdate }
+                            : item
+                    )
+                );
+            } else {
+                const updatePayload: any = {};
+                if (editingCell.field === 'receivedQuantity') {
+                    updatePayload.received_quantity = Number(editCellValue) || 0;
+                    localUpdate.receivedQuantity = Number(editCellValue) || 0;
+                } else if (editingCell.field === 'warrantyStatus') {
+                    updatePayload.warranty_status = editCellValue;
+                    localUpdate.warrantyStatus = editCellValue;
+                } else if (editingCell.field === 'billStatus') {
+                    updatePayload.bill_status = editCellValue;
+                    localUpdate.billStatus = editCellValue;
+                } else if (editingCell.field === 'billAmount') {
+                    updatePayload.bill_amount = Number(editCellValue) || 0;
+                    localUpdate.billAmount = Number(editCellValue) || 0;
+                }
+
+                if (editingCell.recordId) {
+                    const { error } = await supabase
+                        .from('received')
+                        .update(updatePayload)
+                        .eq('id', editingCell.recordId);
+
+                    if (error) throw error;
+                }
+
+                // Update local state ONLY for that specific specific record
+                setHistoryData(prev =>
+                    prev.map(item =>
+                        item.id === editingCell.recordId
+                            ? { ...item, ...localUpdate }
+                            : item
+                    )
+                );
             }
 
-            const { error } = await supabase
-                .from('indent')
-                .update(updatePayload)
-                .eq('indent_number', editingCell.rowId);
-
-            if (error) throw error;
-
-            toast.success(`Updated ${editingCell.field} for ${editingCell.rowId}`);
-
-            // Update local state
-            setHistoryData(prev =>
-                prev.map(item =>
-                    item.indentNumber === editingCell.rowId
-                        ? { ...item, ...localUpdate }
-                        : item
-                )
-            );
-
+            toast.success(`Updated ${editingCell.field}`);
             setEditingCell(null);
             setEditCellValue('');
             setProductSearch('');
@@ -537,7 +574,48 @@ const ReceiveItems = () => {
             },
         },
         { accessorKey: 'receivedDate', header: 'Received Date' },
-        { accessorKey: 'receivedQuantity', header: 'Received Qty' },
+        {
+            accessorKey: 'receivedQuantity',
+            header: 'Received Qty',
+            cell: ({ row }: { row: Row<HistoryData> }) => {
+                const item = row.original;
+                const isCellEditing = editingCell?.recordId === item.id && editingCell?.field === 'receivedQuantity';
+
+                if (isCellEditing) {
+                    return (
+                        <div className="flex items-center gap-1">
+                            <Input
+                                type="number"
+                                value={editCellValue}
+                                onChange={(e) => setEditCellValue(Number(e.target.value) || 0)}
+                                className="w-20 text-xs sm:text-sm"
+                                min="0"
+                            />
+                            <Button variant="ghost" size="icon" className="h-6 w-6 text-green-600 hover:bg-green-50" onClick={handleSaveCellEdit}>
+                                <Check className="h-3.5 w-3.5" />
+                            </Button>
+                            <Button variant="ghost" size="icon" className="h-6 w-6 text-red-600 hover:bg-red-50" onClick={handleCancelCellEdit}>
+                                <X className="h-3.5 w-3.5" />
+                            </Button>
+                        </div>
+                    );
+                }
+
+                return (
+                    <div className="flex items-center gap-1">
+                        <span>{item.receivedQuantity}</span>
+                        {item.id && (
+                            <button
+                                className="ml-1 text-black hover:text-gray-700 shrink-0"
+                                onClick={() => handleStartCellEdit(item.indentNumber, 'receivedQuantity', item.receivedQuantity, item.id)}
+                            >
+                                <SquarePen className="h-3.5 w-3.5" />
+                            </button>
+                        )}
+                    </div>
+                );
+            },
+        },
         { accessorKey: 'remainingQty', header: 'Remaining Qty' },
         {
             accessorKey: 'photoOfProduct',
@@ -553,11 +631,138 @@ const ReceiveItems = () => {
                 );
             },
         },
-        { accessorKey: 'warrantyStatus', header: 'Warranty Status' },
+        {
+            accessorKey: 'warrantyStatus',
+            header: 'Warranty Status',
+            cell: ({ row }: { row: Row<HistoryData> }) => {
+                const item = row.original;
+                const isCellEditing = editingCell?.recordId === item.id && editingCell?.field === 'warrantyStatus';
+
+                if (isCellEditing) {
+                    return (
+                        <div className="flex items-center gap-1">
+                            <Input
+                                value={editCellValue}
+                                onChange={(e) => setEditCellValue(e.target.value)}
+                                className="w-28 text-xs sm:text-sm"
+                                placeholder="Warranty Status"
+                            />
+                            <Button variant="ghost" size="icon" className="h-6 w-6 text-green-600 hover:bg-green-50" onClick={handleSaveCellEdit}>
+                                <Check className="h-3.5 w-3.5" />
+                            </Button>
+                            <Button variant="ghost" size="icon" className="h-6 w-6 text-red-600 hover:bg-red-50" onClick={handleCancelCellEdit}>
+                                <X className="h-3.5 w-3.5" />
+                            </Button>
+                        </div>
+                    );
+                }
+
+                return (
+                    <div className="flex items-center gap-1">
+                        <span>{item.warrantyStatus}</span>
+                        {item.id && (
+                            <button
+                                className="ml-1 text-black hover:text-gray-700 shrink-0"
+                                onClick={() => handleStartCellEdit(item.indentNumber, 'warrantyStatus', item.warrantyStatus, item.id)}
+                            >
+                                <SquarePen className="h-3.5 w-3.5" />
+                            </button>
+                        )}
+                    </div>
+                );
+            },
+        },
         { accessorKey: 'warrantyEndDate', header: 'Warranty End Date' },
-        { accessorKey: 'billStatus', header: 'Bill Status' },
+        {
+            accessorKey: 'billStatus',
+            header: 'Bill Status',
+            cell: ({ row }: { row: Row<HistoryData> }) => {
+                const item = row.original;
+                const isCellEditing = editingCell?.recordId === item.id && editingCell?.field === 'billStatus';
+
+                if (isCellEditing) {
+                    return (
+                        <div className="flex items-center gap-1">
+                            <Select
+                                value={editCellValue as string}
+                                onValueChange={(value) => setEditCellValue(value)}
+                            >
+                                <SelectTrigger className="w-[120px] text-xs sm:text-sm">
+                                    <SelectValue placeholder="Status" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="Received">Received</SelectItem>
+                                    <SelectItem value="Not Received">Not Received</SelectItem>
+                                </SelectContent>
+                            </Select>
+                            <Button variant="ghost" size="icon" className="h-6 w-6 text-green-600 hover:bg-green-50" onClick={handleSaveCellEdit}>
+                                <Check className="h-3.5 w-3.5" />
+                            </Button>
+                            <Button variant="ghost" size="icon" className="h-6 w-6 text-red-600 hover:bg-red-50" onClick={handleCancelCellEdit}>
+                                <X className="h-3.5 w-3.5" />
+                            </Button>
+                        </div>
+                    );
+                }
+
+                return (
+                    <div className="flex items-center gap-1">
+                        <span>{item.billStatus}</span>
+                        {item.id && (
+                            <button
+                                className="ml-1 text-black hover:text-gray-700 shrink-0"
+                                onClick={() => handleStartCellEdit(item.indentNumber, 'billStatus', item.billStatus, item.id)}
+                            >
+                                <SquarePen className="h-3.5 w-3.5" />
+                            </button>
+                        )}
+                    </div>
+                );
+            },
+        },
         { accessorKey: 'billNumber', header: 'Bill Number' },
-        { accessorKey: 'billAmount', header: 'Bill Amount' },
+        {
+            accessorKey: 'billAmount',
+            header: 'Bill Amount',
+            cell: ({ row }: { row: Row<HistoryData> }) => {
+                const item = row.original;
+                const isCellEditing = editingCell?.recordId === item.id && editingCell?.field === 'billAmount';
+
+                if (isCellEditing) {
+                    return (
+                        <div className="flex items-center gap-1">
+                            <Input
+                                type="number"
+                                value={editCellValue}
+                                onChange={(e) => setEditCellValue(Number(e.target.value) || 0)}
+                                className="w-20 text-xs sm:text-sm"
+                                min="0"
+                            />
+                            <Button variant="ghost" size="icon" className="h-6 w-6 text-green-600 hover:bg-green-50" onClick={handleSaveCellEdit}>
+                                <Check className="h-3.5 w-3.5" />
+                            </Button>
+                            <Button variant="ghost" size="icon" className="h-6 w-6 text-red-600 hover:bg-red-50" onClick={handleCancelCellEdit}>
+                                <X className="h-3.5 w-3.5" />
+                            </Button>
+                        </div>
+                    );
+                }
+
+                return (
+                    <div className="flex items-center gap-1">
+                        <span>{item.billAmount}</span>
+                        {item.id && (
+                            <button
+                                className="ml-1 text-black hover:text-gray-700 shrink-0"
+                                onClick={() => handleStartCellEdit(item.indentNumber, 'billAmount', item.billAmount, item.id)}
+                            >
+                                <SquarePen className="h-3.5 w-3.5" />
+                            </button>
+                        )}
+                    </div>
+                );
+            },
+        },
         {
             accessorKey: 'photoOfBill',
             header: 'Photo of Bill',
