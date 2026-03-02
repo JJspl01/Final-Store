@@ -42,6 +42,7 @@ interface UsersTableData {
 }
 
 function camelToTitleCase(str: string): string {
+    if (str === 'pendingIndentsView') return 'Pending Po';
     return str
         .replace(/([a-z])([A-Z])/g, '$1 $2') // insert space before capitals
         .replace(/^./, (char) => char.toUpperCase()); // capitalize first letter

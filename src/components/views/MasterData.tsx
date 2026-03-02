@@ -1,4 +1,4 @@
-import { Database, Plus } from 'lucide-react';
+import { Database, Plus, Edit } from 'lucide-react';
 import Heading from '../element/Heading';
 import { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabaseClient';
@@ -120,54 +120,6 @@ function TruncCell({ value, width = 140 }: { value: string | null; width?: numbe
     );
 }
 
-/* ───── columns ───── */
-const columns: ColumnDef<MasterRow>[] = [
-    {
-        accessorKey: 'vendor_name',
-        header: 'Vendor Name',
-        cell: ({ getValue }) => <TruncCell value={getValue() as string} width={160} />,
-    },
-    {
-        accessorKey: 'vendor_gstin',
-        header: 'GSTIN',
-        cell: ({ getValue }) => <TruncCell value={getValue() as string | null} width={130} />,
-    },
-    {
-        accessorKey: 'vendor_email',
-        header: 'Email',
-        cell: ({ getValue }) => <TruncCell value={getValue() as string | null} width={160} />,
-    },
-    {
-        accessorKey: 'payment_term',
-        header: 'Payment Term',
-        cell: ({ getValue }) => <TruncCell value={getValue() as string | null} width={110} />,
-    },
-    {
-        accessorKey: 'department',
-        header: 'Department',
-        cell: ({ getValue }) => <TruncCell value={getValue() as string | null} width={120} />,
-    },
-    {
-        accessorKey: 'group_head',
-        header: 'Group Head',
-        cell: ({ getValue }) => <TruncCell value={getValue() as string | null} width={120} />,
-    },
-    {
-        accessorKey: 'item_name',
-        header: 'Item Name',
-        cell: ({ getValue }) => {
-            const val = getValue() as string | null;
-            return val ? (
-                <div className="whitespace-normal break-words min-w-[200px]">
-                    {val}
-                </div>
-            ) : (
-                <span className="text-muted-foreground">—</span>
-            );
-        },
-    },
-];
-
 /* ───── main component ───── */
 export default function MasterData() {
     const [tableData, setTableData] = useState<MasterRow[]>([]);
@@ -176,6 +128,83 @@ export default function MasterData() {
     const [form, setForm] = useState<MasterForm>(emptyForm);
     const [submitting, setSubmitting] = useState(false);
     const [vendorFilter, setVendorFilter] = useState('All');
+    const [editingId, setEditingId] = useState<number | null>(null);
+
+    function handleEdit(row: MasterRow) {
+        setForm({
+            vendor_name: row.vendor_name || '',
+            vendor_gstin: row.vendor_gstin || '',
+            vendor_address: row.vendor_address || '',
+            vendor_email: row.vendor_email || '',
+            payment_term: row.payment_term || '',
+            department: row.department || '',
+            group_head: row.group_head || '',
+            item_name: row.item_name || '',
+        });
+        setEditingId(row.id);
+        setSheetOpen(true);
+    }
+
+    const columns: ColumnDef<MasterRow>[] = [
+        {
+            accessorKey: 'vendor_name',
+            header: 'Vendor Name',
+            cell: ({ row }) => (
+                <div className="flex items-center gap-2 group">
+                    <TruncCell value={row.original.vendor_name} width={160} />
+                    <Button variant="outline" size="icon" className="h-6 w-6 shrink-0 opacity-100" onClick={() => handleEdit(row.original)}>
+                        <Edit className="h-3 w-3" />
+                    </Button>
+                </div>
+            ),
+        },
+        {
+            accessorKey: 'vendor_gstin',
+            header: 'GSTIN',
+            cell: ({ getValue }) => <TruncCell value={getValue() as string | null} width={130} />,
+        },
+        {
+            accessorKey: 'vendor_email',
+            header: 'Email',
+            cell: ({ getValue }) => <TruncCell value={getValue() as string | null} width={160} />,
+        },
+        {
+            accessorKey: 'payment_term',
+            header: 'Payment Term',
+            cell: ({ getValue }) => <TruncCell value={getValue() as string | null} width={110} />,
+        },
+        {
+            accessorKey: 'department',
+            header: 'Department',
+            cell: ({ getValue }) => <TruncCell value={getValue() as string | null} width={120} />,
+        },
+        {
+            accessorKey: 'group_head',
+            header: 'Group Head',
+            cell: ({ getValue }) => <TruncCell value={getValue() as string | null} width={120} />,
+        },
+        {
+            accessorKey: 'item_name',
+            header: 'Item Name',
+            cell: ({ row }) => {
+                const val = row.original.item_name;
+                return (
+                    <div className="flex items-center gap-2 group">
+                        {val ? (
+                            <div className="whitespace-normal break-words min-w-[200px]">
+                                {val}
+                            </div>
+                        ) : (
+                            <span className="text-muted-foreground">—</span>
+                        )}
+                        <Button variant="outline" size="icon" className="h-6 w-6 shrink-0 opacity-100" onClick={() => handleEdit(row.original)}>
+                            <Edit className="h-3 w-3" />
+                        </Button>
+                    </div>
+                );
+            },
+        },
+    ];
 
     const uniqueVendors = Array.from(new Set(tableData.map(r => r.vendor_name).filter(Boolean))).sort();
     const filteredData = vendorFilter === 'All'
@@ -207,7 +236,10 @@ export default function MasterData() {
 
     /* reset form when sheet closes */
     useEffect(() => {
-        if (!sheetOpen) setForm(emptyForm);
+        if (!sheetOpen) {
+            setForm(emptyForm);
+            setEditingId(null);
+        }
     }, [sheetOpen]);
 
     function setField(key: keyof MasterForm) {
@@ -223,20 +255,26 @@ export default function MasterData() {
         }
         setSubmitting(true);
         try {
-            const { error } = await supabase.from('master_data').insert([
-                {
-                    vendor_name: form.vendor_name.trim(),
-                    vendor_gstin: form.vendor_gstin.trim() || null,
-                    vendor_address: form.vendor_address.trim() || null,
-                    vendor_email: form.vendor_email.trim() || null,
-                    payment_term: form.payment_term.trim() || null,
-                    department: form.department.trim() || null,
-                    group_head: form.group_head.trim() || null,
-                    item_name: form.item_name.trim() || null,
-                },
-            ]);
-            if (error) throw error;
-            toast.success('Master data saved successfully!');
+            const payload = {
+                vendor_name: form.vendor_name.trim(),
+                vendor_gstin: form.vendor_gstin.trim() || null,
+                vendor_address: form.vendor_address.trim() || null,
+                vendor_email: form.vendor_email.trim() || null,
+                payment_term: form.payment_term.trim() || null,
+                department: form.department.trim() || null,
+                group_head: form.group_head.trim() || null,
+                item_name: form.item_name.trim() || null,
+            };
+
+            if (editingId) {
+                const { error } = await supabase.from('master_data').update(payload).eq('id', editingId);
+                if (error) throw error;
+                toast.success('Master data updated successfully!');
+            } else {
+                const { error } = await supabase.from('master_data').insert([payload]);
+                if (error) throw error;
+                toast.success('Master data saved successfully!');
+            }
             setSheetOpen(false);
             fetchData();
         } catch (err: any) {
@@ -276,7 +314,7 @@ export default function MasterData() {
                                     ))}
                                 </SelectContent>
                             </Select>
-                            <Button className="h-9 shrink-0" onClick={() => setSheetOpen(true)}>
+                            <Button className="h-9 shrink-0" onClick={() => { setEditingId(null); setForm(emptyForm); setSheetOpen(true); }}>
                                 <Plus className="mr-2 h-4 w-4" />
                                 Add Master Data
                             </Button>
@@ -292,7 +330,7 @@ export default function MasterData() {
                     className="w-full sm:max-w-lg overflow-y-auto flex flex-col"
                 >
                     <SheetHeader className="sticky top-0 bg-background z-10 pb-3 border-b">
-                        <SheetTitle>Add Master Data</SheetTitle>
+                        <SheetTitle>{editingId ? 'Edit Master Data' : 'Add Master Data'}</SheetTitle>
                         <SheetDescription>
                             Fill in the vendor details and click Save.
                         </SheetDescription>

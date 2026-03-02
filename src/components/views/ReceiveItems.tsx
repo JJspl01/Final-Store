@@ -1010,18 +1010,20 @@ const ReceiveItems = () => {
     }
 
     return (
-        <div>
+        <div className="flex flex-col h-[calc(100vh-2rem)] overflow-hidden">
             <Dialog open={openDialog} onOpenChange={setOpenDialog}>
-                <Tabs defaultValue="pending">
-                    <Heading
-                        heading="Receive Items"
-                        subtext="Receive items from purchase orders"
-                        tabs
-                    >
-                        <Truck size={50} className="text-primary" />
-                    </Heading>
+                <Tabs defaultValue="pending" className="flex flex-col h-full overflow-hidden">
+                    <div className="shrink-0 mb-1">
+                        <Heading
+                            heading="Receive Items"
+                            subtext="Receive items from purchase orders"
+                            tabs
+                        >
+                            <Truck size={50} className="text-primary" />
+                        </Heading>
+                    </div>
 
-                    <TabsContent value="pending">
+                    <TabsContent value="pending" className="m-0 flex-1 flex flex-col overflow-hidden min-h-0">
                         <DataTable
                             data={tableData}
                             columns={columns}
@@ -1050,7 +1052,7 @@ const ReceiveItems = () => {
                         />
                     </TabsContent>
 
-                    <TabsContent value="history">
+                    <TabsContent value="history" className="m-0 flex-1 flex flex-col overflow-hidden min-h-0">
                         <DataTable
                             data={historyData}
                             columns={historyColumns}
