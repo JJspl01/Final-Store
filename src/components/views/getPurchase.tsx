@@ -156,7 +156,7 @@ export default () => {
                 'indent',
                 '*',
                 { column: 'planned_7', options: { ascending: false } },
-                (q) => q.not('planned_7', 'is', null)
+                (q) => q.not('planned_7', 'is', null).is('actual_7', null)
             );
 
             // 2. Fetch Received Data with pagination to calculate what's available for billing
@@ -272,28 +272,32 @@ export default () => {
                 const { data: indentData, error: indentError } = await supabase
                     .from('indent')
                     .select('indent_number, product_name, department, indenter_name, approved_quantity, uom')
+                    .not('planned_7', 'is', null)
+                    .not('actual_7', 'is', null)
                     .in('indent_number', indentNumbers);
 
                 if (indentError) throw indentError;
 
-                const mappedHistory = receivedData.map(r => {
-                    const indent = indentData?.find(i => i.indent_number === r.indent_number);
-                    return {
-                        indentNo: r.indent_number,
-                        indenter: indent?.indenter_name || '',
-                        department: indent?.department || '',
-                        product: indent?.product_name || '',
-                        quantity: Number(indent?.approved_quantity) || 0,
-                        billedQty: Number(r.received_quantity) || 0, // In this context, received = billed quantity for this row
-                        uom: r.uom || indent?.uom || '',
-                        poNumber: r.po_number,
-                        billStatus: r.bill_status || 'Submitted',
-                        date: r.timestamp ? formatDate(new Date(r.timestamp)) : '',
-                        billNumber: r.bill_number,
-                        billAmount: Number(r.bill_amount) || 0,
-                        photoOfBill: r.photo_of_bill || '',
-                    };
-                }).reverse(); // Newest first
+                const mappedHistory = receivedData
+                    .filter(r => indentData?.some(i => i.indent_number === r.indent_number))
+                    .map(r => {
+                        const indent = indentData?.find(i => i.indent_number === r.indent_number);
+                        return {
+                            indentNo: r.indent_number,
+                            indenter: indent?.indenter_name || '',
+                            department: indent?.department || '',
+                            product: indent?.product_name || '',
+                            quantity: Number(indent?.approved_quantity) || 0,
+                            billedQty: Number(r.received_quantity) || 0, // In this context, received = billed quantity for this row
+                            uom: r.uom || indent?.uom || '',
+                            poNumber: r.po_number,
+                            billStatus: r.bill_status || 'Submitted',
+                            date: r.timestamp ? formatDate(new Date(r.timestamp)) : '',
+                            billNumber: r.bill_number,
+                            billAmount: Number(r.bill_amount) || 0,
+                            photoOfBill: r.photo_of_bill || '',
+                        };
+                    }).reverse(); // Newest first
 
                 setHistoryData(mappedHistory);
 

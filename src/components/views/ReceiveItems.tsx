@@ -96,9 +96,9 @@ const ReceiveItems = () => {
             // Fetch indents with pagination (Stage 4 passed means PO created)
             const indentData = await fetchFromSupabasePaginated(
                 'indent',
-                'indent_number, po_number, uom, po_copy, approved_vendor_name, approved_quantity, actual_4, product_name',
-                { column: 'actual_4', options: { ascending: false } },
-                (q) => q.not('actual_4', 'is', null)
+                'indent_number, po_number, uom, po_copy, approved_vendor_name, approved_quantity, actual_4, product_name, planned_5, actual_5',
+                { column: 'planned_5', options: { ascending: false } },
+                (q) => q.not('planned_5', 'is', null).is('actual_5', null)
             );
 
             // Fetch all received records with pagination to calculate totals
@@ -145,8 +145,8 @@ const ReceiveItems = () => {
             const indentData = await fetchFromSupabasePaginated(
                 'indent',
                 'indent_number, po_number, actual_4, approved_vendor_name, product_name, approved_quantity, uom, planned_5, actual_5',
-                { column: 'actual_4', options: { ascending: false } },
-                (q) => q.not('actual_4', 'is', null)
+                { column: 'actual_5', options: { ascending: false } },
+                (q) => q.not('planned_5', 'is', null).not('actual_5', 'is', null)
             );
 
             // Fetch received items with pagination
