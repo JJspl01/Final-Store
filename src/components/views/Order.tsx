@@ -174,20 +174,22 @@ export default () => {
 
 
     return (
-        <div>
-            <Heading heading="PO History" subtext="View purchase orders">
-                <Package2 size={50} className="text-primary" />
-            </Heading>
+        <div className="w-full">
+            <div className="sticky top-0 z-20 bg-background -mx-5 -mt-5 p-5 pb-2 shadow-sm">
+                <Heading heading="PO History" subtext="View purchase orders">
+                    <Package2 size={50} className="text-primary" />
+                </Heading>
+            </div>
 
-
-            <div className="w-full overflow-x-auto">
-                <DataTable
-                    data={historyData}
-                    columns={historyColumns}
-                    searchFields={['vendorName', 'poNumber', 'indentNumber']}
-                    dataLoading={poMasterLoading}
-                    className='h-[80dvh]'
-                />
+            <div className="space-y-4 p-5 pt-2 h-[calc(100vh-140px)] flex flex-col">
+                <div className="w-full flex-1 overflow-hidden min-h-0">
+                    <DataTable
+                        data={historyData}
+                        columns={historyColumns}
+                        searchFields={['vendorName', 'poNumber', 'indentNumber']}
+                        dataLoading={poMasterLoading}
+                    />
+                </div>
             </div>
         </div>
     );
