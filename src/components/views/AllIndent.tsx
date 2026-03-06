@@ -7,8 +7,9 @@ import { Input } from '../ui/input';
 import { Textarea } from '../ui/textarea';
 import { toast } from 'sonner';
 import { PuffLoader as Loader } from 'react-spinners';
-import { ClipboardList, Search } from 'lucide-react';
+import { ClipboardList, Search, Download } from 'lucide-react';
 import { formatDate } from '@/lib/utils';
+import * as XLSX from 'xlsx';
 import { useAuth } from '@/context/AuthContext';
 import Heading from '../element/Heading';
 import { supabase } from '@/lib/supabaseClient';
@@ -43,38 +44,42 @@ export default () => {
     const [searchTermProduct, setSearchTermProduct] = useState('');
     const [master, setMaster] = useState<any>(null);
 
-    const [loading, setLoading] = useState(false);
     const [indentLoading, setIndentLoading] = useState(true);
-    const [page, setPage] = useState(0);
-    const [hasMore, setHasMore] = useState(true);
-    const PAGE_SIZE = 50;
+    const [downloading, setDownloading] = useState(false);
 
-    const fetchIndents = async (isLoadMore = false) => {
-        if (isLoadMore && !hasMore) return;
-
-        if (!isLoadMore) {
-            setIndentLoading(true);
-        } else {
-            setLoading(true);
-        }
+    const fetchIndents = async () => {
+        setIndentLoading(true);
 
         try {
-            const currentPage = isLoadMore ? page + 1 : 0;
-            const from = currentPage * PAGE_SIZE;
-            const to = from + PAGE_SIZE - 1;
+            let allData: any[] = [];
+            let from = 0;
+            const pageSize = 1000;
+            let hasMoreData = true;
 
-            const data = await fetchFromSupabasePaginated(
-                'indent',
-                '*',
-                { column: 'created_at', options: { ascending: false } },
-                undefined,
-                { from, to }
-            );
+            while (hasMoreData) {
+                const { data, error } = await supabase
+                    .from('indent')
+                    .select('*')
+                    .order('indent_number', { ascending: false })
+                    .range(from, from + pageSize - 1);
 
-            if (data) {
-                const transformedData = data.map((record: any) => ({
+                if (error) throw error;
+
+                if (data && data.length > 0) {
+                    allData = [...allData, ...data];
+                    from += pageSize;
+                    if (data.length < pageSize) {
+                        hasMoreData = false;
+                    }
+                } else {
+                    hasMoreData = false;
+                }
+            }
+
+            if (allData.length > 0) {
+                const transformedData = allData.map((record: any) => ({
                     id: record.id ? record.id.toString() : Math.random().toString(),
-                    timestamp: formatDate(new Date(record.created_at)),
+                    timestamp: record.timestamp ? formatDate(new Date(record.timestamp)) : '',
                     indentNumber: record.indent_number || '',
                     indenterName: record.indenter_name || '',
                     indentApproveBy: record.indent_approve_by || '',
@@ -90,21 +95,13 @@ export default () => {
                     vendorType: record.vendor_type || '',
                 }));
 
-                if (isLoadMore) {
-                    setTableData(prev => [...prev, ...transformedData]);
-                } else {
-                    setTableData(transformedData);
-                }
-
-                setPage(currentPage);
-                setHasMore(data.length === PAGE_SIZE);
+                setTableData(transformedData);
             }
         } catch (error: any) {
             console.error('Error fetching indents:', error);
             toast.error('Failed to fetch indents: ' + error.message);
         } finally {
             setIndentLoading(false);
-            setLoading(false);
         }
     };
 
@@ -112,6 +109,69 @@ export default () => {
         fetchIndents();
         fetchIndentMasterData().then(setMaster);
     }, []);
+
+    const handleDownloadExcel = async () => {
+        setDownloading(true);
+        try {
+            let allData: any[] = [];
+            let from = 0;
+            const pageSize = 1000;
+            let hasMoreData = true;
+
+            while (hasMoreData) {
+                const { data, error } = await supabase
+                    .from('indent')
+                    .select('*')
+                    .order('created_at', { ascending: false })
+                    .range(from, from + pageSize - 1);
+
+                if (error) throw error;
+
+                if (data && data.length > 0) {
+                    allData = [...allData, ...data];
+                    from += pageSize;
+                    if (data.length < pageSize) {
+                        hasMoreData = false;
+                    }
+                } else {
+                    hasMoreData = false;
+                }
+            }
+
+            if (allData.length === 0) {
+                toast.error('No data available to download');
+                return;
+            }
+
+            const excelData = allData.map(record => ({
+                'Date': record.timestamp ? formatDate(new Date(record.timestamp)) : '',
+                'Indent No.': record.indent_number || '',
+                'Indenter Name': record.indenter_name || '',
+                'Indent Approve By': record.indent_approve_by || '',
+                'Indent Type': record.indent_type || '',
+                'Department': record.department || '',
+                'Group Head': record.group_head || '',
+                'Product Name': record.product_name || '',
+                'Quantity': record.quantity || 0,
+                'UOM': record.uom || '',
+                'Area of Use': record.area_of_use || '',
+                'Specifications': record.specifications || '',
+                'Vendor Type': record.vendor_type || '',
+            }));
+
+            const worksheet = XLSX.utils.json_to_sheet(excelData);
+            const workbook = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(workbook, worksheet, 'All Indents');
+            XLSX.writeFile(workbook, 'All_Indents.xlsx');
+
+            toast.success(`Downloaded ${allData.length} records successfully!`);
+        } catch (error: any) {
+            console.error('Error downloading excel:', error);
+            toast.error('Failed to download: ' + error.message);
+        } finally {
+            setDownloading(false);
+        }
+    };
     const handleRowSelect = (id: string, checked: boolean) => {
         setSelectedRows(prev => {
             const newSet = new Set(prev);
@@ -234,8 +294,8 @@ export default () => {
 
             toast.success(`Updated ${updatesToProcess.length} indents successfully`);
 
-            // Refresh the data after updates with pagination (refresh only loaded pages or just reset)
-            await fetchIndents(false);
+            // Refresh all the primary data
+            await fetchIndents();
 
             setSelectedRows(new Set());
             setBulkUpdates(new Map());
@@ -253,56 +313,79 @@ export default () => {
         {
             id: 'select',
             header: ({ table }) => (
-                <div className="flex justify-center">
+                <div className="px-1 z-30 align-middle select-none">
                     <input
                         type="checkbox"
+                        disabled={!user || !user.administrate}
+                        className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 cursor-pointer pointer-events-auto"
                         checked={table.getIsAllPageRowsSelected()}
-                        onChange={(e) => handleSelectAll(e.target.checked)}
-                        className="w-4 h-4"
+                        ref={(input) => {
+                            if (input) {
+                                input.indeterminate = table.getIsSomePageRowsSelected();
+                            }
+                        }}
+                        onChange={(e) => {
+                            if (e.target.checked) {
+                                // Add all row IDs from current page to the Set
+                                const newSet = new Set(selectedRows);
+                                table.getRowModel().rows.forEach((row) => {
+                                    newSet.add(row.original.id);
+                                });
+                                setSelectedRows(newSet);
+                            } else {
+                                // Remove all row IDs from current page from the Set
+                                const newSet = new Set(selectedRows);
+                                table.getRowModel().rows.forEach((row) => {
+                                    newSet.delete(row.original.id);
+                                });
+                                setSelectedRows(newSet);
+                            }
+                            table.getToggleAllPageRowsSelectedHandler()(e);
+                        }}
                     />
                 </div>
             ),
-            cell: ({ row }: { row: Row<AllIndentTableData> }) => {
-                const indent = row.original;
-                return (
-                    <div className="flex justify-center">
-                        <input
-                            type="checkbox"
-                            checked={selectedRows.has(indent.id)}
-                            onChange={(e) => handleRowSelect(indent.id, e.target.checked)}
-                            className="w-4 h-4"
-                        />
-                    </div>
-                );
-            },
-            size: 50,
-        },
-        {
-            accessorKey: 'timestamp',
-            header: 'Date',
-            cell: ({ getValue }) => (
-                <div className="text-xs sm:text-sm whitespace-nowrap">
-                    {getValue() as string}
+            cell: ({ row }) => (
+                <div className="px-1 z-30 align-middle select-none">
+                    <input
+                        type="checkbox"
+                        disabled={!user || !user.administrate}
+                        className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 cursor-pointer pointer-events-auto"
+                        checked={selectedRows.has(row.original.id)}
+                        onChange={(e) => {
+                            const newSet = new Set(selectedRows);
+                            if (e.target.checked) {
+                                newSet.add(row.original.id);
+                            } else {
+                                newSet.delete(row.original.id);
+                            }
+                            setSelectedRows(newSet);
+                        }}
+                        onClick={(e) => e.stopPropagation()}
+                    />
                 </div>
             ),
-            size: 100,
+            size: 40,
         },
         {
             accessorKey: 'indentNumber',
             header: 'Indent No.',
-            cell: ({ getValue }) => (
-                <div className="font-medium text-xs sm:text-sm">
-                    {getValue() as string}
-                </div>
-            ),
+            cell: ({ getValue }) => <div className="font-semibold text-xs sm:text-sm whitespace-nowrap">{getValue() as string}</div>,
             size: 100,
+        },
+        {
+            accessorKey: 'timestamp',
+            header: 'Date',
+            cell: ({ getValue }) => <div className="text-muted-foreground text-xs sm:text-sm whitespace-nowrap">{getValue() as string}</div>,
+            size: 90,
         },
         {
             accessorKey: 'indenterName',
             header: 'Indenter Name',
-            cell: ({ row }) => {
+            cell: ({ getValue, row }) => {
                 const indent = row.original;
                 const isSelected = selectedRows.has(indent.id);
+                // When we pull from the map, if not found, fallback to original value
                 const currentValue = bulkUpdates.get(indent.id)?.indenterName || indent.indenterName;
 
                 return (
@@ -311,7 +394,7 @@ export default () => {
                         onChange={(e) => handleBulkUpdate(indent.id, 'indenterName', e.target.value)}
                         disabled={!isSelected}
                         className={`w-32 text-xs sm:text-sm ${!isSelected ? 'opacity-50' : ''}`}
-                        placeholder="Indenter name"
+                        placeholder="Indenter Name"
                     />
                 );
             },
@@ -622,38 +705,24 @@ export default () => {
                 )}
             </div>
 
-            <div className="space-y-4 p-5 pt-2">
+            <div className="space-y-4 p-5 pt-2 h-[calc(100vh-140px)] flex flex-col">
 
-                <div className="w-full overflow-x-auto">
+                <div className="w-full flex-1 overflow-hidden min-h-0">
                     <DataTable
                         data={tableData}
                         columns={columns}
                         searchFields={['indentNumber', 'indenterName', 'department', 'productName', 'groupHead']}
                         dataLoading={indentLoading}
-                        footer={
-                            <div className="flex flex-col items-center gap-2 p-4 pt-0">
-                                {hasMore && (
-                                    <Button
-                                        variant="outline"
-                                        onClick={() => fetchIndents(true)}
-                                        disabled={loading}
-                                        className="w-full sm:w-64"
-                                    >
-                                        {loading ? (
-                                            <div className="flex items-center gap-2">
-                                                <Loader size={16} color="currentColor" />
-                                                Loading...
-                                            </div>
-                                        ) : (
-                                            'Load More Records'
-                                        )}
-                                    </Button>
-                                )}
-                                <p className="text-xs text-muted-foreground">
-                                    Displaying {tableData.length} records
-                                    {!hasMore && tableData.length > 0 && " (All records loaded)"}
-                                </p>
-                            </div>
+                        pagination={true}
+                        extraActions={
+                            <Button
+                                onClick={handleDownloadExcel}
+                                disabled={downloading}
+                                className="bg-green-600 hover:bg-green-700 text-white flex items-center gap-2"
+                            >
+                                {downloading ? <Loader size={16} color="white" /> : <Download size={16} />}
+                                {downloading ? 'Downloading...' : 'Download'}
+                            </Button>
                         }
                     />
                 </div>

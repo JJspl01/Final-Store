@@ -78,16 +78,20 @@ export default function DataTable<TData, TValue>({
         <div className="p-5 flex flex-col gap-4 h-full w-full overflow-hidden min-h-0">
             <div className="flex justify-between items-center w-full gap-3 shrink-0">
                 {searchFields.length !== 0 && (
-                    <div className="flex items-center w-full">
+                    <div className="flex items-center flex-1 max-w-sm">
                         <Input
                             placeholder={`Search...`}
                             value={globalFilter}
                             onChange={(e) => setGlobalFilter(e.target.value)}
-                            className="w-230"
+                            className="w-full"
                         />
                     </div>
                 )}
-                {extraActions && extraActions}
+                {extraActions && (
+                    <div className="flex items-center overflow-x-auto shrink-0 hide-scrollbar pb-1 -mb-1">
+                        {extraActions}
+                    </div>
+                )}
             </div>
 
             <div className={cn("relative rounded-md border w-full max-w-full overflow-auto flex-1 bg-background min-h-0", className)}>

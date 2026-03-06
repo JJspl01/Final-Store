@@ -1040,33 +1040,45 @@ export default () => {
     }
 
     return (
-        <div>
+        <div className="w-full">
             <Dialog open={openDialog} onOpenChange={setOpenDialog}>
-                <Tabs defaultValue="pending">
-                    <Heading
-                        heading="Vendor Rate Update"
-                        subtext="Update vendors for Regular and Three Party indents"
-                        tabs
-                    >
-                        <UserCheck size={50} className="text-primary" />
-                    </Heading>
-                    <TabsContent value="pending">
-                        <DataTable
-                            data={tableData}
-                            columns={columns}
-                            searchFields={['indentNo', 'product', 'department', 'indenter', 'vendorType', 'vendorName', 'date']}
-                            dataLoading={dataLoading}
-                        />
-                    </TabsContent>
-                    <TabsContent value="history">
-                        <DataTable
-                            data={historyData}
-                            columns={historyColumns}
-                            searchFields={['indentNo', 'product', 'department', 'indenter', 'vendorType', 'vendorName', 'date']}
-                            dataLoading={dataLoading}
-                        />
-                    </TabsContent>
+                <Tabs defaultValue="pending" className="w-full">
+                    <div className="sticky top-0 z-20 bg-background -mx-5 -mt-5 p-5 pb-2 shadow-sm">
+                        <Heading
+                            heading="Vendor Rate Update"
+                            subtext="Update vendors for Regular and Three Party indents"
+                            tabs
+                        >
+                            <UserCheck size={50} className="text-primary" />
+                        </Heading>
+                    </div>
 
+                    <div className="p-5 pt-2">
+                        <TabsContent value="pending" className="w-full mt-0">
+                            <div className="space-y-4 h-[calc(100vh-210px)] flex flex-col">
+                                <div className="w-full h-full flex-1 overflow-hidden min-h-0 flex flex-col">
+                                    <DataTable
+                                        data={tableData}
+                                        columns={columns}
+                                        searchFields={['indentNo', 'product', 'department', 'indenter', 'vendorType', 'vendorName', 'date']}
+                                        dataLoading={dataLoading}
+                                    />
+                                </div>
+                            </div>
+                        </TabsContent>
+                        <TabsContent value="history" className="w-full mt-0">
+                            <div className="space-y-4 h-[calc(100vh-210px)] flex flex-col">
+                                <div className="w-full h-full flex-1 overflow-hidden min-h-0 flex flex-col">
+                                    <DataTable
+                                        data={historyData}
+                                        columns={historyColumns}
+                                        searchFields={['indentNo', 'product', 'department', 'indenter', 'vendorType', 'vendorName', 'date']}
+                                        dataLoading={dataLoading}
+                                    />
+                                </div>
+                            </div>
+                        </TabsContent>
+                    </div>
                 </Tabs>
                 {selectedIndent &&
                     (selectedIndent.vendorType === 'Three Party' ? (

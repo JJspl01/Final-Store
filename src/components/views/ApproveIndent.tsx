@@ -1010,78 +1010,83 @@ export default () => {
     ];
 
     return (
-        <div className="w-full overflow-hidden">
+        <div className="w-full">
             <Tabs defaultValue="pending" className="w-full">
-                <Heading
-                    heading="Approve Indent"
-                    subtext="Update Indent status to Approve or Reject them"
-                    tabs
-                >
-                    <ClipboardCheck size={50} className="text-primary" />
-                </Heading>
-                <TabsContent value="pending" className="w-full">
-                    <div className="space-y-4">
-                        {selectedRows.size > 0 && (
-                            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center p-3 sm:p-4 bg-blue-50 rounded-lg gap-2 sm:gap-0">
-                                <span className="text-sm font-medium">
-                                    {selectedRows.size} row(s) selected for update
-                                </span>
-                                <Button
-                                    onClick={handleSubmitBulkUpdates}
-                                    disabled={submitting}
-                                    className="flex items-center gap-2 w-full sm:w-auto"
-                                >
-                                    {submitting && (
-                                        <Loader
-                                            size={16}
-                                            color="white"
-                                            aria-label="Loading Spinner"
-                                        />
-                                    )}
-                                    Submit Updates
-                                </Button>
-                            </div>
-                        )}
+                <div className="sticky top-0 z-20 bg-background -mx-5 -mt-5 p-5 pb-2 shadow-sm">
+                    <Heading
+                        heading="Approve Indent"
+                        subtext="Update Indent status to Approve or Reject them"
+                        tabs
+                    >
+                        <ClipboardCheck size={50} className="text-primary" />
+                    </Heading>
 
-                        <div className="w-full overflow-x-auto">
+                    {selectedRows.size > 0 && (
+                        <div className="mt-4 flex flex-col sm:flex-row justify-between items-start sm:items-center p-3 sm:p-4 bg-blue-50 rounded-lg gap-2 sm:gap-0 border border-blue-100">
+                            <span className="text-sm font-medium">
+                                {selectedRows.size} row(s) selected for update
+                            </span>
+                            <Button
+                                onClick={handleSubmitBulkUpdates}
+                                disabled={submitting}
+                                className="flex items-center gap-2 w-full sm:w-auto"
+                            >
+                                {submitting && (
+                                    <Loader
+                                        size={16}
+                                        color="white"
+                                        aria-label="Loading Spinner"
+                                    />
+                                )}
+                                Submit Updates
+                            </Button>
+                        </div>
+                    )}
+                </div>
+
+                <div className="p-5 pt-2">
+                    <TabsContent value="pending" className="w-full mt-0">
+                        <div className="space-y-4 h-[calc(100vh-210px)] flex flex-col">
+                            <div className="w-full flex-1 overflow-hidden min-h-0">
+                                <DataTable
+                                    data={tableData}
+                                    columns={columns}
+                                    searchFields={['indentNo', 'product', 'department', 'indenter', 'vendorType', 'date', 'specifications', 'quantity', 'uom']}
+                                    dataLoading={dataLoading}
+                                    extraActions={
+                                        <Button
+                                            variant="default"
+                                            onClick={onDownloadClick}
+                                            className="flex items-center gap-2 text-xs sm:text-sm"
+                                            style={{
+                                                background: "linear-gradient(90deg, #4CAF50, #2E7D32)",
+                                                border: "none",
+                                                borderRadius: "8px",
+                                                padding: "8px 12px",
+                                                fontWeight: "bold",
+                                                boxShadow: "0 4px 8px rgba(0,0,0,0.15)",
+                                            }}
+                                        >
+                                            <DownloadOutlined />
+                                            <span className="hidden sm:inline">{loading ? "Downloading..." : "Download"}</span>
+                                            <span className="sm:hidden">{loading ? "..." : "CSV"}</span>
+                                        </Button>
+                                    }
+                                />
+                            </div>
+                        </div>
+                    </TabsContent>
+                    <TabsContent value="history" className="w-full mt-0">
+                        <div className="w-full h-[calc(100vh-210px)] overflow-hidden flex flex-col">
                             <DataTable
-                                data={tableData}
-                                columns={columns}
-                                searchFields={['indentNo', 'product', 'department', 'indenter', 'vendorType', 'date', 'specifications', 'quantity', 'uom']}
+                                data={historyData}
+                                columns={historyColumns}
+                                searchFields={['indentNo', 'product', 'department', 'indenter', 'vendorType', 'date', 'approvedDate', 'specifications', 'approvedQuantity', 'uom']}
                                 dataLoading={dataLoading}
-                                extraActions={
-                                    <Button
-                                        variant="default"
-                                        onClick={onDownloadClick}
-                                        className="flex items-center gap-2 text-xs sm:text-sm"
-                                        style={{
-                                            background: "linear-gradient(90deg, #4CAF50, #2E7D32)",
-                                            border: "none",
-                                            borderRadius: "8px",
-                                            padding: "8px 12px",
-                                            fontWeight: "bold",
-                                            boxShadow: "0 4px 8px rgba(0,0,0,0.15)",
-                                        }}
-                                    >
-                                        <DownloadOutlined />
-                                        <span className="hidden sm:inline">{loading ? "Downloading..." : "Download"}</span>
-                                        <span className="sm:hidden">{loading ? "..." : "CSV"}</span>
-                                    </Button>
-                                }
                             />
                         </div>
-                    </div>
-                </TabsContent>
-                <TabsContent value="history" className="w-full">
-                    <div className="w-full overflow-x-auto">
-                        <DataTable
-                            data={historyData}
-                            columns={historyColumns}
-                            searchFields={['indentNo', 'product', 'department', 'indenter', 'vendorType', 'date', 'approvedDate', 'specifications', 'approvedQuantity', 'uom']}
-                            dataLoading={dataLoading}
-                        />
-                    </div>
-                </TabsContent>
+                    </TabsContent>
+                </div>
             </Tabs>
         </div>
     );

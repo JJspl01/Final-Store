@@ -285,16 +285,18 @@ export default function MasterData() {
     }
 
     return (
-        <div className="space-y-6">
-            <Heading
-                heading="Master Data"
-                subtext="Manage vendor master records"
-            >
-                <Database size={50} className="text-primary" />
-            </Heading>
+        <div className="w-full flex flex-col h-[calc(100vh-90px)] space-y-4">
+            <div className="sticky top-0 z-20 bg-background pb-2 shrink-0">
+                <Heading
+                    heading="Master Data"
+                    subtext="Manage vendor master records"
+                >
+                    <Database size={50} className="text-primary" />
+                </Heading>
+            </div>
 
             {/* ── Table & Toolbar ── */}
-            <div className="w-full overflow-x-auto">
+            <div className="flex-1 w-full flex flex-col min-h-0 overflow-hidden">
                 <DataTable
                     data={filteredData}
                     columns={columns}
@@ -302,9 +304,9 @@ export default function MasterData() {
                     dataLoading={dataLoading}
                     pagination={true}
                     extraActions={
-                        <div className="flex gap-2">
+                        <div className="flex items-center gap-2">
                             <Select value={vendorFilter} onValueChange={setVendorFilter}>
-                                <SelectTrigger className="w-full sm:min-w-[200px] h-9">
+                                <SelectTrigger className="w-[140px] sm:w-[200px] h-9">
                                     <SelectValue placeholder="All Vendors" />
                                 </SelectTrigger>
                                 <SelectContent className="max-h-[300px]">
@@ -314,9 +316,10 @@ export default function MasterData() {
                                     ))}
                                 </SelectContent>
                             </Select>
-                            <Button className="h-9 shrink-0" onClick={() => { setEditingId(null); setForm(emptyForm); setSheetOpen(true); }}>
-                                <Plus className="mr-2 h-4 w-4" />
-                                Add Master Data
+                            <Button className="h-9 shrink-0 whitespace-nowrap" onClick={() => { setEditingId(null); setForm(emptyForm); setSheetOpen(true); }}>
+                                <Plus className="mr-1 sm:mr-2 h-4 w-4" />
+                                <span className="hidden sm:inline">Add Master Data</span>
+                                <span className="sm:hidden">Add</span>
                             </Button>
                         </div>
                     }

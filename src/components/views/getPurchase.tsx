@@ -908,34 +908,43 @@ export default () => {
 
 
     return (
-        <div>
+        <div className="w-full">
             <Dialog open={openDialog} onOpenChange={setOpenDialog}>
-                <Tabs defaultValue="pending">
-                    <Heading
-                        heading="Get Purchase"
-                        subtext="Manage purchase bill details and status"
-                        tabs
-                    >
-                        <ShoppingCart size={50} className="text-primary" />
-                    </Heading>
+                <Tabs defaultValue="pending" className="w-full">
+                    <div className="sticky top-0 z-20 bg-background -mx-5 -mt-5 p-5 pb-2 shadow-sm">
+                        <Heading
+                            heading="Get Purchase"
+                            subtext="Manage purchase bill details and status"
+                            tabs
+                        >
+                            <ShoppingCart size={50} className="text-primary" />
+                        </Heading>
+                    </div>
 
-
-                    <TabsContent value="pending">
-                        <DataTable
-                            data={tableData}
-                            columns={columns}
-                            searchFields={['indentNo', 'poNumber', 'product', 'department', 'indenter', 'date', 'billNumber']}
-                            dataLoading={loading}
-                        />
-                    </TabsContent>
-                    <TabsContent value="history">
-                        <DataTable
-                            data={historyData}
-                            columns={historyColumns}
-                            searchFields={['indentNo', 'poNumber', 'product', 'department', 'indenter', 'date', 'billNumber']}
-                            dataLoading={indentLoading}
-                        />
-                    </TabsContent>
+                    <div className="p-5 pt-2">
+                        <TabsContent value="pending" className="w-full mt-0">
+                            <div className="space-y-4 h-[calc(100vh-210px)] flex flex-col">
+                                <div className="w-full flex-1 overflow-hidden min-h-0">
+                                    <DataTable
+                                        data={tableData}
+                                        columns={columns}
+                                        searchFields={['indentNo', 'poNumber', 'product', 'department', 'indenter', 'date', 'billNumber']}
+                                        dataLoading={loading}
+                                    />
+                                </div>
+                            </div>
+                        </TabsContent>
+                        <TabsContent value="history" className="w-full mt-0">
+                            <div className="w-full h-[calc(100vh-210px)] overflow-hidden flex flex-col">
+                                <DataTable
+                                    data={historyData}
+                                    columns={historyColumns}
+                                    searchFields={['indentNo', 'poNumber', 'product', 'department', 'indenter', 'date', 'billNumber']}
+                                    dataLoading={indentLoading}
+                                />
+                            </div>
+                        </TabsContent>
+                    </div>
                 </Tabs>
 
 
