@@ -13,7 +13,7 @@ import * as XLSX from 'xlsx';
 import { useAuth } from '@/context/AuthContext';
 import Heading from '../element/Heading';
 import { supabase } from '@/lib/supabaseClient';
-import { fetchIndentMasterData, fetchFromSupabasePaginated } from '@/lib/fetchers';
+import { fetchIndentMasterData, fetchFromSupabaseWithCount } from '@/lib/fetchers';
 
 interface AllIndentTableData {
     id: string;
@@ -39,45 +39,44 @@ export default () => {
     const [selectedRows, setSelectedRows] = useState<Set<string>>(new Set());
     const [bulkUpdates, setBulkUpdates] = useState<Map<string, Partial<AllIndentTableData>>>(new Map());
     const [submitting, setSubmitting] = useState(false);
-    const [searchTermDepartment, setSearchTermDepartment] = useState('');
-    const [searchTermGroupHead, setSearchTermGroupHead] = useState('');
     const [searchTermProduct, setSearchTermProduct] = useState('');
-    const [master, setMaster] = useState<any>(null);
 
     const [indentLoading, setIndentLoading] = useState(true);
     const [downloading, setDownloading] = useState(false);
 
-    const fetchIndents = async () => {
-        setIndentLoading(true);
+    // Infinite Scroll state
+    const [pageIndex, setPageIndex] = useState(0);
+    const [pageSize] = useState(50);
+    const [totalCount, setTotalCount] = useState(0);
+    const [hasMore, setHasMore] = useState(true);
+    // Caching state
+    const [dataCache, setDataCache] = useState<Map<number, AllIndentTableData[]>>(new Map());
+
+    const ALL_INDENT_COLUMNS = "*";
+
+    const fetchIndents = async (pageToFetch: number = pageIndex, isAppend: boolean = false) => {
+        // If data is already in cache AND this isn't a forced refresh/append, use it.
+        if (!isAppend && dataCache.has(pageToFetch)) {
+            setTableData(dataCache.get(pageToFetch)!);
+            return;
+        }
+
+        const isPrefetch = isAppend && tableData.length > 0;
+        if (!isPrefetch) setIndentLoading(true);
 
         try {
-            let allData: any[] = [];
-            let from = 0;
-            const pageSize = 1000;
-            let hasMoreData = true;
+            const { data, count } = await fetchFromSupabaseWithCount(
+                'indent',
+                ALL_INDENT_COLUMNS,
+                {
+                    from: pageToFetch * pageSize,
+                    to: (pageToFetch + 1) * pageSize - 1
+                },
+                { column: 'indent_number', options: { ascending: false } }
+            );
 
-            while (hasMoreData) {
-                const { data, error } = await supabase
-                    .from('indent')
-                    .select('*')
-                    .order('indent_number', { ascending: false })
-                    .range(from, from + pageSize - 1);
-
-                if (error) throw error;
-
-                if (data && data.length > 0) {
-                    allData = [...allData, ...data];
-                    from += pageSize;
-                    if (data.length < pageSize) {
-                        hasMoreData = false;
-                    }
-                } else {
-                    hasMoreData = false;
-                }
-            }
-
-            if (allData.length > 0) {
-                const transformedData = allData.map((record: any) => ({
+            if (data) {
+                const transformedData = data.map((record: any) => ({
                     id: record.id ? record.id.toString() : Math.random().toString(),
                     timestamp: record.timestamp ? formatDate(new Date(record.timestamp)) : '',
                     indentNumber: record.indent_number || '',
@@ -95,19 +94,43 @@ export default () => {
                     vendorType: record.vendor_type || '',
                 }));
 
-                setTableData(transformedData);
+                if (isAppend) {
+                    setTableData(prev => [...prev, ...transformedData]);
+                } else {
+                    setTableData(transformedData);
+                    setDataCache(prev => {
+                        const next = new Map(prev);
+                        next.set(pageToFetch, transformedData);
+                        return next;
+                    });
+                }
+
+                const newHasMore = (pageToFetch + 1) * pageSize < count;
+                setTotalCount(count);
+                setHasMore(newHasMore);
             }
         } catch (error: any) {
             console.error('Error fetching indents:', error);
-            toast.error('Failed to fetch indents: ' + error.message);
+            if (!isPrefetch) {
+                toast.error('Failed to fetch indents: ' + error.message);
+            }
         } finally {
-            setIndentLoading(false);
+            if (!isPrefetch) setIndentLoading(false);
+        }
+    };
+
+    const handleLoadMore = () => {
+        if (!indentLoading && hasMore) {
+            const nextPage = pageIndex + 1;
+            setPageIndex(nextPage);
+            fetchIndents(nextPage, true);
         }
     };
 
     useEffect(() => {
-        fetchIndents();
-        fetchIndentMasterData().then(setMaster);
+        // Initial load
+        setPageIndex(0);
+        fetchIndents(0, false);
     }, []);
 
     const handleDownloadExcel = async () => {
@@ -294,8 +317,10 @@ export default () => {
 
             toast.success(`Updated ${updatesToProcess.length} indents successfully`);
 
-            // Refresh all the primary data
-            await fetchIndents();
+            // Clear cache and refresh
+            setDataCache(new Map());
+            setPageIndex(0);
+            await fetchIndents(0, false);
 
             setSelectedRows(new Set());
             setBulkUpdates(new Map());
@@ -401,6 +426,7 @@ export default () => {
             size: 140,
         },
 
+
         {
             accessorKey: 'indentType',
             header: 'Indent Type',
@@ -410,19 +436,13 @@ export default () => {
                 const currentValue = bulkUpdates.get(indent.id)?.indentType || indent.indentType;
 
                 return (
-                    <Select
+                    <Input
                         value={currentValue}
-                        onValueChange={(value) => handleBulkUpdate(indent.id, 'indentType', value)}
+                        onChange={(e) => handleBulkUpdate(indent.id, 'indentType', e.target.value)}
                         disabled={!isSelected}
-                    >
-                        <SelectTrigger className={`w-32 text-xs sm:text-sm ${!isSelected ? 'opacity-50' : ''}`}>
-                            <SelectValue placeholder="Select type" />
-                        </SelectTrigger>
-                        <SelectContent>
-                            <SelectItem value="Purchase">Purchase</SelectItem>
-                            <SelectItem value="Store Out">Store Out</SelectItem>
-                        </SelectContent>
-                    </Select>
+                        className={`w-32 text-xs sm:text-sm ${!isSelected ? 'opacity-50' : ''}`}
+                        placeholder="Indent Type"
+                    />
                 );
             },
             size: 140,
@@ -436,34 +456,13 @@ export default () => {
                 const currentValue = bulkUpdates.get(indent.id)?.department || indent.department;
 
                 return (
-                    <Select
+                    <Input
                         value={currentValue}
-                        onValueChange={(value) => handleBulkUpdate(indent.id, 'department', value)}
+                        onChange={(e) => handleBulkUpdate(indent.id, 'department', e.target.value)}
                         disabled={!isSelected}
-                    >
-                        <SelectTrigger className={`w-36 text-xs sm:text-sm ${!isSelected ? 'opacity-50' : ''}`}>
-                            <SelectValue placeholder="Department" />
-                        </SelectTrigger>
-                        <SelectContent>
-                            <div className="flex items-center border-b px-3 pb-3">
-                                <Search className="mr-2 h-4 w-4 shrink-0 opacity-50" />
-                                <input
-                                    placeholder="Search department..."
-                                    value={searchTermDepartment}
-                                    onChange={(e) => setSearchTermDepartment(e.target.value)}
-                                    onKeyDown={(e) => e.stopPropagation()}
-                                    className="flex h-10 w-full rounded-md border-0 bg-transparent py-3 text-sm outline-none placeholder:text-muted-foreground"
-                                />
-                            </div>
-                            <div className="max-h-[300px] overflow-y-auto">
-                                {master?.departments
-                                    ?.filter((d: string) => d.toLowerCase().includes(searchTermDepartment.toLowerCase()))
-                                    .map((d: string, i: number) => (
-                                        <SelectItem key={i} value={d}>{d}</SelectItem>
-                                    ))}
-                            </div>
-                        </SelectContent>
-                    </Select>
+                        className={`w-36 text-xs sm:text-sm ${!isSelected ? 'opacity-50' : ''}`}
+                        placeholder="Department"
+                    />
                 );
             },
             size: 160,
@@ -477,34 +476,13 @@ export default () => {
                 const currentValue = bulkUpdates.get(indent.id)?.groupHead || indent.groupHead;
 
                 return (
-                    <Select
+                    <Input
                         value={currentValue}
-                        onValueChange={(value) => handleBulkUpdate(indent.id, 'groupHead', value)}
+                        onChange={(e) => handleBulkUpdate(indent.id, 'groupHead', e.target.value)}
                         disabled={!isSelected}
-                    >
-                        <SelectTrigger className={`w-36 text-xs sm:text-sm ${!isSelected ? 'opacity-50' : ''}`}>
-                            <SelectValue placeholder="Group head" />
-                        </SelectTrigger>
-                        <SelectContent>
-                            <div className="flex items-center border-b px-3 pb-3">
-                                <Search className="mr-2 h-4 w-4 shrink-0 opacity-50" />
-                                <input
-                                    placeholder="Search group head..."
-                                    value={searchTermGroupHead}
-                                    onChange={(e) => setSearchTermGroupHead(e.target.value)}
-                                    onKeyDown={(e) => e.stopPropagation()}
-                                    className="flex h-10 w-full rounded-md border-0 bg-transparent py-3 text-sm outline-none placeholder:text-muted-foreground"
-                                />
-                            </div>
-                            <div className="max-h-[300px] overflow-y-auto">
-                                {master?.createGroupHeads
-                                    ?.filter((gh: string) => gh.toLowerCase().includes(searchTermGroupHead.toLowerCase()))
-                                    .map((gh: string, i: number) => (
-                                        <SelectItem key={i} value={gh}>{gh}</SelectItem>
-                                    ))}
-                            </div>
-                        </SelectContent>
-                    </Select>
+                        className={`w-36 text-xs sm:text-sm ${!isSelected ? 'opacity-50' : ''}`}
+                        placeholder="Group head"
+                    />
                 );
             },
             size: 160,
@@ -515,40 +493,16 @@ export default () => {
             cell: ({ row }) => {
                 const indent = row.original;
                 const isSelected = selectedRows.has(indent.id);
-                const currentGroupHead = bulkUpdates.get(indent.id)?.groupHead || indent.groupHead;
                 const currentValue = bulkUpdates.get(indent.id)?.productName || indent.productName;
 
-                const availableProducts = master?.groupHeadItems?.[currentGroupHead] || [];
-
                 return (
-                    <Select
+                    <Input
                         value={currentValue}
-                        onValueChange={(value) => handleBulkUpdate(indent.id, 'productName', value)}
-                        disabled={!isSelected || !currentGroupHead}
-                    >
-                        <SelectTrigger className={`w-52 text-xs sm:text-sm ${(!isSelected || !currentGroupHead) ? 'opacity-50' : ''}`}>
-                            <SelectValue placeholder="Product name" />
-                        </SelectTrigger>
-                        <SelectContent>
-                            <div className="flex items-center border-b px-3 pb-3">
-                                <Search className="mr-2 h-4 w-4 shrink-0 opacity-50" />
-                                <input
-                                    placeholder="Search product..."
-                                    value={searchTermProduct}
-                                    onChange={(e) => setSearchTermProduct(e.target.value)}
-                                    onKeyDown={(e) => e.stopPropagation()}
-                                    className="flex h-10 w-full rounded-md border-0 bg-transparent py-3 text-sm outline-none placeholder:text-muted-foreground"
-                                />
-                            </div>
-                            <div className="max-h-[300px] overflow-y-auto">
-                                {availableProducts
-                                    ?.filter((p: string) => p.toLowerCase().includes(searchTermProduct.toLowerCase()))
-                                    .map((p: string, i: number) => (
-                                        <SelectItem key={i} value={p}>{p}</SelectItem>
-                                    ))}
-                            </div>
-                        </SelectContent>
-                    </Select>
+                        onChange={(e) => handleBulkUpdate(indent.id, 'productName', e.target.value)}
+                        disabled={!isSelected}
+                        className={`w-52 text-xs sm:text-sm ${!isSelected ? 'opacity-50' : ''}`}
+                        placeholder="Product name"
+                    />
                 );
             },
             size: 220,
@@ -713,7 +667,8 @@ export default () => {
                         columns={columns}
                         searchFields={['indentNumber', 'indenterName', 'department', 'productName', 'groupHead']}
                         dataLoading={indentLoading}
-                        pagination={true}
+                        infiniteScroll={true}
+                        onLoadMore={handleLoadMore}
                         extraActions={
                             <Button
                                 onClick={handleDownloadExcel}

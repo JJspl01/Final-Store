@@ -238,6 +238,40 @@ export async function fetchFromSupabasePaginated(
     return allData;
 }
 
+// Helper to fetch records from a Supabase table with count (one page at a time)
+export async function fetchFromSupabaseWithCount(
+    tableName: string,
+    select: string = '*',
+    pagination: { from: number; to: number },
+    orderBy: { column: string; options?: { ascending?: boolean } } = { column: 'created_at', options: { ascending: false } },
+    queryBuilder?: (query: any) => any
+) {
+    let query = supabase
+        .from(tableName)
+        .select(select, { count: 'exact' })
+        .range(pagination.from, pagination.to);
+
+    if (queryBuilder) {
+        query = queryBuilder(query);
+    }
+
+    if (orderBy.column) {
+        query = query.order(orderBy.column, orderBy.options || { ascending: false });
+    }
+
+    const { data, error, count } = await query;
+
+    if (error) {
+        console.error(`Error fetching from ${tableName}:`, error);
+        throw error;
+    }
+
+    return {
+        data: data || [],
+        count: count || 0
+    };
+}
+
 export async function fetchSheet(
     sheetName: Sheet
 ): Promise<MasterSheet | IndentSheet[] | ReceivedSheet[] | UserPermissions[] | PoMasterSheet[] | InventorySheet[]> {

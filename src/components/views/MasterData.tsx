@@ -2,7 +2,7 @@ import { Database, Plus, Edit } from 'lucide-react';
 import Heading from '../element/Heading';
 import { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabaseClient';
-import { fetchFromSupabasePaginated } from '@/lib/fetchers';
+import { fetchFromSupabaseWithCount } from '@/lib/fetchers';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Label } from '../ui/label';
@@ -129,6 +129,10 @@ export default function MasterData() {
     const [submitting, setSubmitting] = useState(false);
     const [vendorFilter, setVendorFilter] = useState('All');
     const [editingId, setEditingId] = useState<number | null>(null);
+    const [pageIndex, setPageIndex] = useState(0);
+    const [hasMore, setHasMore] = useState(true);
+    const [allVendorNames, setAllVendorNames] = useState<string[]>([]);
+    const PAGE_SIZE = 50;
 
     function handleEdit(row: MasterRow) {
         setForm({
@@ -191,7 +195,7 @@ export default function MasterData() {
                 return (
                     <div className="flex items-center gap-2 group">
                         {val ? (
-                            <div className="whitespace-normal break-words min-w-[200px]">
+                            <div className="whitespace-normal break-words min-w-[120px] max-w-[250px]">
                                 {val}
                             </div>
                         ) : (
@@ -206,22 +210,37 @@ export default function MasterData() {
         },
     ];
 
-    const uniqueVendors = Array.from(new Set(tableData.map(r => r.vendor_name).filter(Boolean))).sort();
-    const filteredData = vendorFilter === 'All'
-        ? tableData
-        : tableData.filter(r => r.vendor_name === vendorFilter);
+    /* fetch */
+    const fetchVendorsList = async () => {
+        const { data, error } = await supabase
+            .from('master_data')
+            .select('vendor_name');
+        
+        if (!error && data) {
+            const names = Array.from(new Set(data.map(r => r.vendor_name).filter(Boolean))).sort();
+            // @ts-ignore
+            setAllVendorNames(names);
+        }
+    };
 
     /* fetch */
-    async function fetchData() {
+    async function fetchData(pageToFetch: number = pageIndex, isAppend: boolean = false) {
         setDataLoading(true);
         try {
-            const data = await fetchFromSupabasePaginated(
+            const { data, count } = (await fetchFromSupabaseWithCount(
                 'master_data',
                 '*',
-                { column: 'id', options: { ascending: false } }
-            );
+                { from: pageToFetch * PAGE_SIZE, to: (pageToFetch + 1) * PAGE_SIZE - 1 },
+                { column: 'id', options: { ascending: false } },
+                (q) => vendorFilter !== 'All' ? q.eq('vendor_name', vendorFilter) : q
+            )) as unknown as { data: MasterRow[], count: number };
 
-            setTableData(data || []);
+            if (isAppend) {
+                setTableData(prev => [...prev, ...(data || [])]);
+            } else {
+                setTableData(data || []);
+            }
+            setHasMore((pageToFetch + 1) * PAGE_SIZE < count);
         } catch (err: any) {
             console.error('Master data fetch exception:', err);
             toast.error('An unexpected error occurred while fetching data');
@@ -230,9 +249,22 @@ export default function MasterData() {
         }
     }
 
+    const handleLoadMore = () => {
+        if (!dataLoading && hasMore) {
+            const nextPage = pageIndex + 1;
+            setPageIndex(nextPage);
+            fetchData(nextPage, true);
+        }
+    };
+
     useEffect(() => {
-        fetchData();
+        fetchVendorsList();
     }, []);
+
+    useEffect(() => {
+        setPageIndex(0);
+        fetchData(0, false);
+    }, [vendorFilter]);
 
     /* reset form when sheet closes */
     useEffect(() => {
@@ -276,7 +308,8 @@ export default function MasterData() {
                 toast.success('Master data saved successfully!');
             }
             setSheetOpen(false);
-            fetchData();
+            setPageIndex(0);
+            fetchData(0, false);
         } catch (err: any) {
             toast.error(err?.message ?? 'Failed to save master data');
         } finally {
@@ -298,11 +331,12 @@ export default function MasterData() {
             {/* ── Table & Toolbar ── */}
             <div className="flex-1 w-full flex flex-col min-h-0 overflow-hidden">
                 <DataTable
-                    data={filteredData}
+                    data={tableData}
                     columns={columns}
                     searchFields={['vendor_name', 'department', 'group_head', 'item_name', 'vendor_gstin', 'vendor_email', 'payment_term']}
                     dataLoading={dataLoading}
-                    pagination={true}
+                    infiniteScroll
+                    onLoadMore={handleLoadMore}
                     extraActions={
                         <div className="flex items-center gap-2">
                             <Select value={vendorFilter} onValueChange={setVendorFilter}>
@@ -311,7 +345,7 @@ export default function MasterData() {
                                 </SelectTrigger>
                                 <SelectContent className="max-h-[300px]">
                                     <SelectItem value="All">All Vendors</SelectItem>
-                                    {uniqueVendors.map(vendor => (
+                                    {allVendorNames.map(vendor => (
                                         <SelectItem key={vendor} value={vendor}>{vendor}</SelectItem>
                                     ))}
                                 </SelectContent>

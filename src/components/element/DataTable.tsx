@@ -19,7 +19,7 @@ import {
     TableHeader,
     TableRow,
 } from '@/components/ui/table';
-import { useState, type ReactNode } from 'react';
+import { useState, useRef, useEffect, type ReactNode } from 'react';
 import { Input } from '../ui/input';
 import { Package } from 'lucide-react';
 import { Skeleton } from '../ui/skeleton';
@@ -36,6 +36,15 @@ interface DataTableProps<TData, TValue> {
     extraActions?: ReactNode;
     footer?: ReactNode;
     pagination?: boolean;
+    // Server-side pagination props
+    manualPagination?: boolean;
+    pageCount?: number;
+    pageIndex?: number;
+    pageSize?: number;
+    onPaginationChange?: (pagination: { pageIndex: number; pageSize: number }) => void;
+    // Infinite Scroll props
+    infiniteScroll?: boolean;
+    onLoadMore?: () => void;
 }
 
 function globalFilterFn<TData>(row: TData, columnIds: string[], filterValue: string) {
@@ -57,19 +66,57 @@ export default function DataTable<TData, TValue>({
     extraActions,
     footer,
     pagination = false,
+    manualPagination = false,
+    pageCount,
+    pageIndex = 0,
+    pageSize = 50,
+    onPaginationChange,
+    infiniteScroll = false,
+    onLoadMore,
 }: DataTableProps<TData, TValue>) {
     const [globalFilter, setGlobalFilter] = useState('');
+    const observerTarget = useRef<HTMLDivElement>(null);
+
+    useEffect(() => {
+        if (!infiniteScroll || !onLoadMore) return;
+
+        const observer = new IntersectionObserver(
+            (entries) => {
+                if (entries[0].isIntersecting) {
+                    onLoadMore();
+                }
+            },
+            { threshold: 0.1, rootMargin: '100px' }
+        );
+
+        if (observerTarget.current) {
+            observer.observe(observerTarget.current);
+        }
+
+        return () => observer.disconnect();
+    }, [infiniteScroll, onLoadMore, data]);
+
     const table = useReactTable({
         data,
         columns,
         getCoreRowModel: getCoreRowModel(),
         getFilteredRowModel: getFilteredRowModel(),
-        getPaginationRowModel: pagination ? getPaginationRowModel() : undefined,
+        getPaginationRowModel: pagination && !manualPagination ? getPaginationRowModel() : undefined,
         globalFilterFn: (row, _, filterValue) =>
             globalFilterFn(row.original, searchFields, filterValue),
-
+        manualPagination,
+        pageCount: manualPagination ? pageCount : undefined,
+        onPaginationChange: manualPagination ? (updater) => {
+            if (onPaginationChange) {
+                const nextState = typeof updater === 'function'
+                    ? updater({ pageIndex, pageSize })
+                    : updater;
+                onPaginationChange(nextState);
+            }
+        } : undefined,
         state: {
             globalFilter,
+            ...(manualPagination ? { pagination: { pageIndex, pageSize } } : {}),
         },
         onGlobalFilterChange: setGlobalFilter,
     });
@@ -162,26 +209,43 @@ export default function DataTable<TData, TValue>({
                         )}
                     </TableBody>
                 </Table>
+                {infiniteScroll && (
+                    <div ref={observerTarget} className="h-10 w-full flex items-center justify-center">
+                        {dataLoading && <div className="text-xs text-muted-foreground">Loading more...</div>}
+                    </div>
+                )}
             </div>
-            {pagination && (
+            {(pagination && !infiniteScroll) && (
                 <div className="flex items-center justify-end space-x-2 mt-2">
                     <Button
                         variant="outline"
                         size="sm"
-                        onClick={() => table.previousPage()}
-                        disabled={!table.getCanPreviousPage()}
+                        onClick={() => {
+                            if (manualPagination && onPaginationChange) {
+                                onPaginationChange({ pageIndex: pageIndex - 1, pageSize });
+                            } else {
+                                table.previousPage();
+                            }
+                        }}
+                        disabled={manualPagination ? pageIndex === 0 : !table.getCanPreviousPage()}
                     >
                         Previous
                     </Button>
                     <div className="text-sm font-medium">
-                        Page {table.getState().pagination.pageIndex + 1} of{' '}
-                        {table.getPageCount()}
+                        Page {manualPagination ? pageIndex + 1 : table.getState().pagination.pageIndex + 1} of{' '}
+                        {manualPagination ? pageCount : table.getPageCount()}
                     </div>
                     <Button
                         variant="outline"
                         size="sm"
-                        onClick={() => table.nextPage()}
-                        disabled={!table.getCanNextPage()}
+                        onClick={() => {
+                            if (manualPagination && onPaginationChange) {
+                                onPaginationChange({ pageIndex: pageIndex + 1, pageSize });
+                            } else {
+                                table.nextPage();
+                            }
+                        }}
+                        disabled={manualPagination ? (pageCount !== undefined && pageIndex >= pageCount - 1) : !table.getCanNextPage()}
                     >
                         Next
                     </Button>
