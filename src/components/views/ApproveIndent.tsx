@@ -9,7 +9,7 @@ import { fetchIndentMasterData, fetchFromSupabaseWithCount } from '@/lib/fetcher
 import { toast } from 'sonner';
 import { PuffLoader as Loader } from 'react-spinners';
 import { Tabs, TabsContent } from '../ui/tabs';
-import { ClipboardCheck, PenSquare } from 'lucide-react';
+import { ClipboardCheck, PenSquare, Search } from 'lucide-react';
 import { formatDate } from '@/lib/utils';
 import { useAuth } from '@/context/AuthContext';
 import { useSheets } from '@/context/SheetsContext';
@@ -38,6 +38,7 @@ interface HistoryData {
     indenter: string;
     department: string;
     product: string;
+    groupHead: string; // Added groupHead
     uom: string;
     approvedQuantity: number;
     vendorType: 'Reject' | 'Three Party' | 'Regular';
@@ -61,6 +62,7 @@ export default () => {
     const [submitting, setSubmitting] = useState(false);
     const [dataLoading, setDataLoading] = useState(true);
     const [master, setMaster] = useState<any>(null);
+    const [searchTermProductHistory, setSearchTermProductHistory] = useState(''); // Added search for history products
 
     // Infinite Scroll state - Pending
     const [pendingPageIndex, setPendingPageIndex] = useState(0);
@@ -75,7 +77,7 @@ export default () => {
     const PAGE_SIZE = 50;
 
     const PENDING_COLUMNS = "indent_number, indenter_name, department, product_name, quantity, uom, attachment, specifications, vendor_type, created_at";
-    const HISTORY_COLUMNS = "indent_number, indenter_name, department, product_name, approved_quantity, quantity, vendor_type, uom, specifications, created_at, actual_1";
+    const HISTORY_COLUMNS = "indent_number, indenter_name, department, product_name, group_head, approved_quantity, quantity, vendor_type, uom, specifications, created_at, actual_1";
 
     const fetchPendingData = async (pageToFetch: number = pendingPageIndex, isAppend: boolean = false) => {
         setDataLoading(true);
@@ -155,6 +157,7 @@ export default () => {
                     indenter: record.indenter_name || '',
                     department: record.department || '',
                     product: record.product_name || '',
+                    groupHead: record.group_head || '', // Mapped group_head
                     approvedQuantity: record.approved_quantity || record.quantity || 0,
                     vendorType: record.vendor_type as HistoryData['vendorType'],
                     uom: record.uom || '',
@@ -742,13 +745,48 @@ export default () => {
             cell: ({ row }) => {
                 const isEditing = editingRow === row.original.indentNo;
                 const currentValue = editValues.product ?? row.original.product;
+                const groupHead = row.original.groupHead;
+
+                // Get products for this group head from master data
+                const productOptions = (master?.groupHeadItems?.[groupHead] || []) as string[];
 
                 return isEditing ? (
-                    <Input
-                        defaultValue={currentValue}
-                        onBlur={(e) => handleInputChange('product', e.target.value)}
-                        className="w-[150px] sm:w-[200px] text-xs sm:text-sm"
-                    />
+                    <Select
+                        value={currentValue}
+                        onValueChange={(value) => handleInputChange('product', value)}
+                    >
+                        <SelectTrigger className="w-[150px] sm:w-[200px] text-xs sm:text-sm">
+                            <SelectValue placeholder="Select product" />
+                        </SelectTrigger>
+                        <SelectContent>
+                            <div className="flex items-center border-b px-3 pb-3">
+                                <Search className="mr-2 h-4 w-4 shrink-0 opacity-50" />
+                                <input
+                                    placeholder="Search products..."
+                                    value={searchTermProductHistory}
+                                    onChange={(e) => setSearchTermProductHistory(e.target.value)}
+                                    onKeyDown={(e) => e.stopPropagation()}
+                                    className="flex h-10 w-full rounded-md border-0 bg-transparent py-3 text-sm outline-none placeholder:text-muted-foreground"
+                                />
+                            </div>
+                            <div className="max-h-[300px] overflow-y-auto">
+                                {productOptions
+                                    ?.filter((p) =>
+                                        p.toLowerCase().includes(searchTermProductHistory.toLowerCase())
+                                    )
+                                    .map((p, i) => (
+                                        <SelectItem key={i} value={p}>
+                                            {p}
+                                        </SelectItem>
+                                    ))}
+                                {productOptions.length === 0 && (
+                                    <div className="p-2 text-xs text-muted-foreground text-center">
+                                        No products found for this group head
+                                    </div>
+                                )}
+                            </div>
+                        </SelectContent>
+                    </Select>
                 ) : (
                     <div className="flex items-center gap-1 sm:gap-2 max-w-[120px] sm:max-w-[150px] break-words whitespace-normal">
                         <span className="text-xs sm:text-sm">{row.original.product}</span>
@@ -757,7 +795,10 @@ export default () => {
                                 variant="ghost"
                                 size="icon"
                                 className="h-6 w-6 sm:h-8 sm:w-8"
-                                onClick={() => handleEditClick(row.original)}
+                                onClick={() => {
+                                    handleEditClick(row.original);
+                                    setSearchTermProductHistory(''); // Reset search when starting edit
+                                }}
                             >
                                 <PenSquare className="h-2 w-2 sm:h-3 sm:w-3" />
                             </Button>
@@ -953,7 +994,7 @@ export default () => {
                 },
             ]
             : []),
-    ], [editingRow, editValues, master, user.indentApprovalAction, handleSaveEdit, handleCancelEdit, handleEditClick, handleInputChange]);
+    ], [editingRow, editValues, master, user.indentApprovalAction, handleSaveEdit, handleCancelEdit, handleEditClick, handleInputChange, searchTermProductHistory]);
 
     return (
         <div className="w-full">

@@ -33,6 +33,7 @@ interface MasterRow {
     department: string | null;
     group_head: string | null;
     item_name: string | null;
+    uom: string | null; // Added uom
     created_at: string | null;
 }
 
@@ -45,6 +46,7 @@ interface MasterForm {
     department: string;
     group_head: string;
     item_name: string;
+    uom: string; // Added uom
 }
 
 const emptyForm: MasterForm = {
@@ -56,6 +58,7 @@ const emptyForm: MasterForm = {
     department: '',
     group_head: '',
     item_name: '',
+    uom: '',
 };
 
 /* ───── field helper ───── */
@@ -132,6 +135,7 @@ export default function MasterData() {
     const [pageIndex, setPageIndex] = useState(0);
     const [hasMore, setHasMore] = useState(true);
     const [allVendorNames, setAllVendorNames] = useState<string[]>([]);
+    const [formMode, setFormMode] = useState<'Vendors' | 'Items'>('Vendors');
     const PAGE_SIZE = 50;
 
     function handleEdit(row: MasterRow) {
@@ -144,7 +148,9 @@ export default function MasterData() {
             department: row.department || '',
             group_head: row.group_head || '',
             item_name: row.item_name || '',
+            uom: row.uom || '',
         });
+        setFormMode(row.item_name ? 'Items' : 'Vendors');
         setEditingId(row.id);
         setSheetOpen(true);
     }
@@ -189,7 +195,7 @@ export default function MasterData() {
         },
         {
             accessorKey: 'item_name',
-            header: 'Item Name',
+            header: 'Product Name', // Renamed
             cell: ({ row }) => {
                 const val = row.original.item_name;
                 return (
@@ -207,6 +213,18 @@ export default function MasterData() {
                     </div>
                 );
             },
+        },
+        {
+            accessorKey: 'uom',
+            header: 'UOM',
+            cell: ({ row }) => (
+                <div className="flex items-center gap-2 group">
+                    <TruncCell value={row.original.uom} width={80} />
+                    <Button variant="outline" size="icon" className="h-6 w-6 shrink-0 opacity-100" onClick={() => handleEdit(row.original)}>
+                        <Edit className="h-3 w-3" />
+                    </Button>
+                </div>
+            ),
         },
     ];
 
@@ -271,6 +289,7 @@ export default function MasterData() {
         if (!sheetOpen) {
             setForm(emptyForm);
             setEditingId(null);
+            setFormMode('Vendors');
         }
     }, [sheetOpen]);
 
@@ -288,7 +307,7 @@ export default function MasterData() {
         setSubmitting(true);
         try {
             const payload = {
-                vendor_name: form.vendor_name.trim(),
+                vendor_name: form.vendor_name.trim() || (formMode === 'Items' ? '-' : ''),
                 vendor_gstin: form.vendor_gstin.trim() || null,
                 vendor_address: form.vendor_address.trim() || null,
                 vendor_email: form.vendor_email.trim() || null,
@@ -296,7 +315,14 @@ export default function MasterData() {
                 department: form.department.trim() || null,
                 group_head: form.group_head.trim() || null,
                 item_name: form.item_name.trim() || null,
+                uom: form.uom.trim() || null,
             };
+
+            if (formMode === 'Vendors' && !payload.vendor_name && payload.vendor_name !== '-') {
+                toast.error('Vendor Name is required');
+                setSubmitting(false);
+                return;
+            }
 
             if (editingId) {
                 const { error } = await supabase.from('master_data').update(payload).eq('id', editingId);
@@ -333,7 +359,7 @@ export default function MasterData() {
                 <DataTable
                     data={tableData}
                     columns={columns}
-                    searchFields={['vendor_name', 'department', 'group_head', 'item_name', 'vendor_gstin', 'vendor_email', 'payment_term']}
+                    searchFields={['vendor_name', 'department', 'group_head', 'item_name', 'uom', 'vendor_gstin', 'vendor_email', 'payment_term']}
                     dataLoading={dataLoading}
                     infiniteScroll
                     onLoadMore={handleLoadMore}
@@ -369,7 +395,7 @@ export default function MasterData() {
                     <SheetHeader className="sticky top-0 bg-background z-10 pb-3 border-b">
                         <SheetTitle>{editingId ? 'Edit Master Data' : 'Add Master Data'}</SheetTitle>
                         <SheetDescription>
-                            Fill in the vendor details and click Save.
+                            Select the type of data you want to add and fill in the details.
                         </SheetDescription>
                     </SheetHeader>
 
@@ -378,59 +404,88 @@ export default function MasterData() {
                         onSubmit={handleSubmit}
                         className="flex-1 overflow-y-auto py-4 space-y-4 px-1"
                     >
-                        <Field
-                            label="Vendor Name"
-                            id="vendor_name"
-                            value={form.vendor_name}
-                            onChange={setField('vendor_name')}
-                            required
-                        />
-                        <Field
-                            label="Vendor GSTIN"
-                            id="vendor_gstin"
-                            value={form.vendor_gstin}
-                            onChange={setField('vendor_gstin')}
-                            placeholder="e.g. 09AAAAA0000A1ZZ"
-                        />
-                        <Field
-                            label="Vendor Email"
-                            id="vendor_email"
-                            type="email"
-                            value={form.vendor_email}
-                            onChange={setField('vendor_email')}
-                        />
-                        <Field
-                            label="Department"
-                            id="department"
-                            value={form.department}
-                            onChange={setField('department')}
-                        />
-                        <Field
-                            label="Group Head"
-                            id="group_head"
-                            value={form.group_head}
-                            onChange={setField('group_head')}
-                        />
-                        <Field
-                            label="Payment Term"
-                            id="payment_term"
-                            value={form.payment_term}
-                            onChange={setField('payment_term')}
-                            placeholder="e.g. Net 30"
-                        />
-                        <Field
-                            label="Item Name"
-                            id="item_name"
-                            value={form.item_name}
-                            onChange={setField('item_name')}
-                        />
-                        <Field
-                            label="Vendor Address"
-                            id="vendor_address"
-                            value={form.vendor_address}
-                            onChange={setField('vendor_address')}
-                            textarea
-                        />
+                        <div className="space-y-2 pb-4">
+                            <label className="text-sm font-medium">Entry Type</label>
+                            <Select
+                                value={formMode}
+                                onValueChange={(v: any) => setFormMode(v)}
+                            >
+                                <SelectTrigger className="w-full">
+                                    <SelectValue placeholder="Select Entry Type" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="Vendors">Vendor Details</SelectItem>
+                                    <SelectItem value="Items">Item Details</SelectItem>
+                                </SelectContent>
+                            </Select>
+                        </div>
+
+                        {formMode === 'Vendors' ? (
+                            <div className="space-y-4 animate-in fade-in slide-in-from-top-1 duration-200">
+                                <Field
+                                    label="Vendor Name"
+                                    id="vendor_name"
+                                    value={form.vendor_name}
+                                    onChange={setField('vendor_name')}
+                                    required
+                                />
+                                <Field
+                                    label="Vendor GSTIN"
+                                    id="vendor_gstin"
+                                    value={form.vendor_gstin}
+                                    onChange={setField('vendor_gstin')}
+                                    placeholder="e.g. 09AAAAA0000A1ZZ"
+                                />
+                                <Field
+                                    label="Vendor Email"
+                                    id="vendor_email"
+                                    type="email"
+                                    value={form.vendor_email}
+                                    onChange={setField('vendor_email')}
+                                />
+                                <Field
+                                    label="Vendor Address"
+                                    id="vendor_address"
+                                    value={form.vendor_address}
+                                    onChange={setField('vendor_address')}
+                                    textarea
+                                />
+                                <Field
+                                    label="Payment Term"
+                                    id="payment_term"
+                                    value={form.payment_term}
+                                    onChange={setField('payment_term')}
+                                    placeholder="e.g. Net 30"
+                                />
+                            </div>
+                        ) : (
+                            <div className="space-y-4 animate-in fade-in slide-in-from-top-1 duration-200">
+                                <Field
+                                    label="Department"
+                                    id="department"
+                                    value={form.department}
+                                    onChange={setField('department')}
+                                />
+                                <Field
+                                    label="Group Head"
+                                    id="group_head"
+                                    value={form.group_head}
+                                    onChange={setField('group_head')}
+                                />
+                                <Field
+                                    label="Product Name"
+                                    id="item_name"
+                                    value={form.item_name}
+                                    onChange={setField('item_name')}
+                                />
+                                <Field
+                                    label="UOM"
+                                    id="uom"
+                                    value={form.uom}
+                                    onChange={setField('uom')}
+                                />
+                            </div>
+                        )}
                     </form>
 
                     <SheetFooter className="sticky bottom-0 bg-background pt-3 border-t flex gap-2">
