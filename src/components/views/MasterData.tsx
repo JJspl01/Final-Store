@@ -128,6 +128,7 @@ function TruncCell({ value, width = 140 }: { value: string | null; width?: numbe
 export default function MasterData() {
     const [tableData, setTableData] = useState<MasterRow[]>([]);
     const [dataLoading, setDataLoading] = useState(true);
+    const [viewMode, setViewMode] = useState<'Vendors' | 'Items'>('Vendors');
     const [dialogOpen, setDialogOpen] = useState(false);
     const [form, setForm] = useState<MasterForm>(emptyForm);
     const [submitting, setSubmitting] = useState(false);
@@ -160,13 +161,13 @@ export default function MasterData() {
         setDialogOpen(true);
     }
 
-    const columns: ColumnDef<MasterRow>[] = [
+    const vendorColumns: ColumnDef<MasterRow>[] = [
         {
             accessorKey: 'vendor_name',
             header: 'Vendor Name',
             cell: ({ row }) => (
                 <div className="flex items-center gap-2 group">
-                    <TruncCell value={row.original.vendor_name} width={160} />
+                    <TruncCell value={row.original.vendor_name} width={200} />
                     <Button variant="outline" size="icon" className="h-6 w-6 shrink-0 opacity-100" onClick={() => handleEdit(row.original)}>
                         <Edit className="h-3 w-3" />
                     </Button>
@@ -176,60 +177,54 @@ export default function MasterData() {
         {
             accessorKey: 'vendor_gstin',
             header: 'GSTIN',
-            cell: ({ getValue }) => <TruncCell value={getValue() as string | null} width={130} />,
+            cell: ({ getValue }) => <TruncCell value={getValue() as string | null} width={150} />,
         },
         {
             accessorKey: 'vendor_email',
             header: 'Email',
-            cell: ({ getValue }) => <TruncCell value={getValue() as string | null} width={160} />,
+            cell: ({ getValue }) => <TruncCell value={getValue() as string | null} width={180} />,
+        },
+        {
+            accessorKey: 'vendor_address',
+            header: 'Address',
+            cell: ({ getValue }) => <TruncCell value={getValue() as string | null} width={250} />,
         },
         {
             accessorKey: 'payment_term',
             header: 'Payment Term',
-            cell: ({ getValue }) => <TruncCell value={getValue() as string | null} width={110} />,
+            cell: ({ getValue }) => <TruncCell value={getValue() as string | null} width={130} />,
         },
-        {
-            accessorKey: 'department',
-            header: 'Department',
-            cell: ({ getValue }) => <TruncCell value={getValue() as string | null} width={120} />,
-        },
-        {
-            accessorKey: 'group_head',
-            header: 'Group Head',
-            cell: ({ getValue }) => <TruncCell value={getValue() as string | null} width={120} />,
-        },
+    ];
+
+    const itemColumns: ColumnDef<MasterRow>[] = [
         {
             accessorKey: 'item_name',
-            header: 'Product Name', // Renamed
-            cell: ({ row }) => {
-                const val = row.original.item_name;
-                return (
-                    <div className="flex items-center gap-2 group">
-                        {val ? (
-                            <div className="whitespace-normal break-words min-w-[120px] max-w-[250px]">
-                                {val}
-                            </div>
-                        ) : (
-                            <span className="text-muted-foreground">—</span>
-                        )}
-                        <Button variant="outline" size="icon" className="h-6 w-6 shrink-0 opacity-100" onClick={() => handleEdit(row.original)}>
-                            <Edit className="h-3 w-3" />
-                        </Button>
-                    </div>
-                );
-            },
-        },
-        {
-            accessorKey: 'uom',
-            header: 'UOM',
+            header: 'Product Name',
             cell: ({ row }) => (
                 <div className="flex items-center gap-2 group">
-                    <TruncCell value={row.original.uom} width={80} />
+                    <div className="whitespace-normal break-words min-w-[150px] max-w-[300px] text-sm font-medium">
+                        {row.original.item_name}
+                    </div>
                     <Button variant="outline" size="icon" className="h-6 w-6 shrink-0 opacity-100" onClick={() => handleEdit(row.original)}>
                         <Edit className="h-3 w-3" />
                     </Button>
                 </div>
             ),
+        },
+        {
+            accessorKey: 'department',
+            header: 'Department',
+            cell: ({ getValue }) => <TruncCell value={getValue() as string | null} width={140} />,
+        },
+        {
+            accessorKey: 'group_head',
+            header: 'Group Head',
+            cell: ({ getValue }) => <TruncCell value={getValue() as string | null} width={140} />,
+        },
+        {
+            accessorKey: 'uom',
+            header: 'UOM',
+            cell: ({ getValue }) => <TruncCell value={getValue() as string | null} width={100} />,
         },
     ];
 
@@ -241,6 +236,7 @@ export default function MasterData() {
         
         if (!error && data) {
             const names = Array.from(new Set(data.map(r => r.vendor_name).filter(Boolean))).sort();
+            console.log('DEBUG: All unique vendor names in the table:', names.length);
             // @ts-ignore
             setAllVendorNames(names);
         }
@@ -257,9 +253,20 @@ export default function MasterData() {
                 { column: 'id', options: { ascending: false } },
                 (q) => {
                     let query = q;
-                    if (vendorFilter !== 'All') query = query.eq('vendor_name', vendorFilter);
-                    if (deptFilter !== 'All') query = query.eq('department', deptFilter);
-                    if (groupHeadFilter !== 'All') query = query.eq('group_head', groupHeadFilter);
+                    if (viewMode === 'Vendors') {
+                        // For Vendors tab, only show rows that have a valid vendor name
+                        if (vendorFilter !== 'All') {
+                            query = query.eq('vendor_name', vendorFilter);
+                        } else {
+                            // Only fetch rows where vendor_name is present and not just a hyphen
+                            query = query.not('vendor_name', 'is', null).neq('vendor_name', '').neq('vendor_name', '-');
+                        }
+                    } else {
+                        // For Items tab, show rows that have an item name
+                        if (deptFilter !== 'All') query = query.eq('department', deptFilter);
+                        if (groupHeadFilter !== 'All') query = query.eq('group_head', groupHeadFilter);
+                        query = query.not('item_name', 'is', null).neq('item_name', '');
+                    }
                     return query;
                 }
             )) as unknown as { data: MasterRow[], count: number };
@@ -299,7 +306,14 @@ export default function MasterData() {
     useEffect(() => {
         setPageIndex(0);
         fetchData(0, false);
-    }, [vendorFilter, deptFilter, groupHeadFilter]);
+    }, [vendorFilter, deptFilter, groupHeadFilter, viewMode]);
+
+    // Reset filters when switching tabs to ensure a fresh view
+    useEffect(() => {
+        setVendorFilter('All');
+        setDeptFilter('All');
+        setGroupHeadFilter('All');
+    }, [viewMode]);
 
     /* reset form when sheet closes */
     useEffect(() => {
@@ -373,65 +387,94 @@ export default function MasterData() {
 
             {/* ── Table & Toolbar ── */}
             <div className="flex-1 w-full flex flex-col min-h-0 overflow-hidden">
-                <DataTable
-                    data={tableData}
-                    columns={columns}
-                    searchFields={['vendor_name', 'department', 'group_head', 'item_name', 'uom', 'vendor_gstin', 'vendor_email', 'payment_term']}
-                    dataLoading={dataLoading}
-                    infiniteScroll
-                    onLoadMore={handleLoadMore}
-                    extraActions={
-                        <div className="flex items-center gap-2">
-                            <Select value={vendorFilter} onValueChange={setVendorFilter}>
-                                <SelectTrigger className="w-[130px] sm:w-[160px] h-9">
-                                    <SelectValue placeholder="All Vendors" />
-                                </SelectTrigger>
-                                <SelectContent className="max-h-[300px]">
-                                    <SelectItem value="All">All Vendors</SelectItem>
-                                    {allVendorNames.map(vendor => (
-                                        <SelectItem key={vendor} value={vendor}>{vendor}</SelectItem>
-                                    ))}
-                                </SelectContent>
-                            </Select>
+                <Tabs value={viewMode} onValueChange={(v: any) => setViewMode(v)} className="flex-1 flex flex-col min-h-0">
+                    <div className="px-5 mb-2">
+                        <TabsList className="grid grid-cols-2 w-[240px]">
+                            <TabsTrigger value="Vendors" className="flex items-center gap-2">
+                                <UserPlus className="h-3.5 w-3.5" />
+                                Vendors
+                            </TabsTrigger>
+                            <TabsTrigger value="Items" className="flex items-center gap-2">
+                                <PackagePlus className="h-3.5 w-3.5" />
+                                Items
+                            </TabsTrigger>
+                        </TabsList>
+                    </div>
 
-                            <Select
-                                value={deptFilter}
-                                onValueChange={setDeptFilter}
-                            >
-                                <SelectTrigger className="w-[130px] sm:w-[160px] h-9">
-                                    <SelectValue placeholder="All Departments" />
-                                </SelectTrigger>
-                                <SelectContent className="max-h-[300px]">
-                                    <SelectItem value="All">All Departments</SelectItem>
-                                    {master?.departments?.map((d: string) => (
-                                        <SelectItem key={d} value={d}>{d}</SelectItem>
-                                    ))}
-                                </SelectContent>
-                            </Select>
+                    <div className="flex-1 min-h-0">
+                        <DataTable
+                            data={tableData}
+                            columns={viewMode === 'Vendors' ? vendorColumns : itemColumns}
+                            searchFields={viewMode === 'Vendors' 
+                                ? ['vendor_name', 'vendor_gstin', 'vendor_email', 'payment_term']
+                                : ['department', 'group_head', 'item_name', 'uom']
+                            }
+                            dataLoading={dataLoading}
+                            infiniteScroll
+                            onLoadMore={handleLoadMore}
+                            extraActions={
+                                <div className="flex items-center gap-2">
+                                    {viewMode === 'Vendors' ? (
+                                        <Select value={vendorFilter} onValueChange={setVendorFilter}>
+                                            <SelectTrigger className="w-[130px] sm:w-[160px] h-9">
+                                                <SelectValue placeholder="All Vendors" />
+                                            </SelectTrigger>
+                                            <SelectContent className="max-h-[300px]">
+                                                <SelectItem value="All">All Vendors</SelectItem>
+                                                {allVendorNames.map(vendor => (
+                                                    <SelectItem key={vendor} value={vendor}>{vendor}</SelectItem>
+                                                ))}
+                                            </SelectContent>
+                                        </Select>
+                                    ) : (
+                                        <>
+                                            <Select
+                                                value={deptFilter}
+                                                onValueChange={setDeptFilter}
+                                            >
+                                                <SelectTrigger className="w-[130px] sm:w-[160px] h-9">
+                                                    <SelectValue placeholder="All Departments" />
+                                                </SelectTrigger>
+                                                <SelectContent className="max-h-[300px]">
+                                                    <SelectItem value="All">All Departments</SelectItem>
+                                                    {master?.departments?.map((d: string) => (
+                                                        <SelectItem key={d} value={d}>{d}</SelectItem>
+                                                    ))}
+                                                </SelectContent>
+                                            </Select>
 
-                            <Select
-                                value={groupHeadFilter}
-                                onValueChange={setGroupHeadFilter}
-                            >
-                                <SelectTrigger className="w-[130px] sm:w-[160px] h-9">
-                                    <SelectValue placeholder="All Group Heads" />
-                                </SelectTrigger>
-                                <SelectContent className="max-h-[300px]">
-                                    <SelectItem value="All">All Group Heads</SelectItem>
-                                    {(master?.createGroupHeads || [])
-                                        .map((gh: string) => (
-                                            <SelectItem key={gh} value={gh}>{gh}</SelectItem>
-                                        ))}
-                                </SelectContent>
-                            </Select>
-                            <Button className="h-9 shrink-0 whitespace-nowrap" onClick={() => { setEditingId(null); setForm(emptyForm); setDialogOpen(true); }}>
-                                <Plus className="mr-1 sm:mr-2 h-4 w-4" />
-                                <span className="hidden sm:inline">Add Master Data</span>
-                                <span className="sm:hidden">Add</span>
-                            </Button>
-                        </div>
-                    }
-                />
+                                            <Select
+                                                value={groupHeadFilter}
+                                                onValueChange={setGroupHeadFilter}
+                                            >
+                                                <SelectTrigger className="w-[130px] sm:w-[160px] h-9">
+                                                    <SelectValue placeholder="All Group Heads" />
+                                                </SelectTrigger>
+                                                <SelectContent className="max-h-[300px]">
+                                                    <SelectItem value="All">All Group Heads</SelectItem>
+                                                    {(master?.createGroupHeads || [])
+                                                        .map((gh: string) => (
+                                                            <SelectItem key={gh} value={gh}>{gh}</SelectItem>
+                                                        ))}
+                                                </SelectContent>
+                                            </Select>
+                                        </>
+                                    )}
+                                    <Button className="h-9 shrink-0 whitespace-nowrap" onClick={() => { 
+                                        setEditingId(null); 
+                                        setForm(emptyForm); 
+                                        setFormMode(viewMode === 'Vendors' ? 'Add Vendor' : 'Add Item');
+                                        setDialogOpen(true); 
+                                    }}>
+                                        <Plus className="mr-1 sm:mr-2 h-4 w-4" />
+                                        <span className="hidden sm:inline">Add {viewMode === 'Vendors' ? 'Vendor' : 'Item'}</span>
+                                        <span className="sm:hidden">Add</span>
+                                    </Button>
+                                </div>
+                            }
+                        />
+                    </div>
+                </Tabs>
             </div>
 
             {/* ── Side Sheet Form ── */}
