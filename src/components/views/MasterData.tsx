@@ -1,8 +1,8 @@
-import { Database, Plus, Edit } from 'lucide-react';
+import { Database, Plus, Edit, Search, UserPlus, PackagePlus } from 'lucide-react';
 import Heading from '../element/Heading';
 import { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabaseClient';
-import { fetchFromSupabaseWithCount } from '@/lib/fetchers';
+import { fetchFromSupabaseWithCount, fetchIndentMasterData } from '@/lib/fetchers';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Label } from '../ui/label';
@@ -10,15 +10,16 @@ import { Textarea } from '../ui/textarea';
 import { toast } from 'sonner';
 import { PuffLoader as Loader } from 'react-spinners';
 import {
-    Sheet,
-    SheetContent,
-    SheetHeader,
-    SheetTitle,
-    SheetDescription,
-    SheetFooter,
-    SheetClose,
-} from '../ui/sheet';
+    Dialog,
+    DialogContent,
+    DialogHeader,
+    DialogTitle,
+    DialogDescription,
+    DialogFooter,
+    DialogClose,
+} from '../ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select';
+import { Tabs, TabsList, TabsTrigger } from '../ui/tabs'; // Added Tabs
 import type { ColumnDef } from '@tanstack/react-table';
 import DataTable from '../element/DataTable';
 
@@ -127,15 +128,19 @@ function TruncCell({ value, width = 140 }: { value: string | null; width?: numbe
 export default function MasterData() {
     const [tableData, setTableData] = useState<MasterRow[]>([]);
     const [dataLoading, setDataLoading] = useState(true);
-    const [sheetOpen, setSheetOpen] = useState(false);
+    const [dialogOpen, setDialogOpen] = useState(false);
     const [form, setForm] = useState<MasterForm>(emptyForm);
     const [submitting, setSubmitting] = useState(false);
     const [vendorFilter, setVendorFilter] = useState('All');
+    const [deptFilter, setDeptFilter] = useState('All');
+    const [groupHeadFilter, setGroupHeadFilter] = useState('All');
     const [editingId, setEditingId] = useState<number | null>(null);
     const [pageIndex, setPageIndex] = useState(0);
     const [hasMore, setHasMore] = useState(true);
     const [allVendorNames, setAllVendorNames] = useState<string[]>([]);
-    const [formMode, setFormMode] = useState<'Vendors' | 'Items'>('Vendors');
+    const [formMode, setFormMode] = useState<'Add Vendor' | 'Add Item'>('Add Vendor');
+    const [master, setMaster] = useState<any>(null);
+    const [searchTermGroupHead, setSearchTermGroupHead] = useState('');
     const PAGE_SIZE = 50;
 
     function handleEdit(row: MasterRow) {
@@ -150,9 +155,9 @@ export default function MasterData() {
             item_name: row.item_name || '',
             uom: row.uom || '',
         });
-        setFormMode(row.item_name ? 'Items' : 'Vendors');
+        setFormMode(row.item_name ? 'Add Item' : 'Add Vendor');
         setEditingId(row.id);
-        setSheetOpen(true);
+        setDialogOpen(true);
     }
 
     const columns: ColumnDef<MasterRow>[] = [
@@ -250,7 +255,13 @@ export default function MasterData() {
                 '*',
                 { from: pageToFetch * PAGE_SIZE, to: (pageToFetch + 1) * PAGE_SIZE - 1 },
                 { column: 'id', options: { ascending: false } },
-                (q) => vendorFilter !== 'All' ? q.eq('vendor_name', vendorFilter) : q
+                (q) => {
+                    let query = q;
+                    if (vendorFilter !== 'All') query = query.eq('vendor_name', vendorFilter);
+                    if (deptFilter !== 'All') query = query.eq('department', deptFilter);
+                    if (groupHeadFilter !== 'All') query = query.eq('group_head', groupHeadFilter);
+                    return query;
+                }
             )) as unknown as { data: MasterRow[], count: number };
 
             if (isAppend) {
@@ -275,23 +286,29 @@ export default function MasterData() {
         }
     };
 
+    const fetchMasterData = async () => {
+        const m = await fetchIndentMasterData();
+        setMaster(m);
+    };
+
     useEffect(() => {
         fetchVendorsList();
+        fetchMasterData();
     }, []);
 
     useEffect(() => {
         setPageIndex(0);
         fetchData(0, false);
-    }, [vendorFilter]);
+    }, [vendorFilter, deptFilter, groupHeadFilter]);
 
     /* reset form when sheet closes */
     useEffect(() => {
-        if (!sheetOpen) {
+        if (!dialogOpen) {
             setForm(emptyForm);
             setEditingId(null);
-            setFormMode('Vendors');
+            setFormMode('Add Vendor');
         }
-    }, [sheetOpen]);
+    }, [dialogOpen]);
 
     function setField(key: keyof MasterForm) {
         return (val: string) => setForm((prev) => ({ ...prev, [key]: val }));
@@ -307,7 +324,7 @@ export default function MasterData() {
         setSubmitting(true);
         try {
             const payload = {
-                vendor_name: form.vendor_name.trim() || (formMode === 'Items' ? '-' : ''),
+                vendor_name: form.vendor_name.trim() || (formMode === 'Add Item' ? '-' : ''),
                 vendor_gstin: form.vendor_gstin.trim() || null,
                 vendor_address: form.vendor_address.trim() || null,
                 vendor_email: form.vendor_email.trim() || null,
@@ -318,7 +335,7 @@ export default function MasterData() {
                 uom: form.uom.trim() || null,
             };
 
-            if (formMode === 'Vendors' && !payload.vendor_name && payload.vendor_name !== '-') {
+            if (formMode === 'Add Vendor' && !payload.vendor_name && payload.vendor_name !== '-') {
                 toast.error('Vendor Name is required');
                 setSubmitting(false);
                 return;
@@ -333,7 +350,7 @@ export default function MasterData() {
                 if (error) throw error;
                 toast.success('Master data saved successfully!');
             }
-            setSheetOpen(false);
+            setDialogOpen(false);
             setPageIndex(0);
             fetchData(0, false);
         } catch (err: any) {
@@ -366,7 +383,7 @@ export default function MasterData() {
                     extraActions={
                         <div className="flex items-center gap-2">
                             <Select value={vendorFilter} onValueChange={setVendorFilter}>
-                                <SelectTrigger className="w-[140px] sm:w-[200px] h-9">
+                                <SelectTrigger className="w-[130px] sm:w-[160px] h-9">
                                     <SelectValue placeholder="All Vendors" />
                                 </SelectTrigger>
                                 <SelectContent className="max-h-[300px]">
@@ -376,7 +393,38 @@ export default function MasterData() {
                                     ))}
                                 </SelectContent>
                             </Select>
-                            <Button className="h-9 shrink-0 whitespace-nowrap" onClick={() => { setEditingId(null); setForm(emptyForm); setSheetOpen(true); }}>
+
+                            <Select
+                                value={deptFilter}
+                                onValueChange={setDeptFilter}
+                            >
+                                <SelectTrigger className="w-[130px] sm:w-[160px] h-9">
+                                    <SelectValue placeholder="All Departments" />
+                                </SelectTrigger>
+                                <SelectContent className="max-h-[300px]">
+                                    <SelectItem value="All">All Departments</SelectItem>
+                                    {master?.departments?.map((d: string) => (
+                                        <SelectItem key={d} value={d}>{d}</SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+
+                            <Select
+                                value={groupHeadFilter}
+                                onValueChange={setGroupHeadFilter}
+                            >
+                                <SelectTrigger className="w-[130px] sm:w-[160px] h-9">
+                                    <SelectValue placeholder="All Group Heads" />
+                                </SelectTrigger>
+                                <SelectContent className="max-h-[300px]">
+                                    <SelectItem value="All">All Group Heads</SelectItem>
+                                    {(master?.createGroupHeads || [])
+                                        .map((gh: string) => (
+                                            <SelectItem key={gh} value={gh}>{gh}</SelectItem>
+                                        ))}
+                                </SelectContent>
+                            </Select>
+                            <Button className="h-9 shrink-0 whitespace-nowrap" onClick={() => { setEditingId(null); setForm(emptyForm); setDialogOpen(true); }}>
                                 <Plus className="mr-1 sm:mr-2 h-4 w-4" />
                                 <span className="hidden sm:inline">Add Master Data</span>
                                 <span className="sm:hidden">Add</span>
@@ -387,113 +435,172 @@ export default function MasterData() {
             </div>
 
             {/* ── Side Sheet Form ── */}
-            <Sheet open={sheetOpen} onOpenChange={setSheetOpen}>
-                <SheetContent
-                    side="right"
-                    className="w-full sm:max-w-lg overflow-y-auto flex flex-col"
-                >
-                    <SheetHeader className="sticky top-0 bg-background z-10 pb-3 border-b">
-                        <SheetTitle>{editingId ? 'Edit Master Data' : 'Add Master Data'}</SheetTitle>
-                        <SheetDescription>
-                            Select the type of data you want to add and fill in the details.
-                        </SheetDescription>
-                    </SheetHeader>
+            <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+                <DialogContent className="sm:max-w-2xl h-[90vh] flex flex-col p-0 overflow-hidden">
+                    <DialogHeader className="p-6 pb-2 border-b">
+                        <DialogTitle className="text-xl flex items-center gap-2">
+                            <Plus className="h-5 w-5 text-primary" />
+                            {editingId ? 'Edit Master Data' : 'Add New Master Data'}
+                        </DialogTitle>
+                        <DialogDescription>
+                            {editingId
+                                ? 'Update the vendor or item information in the master record.'
+                                : 'Fill in the details below to add a new vendor or item to the master database.'}
+                        </DialogDescription>
+                    </DialogHeader>
 
-                    <form
-                        id="master-data-form"
-                        onSubmit={handleSubmit}
-                        className="flex-1 overflow-y-auto py-4 space-y-4 px-1"
-                    >
-                        <div className="space-y-2 pb-4">
-                            <label className="text-sm font-medium">Entry Type</label>
-                            <Select
-                                value={formMode}
-                                onValueChange={(v: any) => setFormMode(v)}
+                    <div className="flex-1 overflow-y-auto pt-6 px-6">
+                        <Tabs
+                            value={formMode}
+                            onValueChange={(v: any) => setFormMode(v)}
+                            className="w-full"
+                        >
+                            <TabsList className="grid w-full grid-cols-2 mb-8 h-12">
+                                <TabsTrigger value="Add Vendor" className="flex items-center gap-2 text-sm">
+                                    <UserPlus className="h-4 w-4" />
+                                    <span>Add Vendor</span>
+                                </TabsTrigger>
+                                <TabsTrigger value="Add Item" className="flex items-center gap-2 text-sm">
+                                    <PackagePlus className="h-4 w-4" />
+                                    <span>Add Item</span>
+                                </TabsTrigger>
+                            </TabsList>
+
+                            <form
+                                id="master-data-form"
+                                onSubmit={handleSubmit}
+                                className="space-y-6 pb-6"
                             >
-                                <SelectTrigger className="w-full">
-                                    <SelectValue placeholder="Select Entry Type" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    <SelectItem value="Vendors">Vendor Details</SelectItem>
-                                    <SelectItem value="Items">Item Details</SelectItem>
-                                </SelectContent>
-                            </Select>
-                        </div>
+                                {formMode === 'Add Vendor' ? (
+                                    <div className="space-y-5 animate-in fade-in slide-in-from-top-1 duration-200">
+                                        <Field
+                                            label="Vendor Name"
+                                            id="vendor_name"
+                                            value={form.vendor_name}
+                                            onChange={setField('vendor_name')}
+                                            required
+                                            placeholder="Enter vendor's registered name"
+                                        />
+                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+                                            <Field
+                                                label="Vendor GSTIN"
+                                                id="vendor_gstin"
+                                                value={form.vendor_gstin}
+                                                onChange={setField('vendor_gstin')}
+                                                placeholder="e.g. 09AAAAA0000A1ZZ"
+                                            />
+                                            <Field
+                                                label="Vendor Email"
+                                                id="vendor_email"
+                                                type="email"
+                                                value={form.vendor_email}
+                                                onChange={setField('vendor_email')}
+                                                placeholder="vendor@example.com"
+                                            />
+                                        </div>
+                                        <Field
+                                            label="Vendor Address"
+                                            id="vendor_address"
+                                            value={form.vendor_address}
+                                            onChange={setField('vendor_address')}
+                                            textarea
+                                            placeholder="Enter complete office/warehouse address"
+                                        />
+                                        <Field
+                                            label="Payment Term"
+                                            id="payment_term"
+                                            value={form.payment_term}
+                                            onChange={setField('payment_term')}
+                                            placeholder="e.g. Net 30, Advance"
+                                        />
+                                    </div>
+                                ) : (
+                                    <div className="space-y-5 animate-in fade-in slide-in-from-top-1 duration-200">
+                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+                                            <div className="space-y-1.5">
+                                                <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground ml-0.5">Department</label>
+                                                <Select
+                                                    value={form.department}
+                                                    onValueChange={(val) => {
+                                                        setField('department')(val);
+                                                        setField('group_head')('');
+                                                    }}
+                                                >
+                                                    <SelectTrigger className="h-10">
+                                                        <SelectValue placeholder="Select Department" />
+                                                    </SelectTrigger>
+                                                    <SelectContent>
+                                                        {master?.departments?.map((d: string) => (
+                                                            <SelectItem key={d} value={d}>
+                                                                {d}
+                                                            </SelectItem>
+                                                        ))}
+                                                    </SelectContent>
+                                                </Select>
+                                            </div>
 
-                        {formMode === 'Vendors' ? (
-                            <div className="space-y-4 animate-in fade-in slide-in-from-top-1 duration-200">
-                                <Field
-                                    label="Vendor Name"
-                                    id="vendor_name"
-                                    value={form.vendor_name}
-                                    onChange={setField('vendor_name')}
-                                    required
-                                />
-                                <Field
-                                    label="Vendor GSTIN"
-                                    id="vendor_gstin"
-                                    value={form.vendor_gstin}
-                                    onChange={setField('vendor_gstin')}
-                                    placeholder="e.g. 09AAAAA0000A1ZZ"
-                                />
-                                <Field
-                                    label="Vendor Email"
-                                    id="vendor_email"
-                                    type="email"
-                                    value={form.vendor_email}
-                                    onChange={setField('vendor_email')}
-                                />
-                                <Field
-                                    label="Vendor Address"
-                                    id="vendor_address"
-                                    value={form.vendor_address}
-                                    onChange={setField('vendor_address')}
-                                    textarea
-                                />
-                                <Field
-                                    label="Payment Term"
-                                    id="payment_term"
-                                    value={form.payment_term}
-                                    onChange={setField('payment_term')}
-                                    placeholder="e.g. Net 30"
-                                />
-                            </div>
-                        ) : (
-                            <div className="space-y-4 animate-in fade-in slide-in-from-top-1 duration-200">
-                                <Field
-                                    label="Department"
-                                    id="department"
-                                    value={form.department}
-                                    onChange={setField('department')}
-                                />
-                                <Field
-                                    label="Group Head"
-                                    id="group_head"
-                                    value={form.group_head}
-                                    onChange={setField('group_head')}
-                                />
-                                <Field
-                                    label="Product Name"
-                                    id="item_name"
-                                    value={form.item_name}
-                                    onChange={setField('item_name')}
-                                />
-                                <Field
-                                    label="UOM"
-                                    id="uom"
-                                    value={form.uom}
-                                    onChange={setField('uom')}
-                                />
-                            </div>
-                        )}
-                    </form>
+                                            <div className="space-y-1.5">
+                                                <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground ml-0.5">Group Head</label>
+                                                <Select
+                                                    value={form.group_head}
+                                                    onValueChange={setField('group_head')}
+                                                >
+                                                    <SelectTrigger className="h-10">
+                                                        <SelectValue placeholder="Select Group Head" />
+                                                    </SelectTrigger>
+                                                    <SelectContent>
+                                                        <div className="flex items-center border-b px-3 pb-3">
+                                                            <Search className="mr-2 h-4 w-4 shrink-0 opacity-50" />
+                                                            <input
+                                                                placeholder="Search group heads..."
+                                                                value={searchTermGroupHead}
+                                                                onChange={(e) => setSearchTermGroupHead(e.target.value)}
+                                                                onKeyDown={(e) => e.stopPropagation()}
+                                                                className="flex h-10 w-full rounded-md border-0 bg-transparent py-3 text-sm outline-none placeholder:text-muted-foreground"
+                                                            />
+                                                        </div>
+                                                        <div className="max-h-[200px] overflow-y-auto">
+                                                            {(master?.createGroupHeads || [])
+                                                                .filter((gh: string) =>
+                                                                    gh.toLowerCase().includes(searchTermGroupHead.toLowerCase())
+                                                                )
+                                                                .map((gh: string) => (
+                                                                    <SelectItem key={gh} value={gh}>
+                                                                        {gh}
+                                                                    </SelectItem>
+                                                                ))}
+                                                        </div>
+                                                    </SelectContent>
+                                                </Select>
+                                            </div>
+                                        </div>
 
-                    <SheetFooter className="sticky bottom-0 bg-background pt-3 border-t flex gap-2">
-                        <SheetClose asChild>
+                                        <Field
+                                            label="Product Name"
+                                            id="item_name"
+                                            value={form.item_name}
+                                            onChange={setField('item_name')}
+                                            placeholder="e.g. Copper Wire, LED Bulb"
+                                        />
+                                        <Field
+                                            label="UOM"
+                                            id="uom"
+                                            value={form.uom}
+                                            onChange={setField('uom')}
+                                            placeholder="e.g. PCS, KGS, MTR"
+                                        />
+                                    </div>
+                                )}
+                            </form>
+                        </Tabs>
+                    </div>
+
+                    <DialogFooter className="p-6 pt-3 border-t flex gap-2">
+                        <DialogClose asChild>
                             <Button variant="outline" type="button" className="flex-1">
                                 Cancel
                             </Button>
-                        </SheetClose>
+                        </DialogClose>
                         <Button
                             type="submit"
                             form="master-data-form"
@@ -505,9 +612,9 @@ export default function MasterData() {
                             )}
                             {submitting ? 'Saving…' : 'Save'}
                         </Button>
-                    </SheetFooter>
-                </SheetContent>
-            </Sheet>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
         </div>
     );
 }
