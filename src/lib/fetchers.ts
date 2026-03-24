@@ -2,6 +2,34 @@ import type { IndentSheet, MasterSheet, ReceivedSheet, Sheet } from '@/types';
 import type { InventorySheet, PoMasterSheet, QuotationHistorySheet, UserPermissions, Vendor } from '@/types/sheets';
 import { supabase } from './supabaseClient';
 
+// Cache helper using localStorage
+export const getCache = (key: string) => {
+    try {
+        const item = localStorage.getItem(key);
+        if (!item) return null;
+        const { value, expiry } = JSON.parse(item);
+        if (new Date().getTime() > expiry) {
+            localStorage.removeItem(key);
+            return null;
+        }
+        return value;
+    } catch (e) {
+        return null;
+    }
+};
+
+export const setCache = (key: string, value: any, ttlMinutes: number = 30) => {
+    try {
+        const item = {
+            value,
+            expiry: new Date().getTime() + ttlMinutes * 60000,
+        };
+        localStorage.setItem(key, JSON.stringify(item));
+    } catch (e) {
+        console.error('Error setting cache:', e);
+    }
+};
+
 // Helper to convert snake_case keys to camelCase
 export function toCamelCase(obj: any): any {
     // Safety guard for null/undefined

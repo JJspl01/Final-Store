@@ -63,13 +63,20 @@ export default () => {
         const fetchData = async () => {
             setDataLoading(true);
             try {
-                // Fetch pending data with pagination
-                const pendingData = await fetchFromSupabasePaginated(
-                    'indent',
-                    '*',
-                    { column: 'created_at', options: { ascending: false } },
-                    (q) => q.not('planned_3', 'is', null).is('actual_3', null).eq('vendor_type', 'Three Party')
-                );
+                const [pendingData, historyDataResult] = await Promise.all([
+                    fetchFromSupabasePaginated(
+                        'indent',
+                        'indent_number, indenter_name, department, product_name, comparison_sheet, created_at, vendor_name_1, rate_1, payment_term_1, vendor_name_2, rate_2, payment_term_2, vendor_name_3, rate_3, payment_term_3',
+                        { column: 'created_at', options: { ascending: false } },
+                        (q) => q.not('planned_3', 'is', null).is('actual_3', null).eq('vendor_type', 'Three Party')
+                    ),
+                    fetchFromSupabasePaginated(
+                        'indent',
+                        'indent_number, indenter_name, department, product_name, created_at, approved_vendor_name, approved_rate',
+                        { column: 'created_at', options: { ascending: false } },
+                        (q) => q.not('planned_3', 'is', null).not('actual_3', 'is', null).eq('vendor_type', 'Three Party')
+                    )
+                ]);
 
                 if (pendingData) {
                     const pendingTableData = pendingData.map((record: any) => ({
@@ -87,14 +94,6 @@ export default () => {
                     }));
                     setTableData(pendingTableData);
                 }
-
-                // Fetch history data with pagination
-                const historyDataResult = await fetchFromSupabasePaginated(
-                    'indent',
-                    '*',
-                    { column: 'created_at', options: { ascending: false } },
-                    (q) => q.not('planned_3', 'is', null).not('actual_3', 'is', null).eq('vendor_type', 'Three Party')
-                );
 
                 if (historyDataResult) {
                     const historyTableData = historyDataResult.map((record: any) => ({
@@ -289,7 +288,7 @@ export default () => {
             // Refresh the data after update with pagination
             const pendingData = await fetchFromSupabasePaginated(
                 'indent',
-                '*',
+                'indent_number, indenter_name, department, product_name, comparison_sheet, created_at, vendor_name_1, rate_1, payment_term_1, vendor_name_2, rate_2, payment_term_2, vendor_name_3, rate_3, payment_term_3',
                 { column: 'created_at', options: { ascending: false } },
                 (q) => q.not('planned_3', 'is', null).is('actual_3', null).eq('vendor_type', 'Three Party')
             );
@@ -352,7 +351,7 @@ export default () => {
             // Refresh the data after update
             const { data: historyDataResult, error: historyError } = await supabase
                 .from('indent')
-                .select('*')
+                .select('indent_number, indenter_name, department, product_name, created_at, approved_vendor_name, approved_rate')
                 .not('planned_3', 'is', null)
                 .not('actual_3', 'is', null)
                 .eq('vendor_type', 'Three Party')

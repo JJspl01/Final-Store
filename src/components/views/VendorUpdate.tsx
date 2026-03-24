@@ -30,12 +30,19 @@ import { Pill } from '../ui/pill';
 import { formatDate } from '@/lib/utils';
 import { supabase } from '@/lib/supabaseClient';
 
-const AddVendorSection = ({ onVendorAdded }: { onVendorAdded: () => Promise<void> }) => {
-    const [name, setName] = useState('');
+const AddVendorSection = ({ 
+    onVendorAdded, 
+    searchValue, 
+    onSearchChange 
+}: { 
+    onVendorAdded: () => Promise<void>,
+    searchValue: string,
+    onSearchChange: (val: string) => void
+}) => {
     const [isAdding, setIsAdding] = useState(false);
 
     const handleAdd = async () => {
-        if (!name.trim()) {
+        if (!searchValue.trim()) {
             toast.error('Vendor name cannot be empty');
             return;
         }
@@ -43,11 +50,11 @@ const AddVendorSection = ({ onVendorAdded }: { onVendorAdded: () => Promise<void
         try {
             const { error } = await supabase
                 .from('master_data')
-                .insert([{ vendor_name: name.trim() }]);
+                .insert([{ vendor_name: searchValue.trim() }]);
 
             if (error) throw error;
             toast.success('New vendor added');
-            setName('');
+            onSearchChange('');
             await onVendorAdded();
         } catch (error: any) {
             toast.error('Failed to add vendor: ' + error.message);
@@ -65,8 +72,8 @@ const AddVendorSection = ({ onVendorAdded }: { onVendorAdded: () => Promise<void
         >
             <Input
                 placeholder="Add new vendor..."
-                value={name}
-                onChange={(e) => setName(e.target.value)}
+                value={searchValue}
+                onChange={(e) => onSearchChange(e.target.value)}
                 onKeyDown={(e) => {
                     if (e.key === 'Enter') {
                         e.preventDefault();
@@ -139,6 +146,8 @@ export default () => {
     const [products, setProducts] = useState<string[]>([]);
     const [productsLoading, setProductsLoading] = useState(true);
     const [productSearch, setProductSearch] = useState('');
+    const [vendorTypeFilter, setVendorTypeFilter] = useState<'All' | 'Regular' | 'Three Party'>('All');
+    const [departmentFilter, setDepartmentFilter] = useState<string>('All');
 
     const refreshVendors = async () => {
         const vendorsList = await fetchVendors();
@@ -668,18 +677,24 @@ export default () => {
                             <SelectValue placeholder="Select vendor" />
                         </SelectTrigger>
                         <SelectContent>
-                            <AddVendorSection onVendorAdded={refreshVendors} />
+                            <AddVendorSection 
+                                onVendorAdded={refreshVendors} 
+                                searchValue={vendorSearch}
+                                onSearchChange={setVendorSearch}
+                            />
                             <div className="max-h-[200px] overflow-y-auto">
                                 {vendorsLoading ? (
                                     <div className="py-6 text-center text-sm text-muted-foreground">
                                         Loading vendors...
                                     </div>
-                                ) : vendors?.length > 0 ? (
-                                    vendors.map((vendor, i) => (
-                                        <SelectItem key={i} value={vendor.vendorName}>
-                                            {vendor.vendorName}
-                                        </SelectItem>
-                                    ))
+                                ) : vendors?.filter(v => v.vendorName.toLowerCase().includes(vendorSearch.toLowerCase())).length > 0 ? (
+                                    vendors
+                                        .filter(v => v.vendorName.toLowerCase().includes(vendorSearch.toLowerCase()))
+                                        .map((vendor, i) => (
+                                            <SelectItem key={i} value={vendor.vendorName}>
+                                                {vendor.vendorName}
+                                            </SelectItem>
+                                        ))
                                 ) : (
                                     <div className="py-6 text-center text-sm text-muted-foreground">
                                         No vendors found
@@ -1058,10 +1073,39 @@ export default () => {
                             <div className="space-y-4 h-[calc(100vh-210px)] flex flex-col">
                                 <div className="w-full h-full flex-1 overflow-hidden min-h-0 flex flex-col">
                                     <DataTable
-                                        data={tableData}
+                                        data={tableData.filter(r => 
+                                            (vendorTypeFilter === 'All' || r.vendorType === vendorTypeFilter) &&
+                                            (departmentFilter === 'All' || r.department === departmentFilter)
+                                        )}
                                         columns={columns}
                                         searchFields={['indentNo', 'product', 'department', 'indenter', 'vendorType', 'vendorName', 'date']}
                                         dataLoading={dataLoading}
+                                        searchExtra={
+                                            <div className="flex gap-2">
+                                                <Select value={vendorTypeFilter} onValueChange={(v) => setVendorTypeFilter(v as typeof vendorTypeFilter)}>
+                                                    <SelectTrigger className="w-[130px] h-9 text-xs">
+                                                        <SelectValue placeholder="Vendor Type" />
+                                                    </SelectTrigger>
+                                                    <SelectContent>
+                                                        <SelectItem value="All">All Vendor Types</SelectItem>
+                                                        <SelectItem value="Regular">Regular</SelectItem>
+                                                        <SelectItem value="Three Party">Three Party</SelectItem>
+                                                    </SelectContent>
+                                                </Select>
+
+                                                <Select value={departmentFilter} onValueChange={setDepartmentFilter}>
+                                                    <SelectTrigger className="w-[130px] h-9 text-xs">
+                                                        <SelectValue placeholder="Department" />
+                                                    </SelectTrigger>
+                                                    <SelectContent>
+                                                        <SelectItem value="All">All Depts</SelectItem>
+                                                        {Array.from(new Set(tableData.map(r => r.department))).filter(Boolean).map(dept => (
+                                                            <SelectItem key={dept} value={dept}>{dept}</SelectItem>
+                                                        ))}
+                                                    </SelectContent>
+                                                </Select>
+                                            </div>
+                                        }
                                     />
                                 </div>
                             </div>
@@ -1070,10 +1114,39 @@ export default () => {
                             <div className="space-y-4 h-[calc(100vh-210px)] flex flex-col">
                                 <div className="w-full h-full flex-1 overflow-hidden min-h-0 flex flex-col">
                                     <DataTable
-                                        data={historyData}
+                                        data={historyData.filter(r => 
+                                            (vendorTypeFilter === 'All' || r.vendorType === vendorTypeFilter) &&
+                                            (departmentFilter === 'All' || r.department === departmentFilter)
+                                        )}
                                         columns={historyColumns}
                                         searchFields={['indentNo', 'product', 'department', 'indenter', 'vendorType', 'vendorName', 'date']}
                                         dataLoading={dataLoading}
+                                        searchExtra={
+                                            <div className="flex gap-2">
+                                                <Select value={vendorTypeFilter} onValueChange={(v) => setVendorTypeFilter(v as typeof vendorTypeFilter)}>
+                                                    <SelectTrigger className="w-[130px] h-9 text-xs">
+                                                        <SelectValue placeholder="Vendor Type" />
+                                                    </SelectTrigger>
+                                                    <SelectContent>
+                                                        <SelectItem value="All">All Vendor Types</SelectItem>
+                                                        <SelectItem value="Regular">Regular</SelectItem>
+                                                        <SelectItem value="Three Party">Three Party</SelectItem>
+                                                    </SelectContent>
+                                                </Select>
+
+                                                <Select value={departmentFilter} onValueChange={setDepartmentFilter}>
+                                                    <SelectTrigger className="w-[130px] h-9 text-xs">
+                                                        <SelectValue placeholder="Department" />
+                                                    </SelectTrigger>
+                                                    <SelectContent>
+                                                        <SelectItem value="All">All Depts</SelectItem>
+                                                        {Array.from(new Set(historyData.map(r => r.department))).filter(Boolean).map(dept => (
+                                                            <SelectItem key={dept} value={dept}>{dept}</SelectItem>
+                                                        ))}
+                                                    </SelectContent>
+                                                </Select>
+                                            </div>
+                                        }
                                     />
                                 </div>
                             </div>
@@ -1142,6 +1215,9 @@ export default () => {
                                                                 <Select
                                                                     onValueChange={field.onChange}
                                                                     value={field.value}
+                                                                    onOpenChange={(open) => {
+                                                                        if (!open) setVendorSearch("");
+                                                                    }}
                                                                 >
                                                                     <FormControl>
                                                                         <SelectTrigger className="w-full">
@@ -1149,18 +1225,24 @@ export default () => {
                                                                         </SelectTrigger>
                                                                     </FormControl>
                                                                     <SelectContent>
-                                                                        <AddVendorSection onVendorAdded={refreshVendors} />
+                                                                        <AddVendorSection 
+                                                                            onVendorAdded={refreshVendors} 
+                                                                            searchValue={vendorSearch}
+                                                                            onSearchChange={setVendorSearch}
+                                                                        />
                                                                         <div className="max-h-[300px] overflow-y-auto">
                                                                             {vendorsLoading ? (
                                                                                 <div className="py-6 text-center text-sm text-muted-foreground">
                                                                                     Loading vendors...
                                                                                 </div>
-                                                                            ) : vendors?.length > 0 ? (
-                                                                                vendors.map((vendor, i) => (
-                                                                                    <SelectItem key={i} value={vendor.vendorName}>
-                                                                                        {vendor.vendorName}
-                                                                                    </SelectItem>
-                                                                                ))
+                                                                            ) : vendors?.filter(v => v.vendorName.toLowerCase().includes(vendorSearch.toLowerCase())).length > 0 ? (
+                                                                                vendors
+                                                                                    .filter(v => v.vendorName.toLowerCase().includes(vendorSearch.toLowerCase()))
+                                                                                    .map((vendor, i) => (
+                                                                                        <SelectItem key={i} value={vendor.vendorName}>
+                                                                                            {vendor.vendorName}
+                                                                                        </SelectItem>
+                                                                                    ))
                                                                             ) : (
                                                                                 <div className="py-6 text-center text-sm text-muted-foreground">
                                                                                     No vendors available
@@ -1399,19 +1481,11 @@ export default () => {
                                                                 </SelectTrigger>
                                                             </FormControl>
                                                             <SelectContent>
-                                                                <div className="p-2 border-b space-y-2">
-                                                                    <div className="flex items-center border-b px-2 pb-1">
-                                                                        <Input
-                                                                            placeholder="Search vendors..."
-                                                                            className="h-8 border-0 focus-visible:ring-0 focus-visible:ring-offset-0"
-                                                                            value={vendorSearch}
-                                                                            onChange={(e) => setVendorSearch(e.target.value)}
-                                                                            onClick={(e) => e.stopPropagation()}
-                                                                            onKeyDown={(e) => e.stopPropagation()}
-                                                                        />
-                                                                    </div>
-                                                                    <AddVendorSection onVendorAdded={refreshVendors} />
-                                                                </div>
+                                                                <AddVendorSection 
+                                                                    onVendorAdded={refreshVendors} 
+                                                                    searchValue={vendorSearch}
+                                                                    onSearchChange={setVendorSearch}
+                                                                />
                                                                 <div className="max-h-[200px] overflow-y-auto">
                                                                     {vendorsLoading ? (
                                                                         <div className="py-6 text-center text-sm text-muted-foreground">

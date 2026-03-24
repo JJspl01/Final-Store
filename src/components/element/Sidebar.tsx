@@ -20,7 +20,7 @@ import { useMemo } from 'react';
 
 export default ({ items, variant, collapsible }: { items: RouteAttributes[]; variant?: 'sidebar' | 'floating' | 'inset'; collapsible?: 'offcanvas' | 'icon' | 'none' }) => {
     const navigate = useNavigate();
-    const { indentSheet, updateAll, allLoading } = useSheets();
+    const { indentSheet, poMasterSheet, receivedSheet, updateAll, allLoading } = useSheets();
     const { user, logout } = useAuth();
 
     // Memoize the permission checking function to avoid re-creation on every render
@@ -145,9 +145,9 @@ export default ({ items, variant, collapsible }: { items: RouteAttributes[]; var
                                     <span className="group-data-[collapsible=icon]:hidden truncate">
                                         {item.name}
                                     </span>
-                                    {item.notifications && item.notifications(indentSheet || []) !== 0 && (
+                                    {item.notifications && item.notifications({ indentSheet: indentSheet || [], poMasterSheet: poMasterSheet || [], receivedSheet: receivedSheet || [] }) !== 0 && (
                                         <div className="ml-auto group-data-[collapsible=icon]:hidden bg-destructive text-secondary w-[1.3rem] h-[1.3rem] rounded-full text-xs grid place-items-center text-center">
-                                            {item.notifications(indentSheet || [])}
+                                            {item.notifications({ indentSheet: indentSheet || [], poMasterSheet: poMasterSheet || [], receivedSheet: receivedSheet || [] })}
                                         </div>
                                     )}
                                 </SidebarMenuButton>

@@ -12,7 +12,7 @@ import { useFieldArray, useForm, type Control, type FieldValues } from 'react-ho
 import { zodResolver } from '@hookform/resolvers/zod';
 import { Form, FormControl, FormField, FormItem, FormLabel } from '../ui/form';
 import type { PoMasterSheet, QuotationHistorySheet } from '@/types';
-import { postToSheet, uploadFile, fetchSheet } from '@/lib/fetchers';
+import { postToSheet, uploadFile, fetchSheet, getCache, setCache } from '@/lib/fetchers';
 import { useEffect, useMemo, useState } from 'react';
 import { useSheets } from '@/context/SheetsContext';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select';
@@ -133,49 +133,35 @@ export default function QuotationPage() {
   }, [details]);
 
 
-  // Fetch latest quotation numbers from QUOTATION HISTORY sheet
+  // Fetch data in parallel
   useEffect(() => {
-    const fetchLatestQuotationNumbers = async () => {
-      try {
-        const quotationHistory = await fetchSheet('QUOTATION HISTORY');
-        console.log('Fetched QUOTATION HISTORY:', quotationHistory);
+    const fetchData = async () => {
+      // Load from cache initially
+      const cachedSuppliers = getCache('master_suppliers');
+      if (cachedSuppliers) setMasterSuppliers(cachedSuppliers);
 
+      try {
+        const [quotationHistory, masterData] = await Promise.all([
+          fetchSheet('QUOTATION HISTORY'),
+          fetchSheet('MASTER')
+        ]);
+
+        // Process Quotation Numbers
         if (Array.isArray(quotationHistory)) {
           const quotationNos = quotationHistory
             .map((row: any) => row.quatationNo || row.quotationNo || '')
             .filter((no: string) => no && no.trim() !== '');
-
           setLatestQuotationNumbers(quotationNos);
-          console.log('Latest quotation numbers:', quotationNos);
         }
-      } catch (error) {
-        console.error('Error fetching quotation numbers:', error);
-      }
-    };
 
-    fetchLatestQuotationNumbers();
-  }, []);
+        // Process Suppliers
+        function hasVendors(data: any): data is { vendors: any[] } {
+          return data && typeof data === 'object' && 'vendors' in data;
+        }
 
-
-  // Fetch suppliers from MASTER sheet using existing fetchSheet function
-  useEffect(() => {
-    function hasVendors(data: any): data is { vendors: any[] } {
-      return data && typeof data === 'object' && 'vendors' in data;
-    }
-
-    const fetchMasterSuppliers = async () => {
-      try {
-        console.log('Fetching MASTER sheet data...');
-
-        const masterData = await fetchSheet('MASTER');
-
-        console.log('MASTER sheet raw data:', masterData);
-
-        // Use type guard to safely access vendors
         let vendorsArray: any[] = [];
-
         if (hasVendors(masterData)) {
-          vendorsArray = masterData.vendors || [];
+          vendorsArray = (masterData as any).vendors || [];
         } else if (Array.isArray(masterData)) {
           vendorsArray = masterData;
         }
@@ -187,29 +173,17 @@ export default function QuotationPage() {
             vendorAddress: vendor.address || vendor.vendorAddress || '',
             email: vendor.email || ''
           }))
-          .filter(supplier => {
-            const name = supplier.supplierName;
-            return name && typeof name === 'string' && name.trim() !== '';
-          });
+          .filter(supplier => supplier.supplierName?.trim());
 
-        console.log('Processed suppliers:', suppliers);
         setMasterSuppliers(suppliers);
-
-        if (suppliers.length === 0) {
-          console.warn('No suppliers found in MASTER sheet');
-          toast.warning('No suppliers found in MASTER sheet');
-        } else {
-          console.log(`Successfully loaded ${suppliers.length} suppliers from MASTER sheet`);
-          toast.success(`Loaded ${suppliers.length} suppliers`);
-        }
+        setCache('master_suppliers', suppliers, 60);
 
       } catch (error) {
-        console.error('Error fetching MASTER sheet suppliers:', error);
-        toast.error('Failed to load suppliers from MASTER sheet');
+        console.error('Error fetching data for Quotation page:', error);
       }
     };
 
-    fetchMasterSuppliers();
+    fetchData();
   }, [details]);
 
 

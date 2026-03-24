@@ -45,6 +45,7 @@ interface DataTableProps<TData, TValue> {
     // Infinite Scroll props
     infiniteScroll?: boolean;
     onLoadMore?: () => void;
+    searchExtra?: ReactNode;
 }
 
 function globalFilterFn<TData>(row: TData, columnIds: string[], filterValue: string) {
@@ -73,6 +74,7 @@ export default function DataTable<TData, TValue>({
     onPaginationChange,
     infiniteScroll = false,
     onLoadMore,
+    searchExtra,
 }: DataTableProps<TData, TValue>) {
     const [globalFilter, setGlobalFilter] = useState('');
     const observerTarget = useRef<HTMLDivElement>(null);
@@ -125,13 +127,14 @@ export default function DataTable<TData, TValue>({
         <div className="p-5 flex flex-col gap-4 h-full w-full overflow-hidden min-h-0">
             <div className="flex justify-between items-center w-full gap-3 shrink-0">
                 {searchFields.length !== 0 && (
-                    <div className="flex items-center flex-1 max-w-sm">
+                    <div className="flex items-center flex-1 max-w-2xl gap-2">
                         <Input
                             placeholder={`Search...`}
                             value={globalFilter}
                             onChange={(e) => setGlobalFilter(e.target.value)}
                             className="w-full"
                         />
+                        {searchExtra && <div className="shrink-0">{searchExtra}</div>}
                     </div>
                 )}
                 {extraActions && (
@@ -162,7 +165,7 @@ export default function DataTable<TData, TValue>({
                         ))}
                     </TableHeader>
                     <TableBody>
-                        {dataLoading ? (
+                        {dataLoading && table.getRowModel().rows?.length === 0 ? (
                             Array.from({ length: 15 }).map((_, i) => (
                                 <TableRow
                                     key={`skeleton-${i}`}
@@ -179,7 +182,7 @@ export default function DataTable<TData, TValue>({
                             table.getRowModel().rows.map((row) => (
                                 <TableRow
                                     key={row.id}
-                                    data-state={row.getIsSelected() && 'selected'}
+                                    data-state={row.getIsSelected() && "selected"}
                                     className="p-1"
                                 >
                                     {row.getVisibleCells().map((cell) => (
@@ -193,19 +196,21 @@ export default function DataTable<TData, TValue>({
                                 </TableRow>
                             ))
                         ) : (
-                            <TableRow className="hover:bg-transparent">
-                                <TableCell
-                                    colSpan={columns.length}
-                                    className="h-50 text-center text-xl"
-                                >
-                                    <div className="flex flex-col justify-center items-center w-full gap-1">
-                                        <Package className="text-gray-400" size={50} />
-                                        <p className="text-muted-foreground font-semibold">
-                                            No Records Found.
-                                        </p>
-                                    </div>
-                                </TableCell>
-                            </TableRow>
+                            !dataLoading && (
+                                <TableRow className="hover:bg-transparent">
+                                    <TableCell
+                                        colSpan={columns.length}
+                                        className="h-50 text-center text-xl"
+                                    >
+                                        <div className="flex flex-col justify-center items-center w-full gap-1">
+                                            <Package className="text-gray-400" size={50} />
+                                            <p className="text-muted-foreground font-semibold">
+                                                No Records Found.
+                                            </p>
+                                        </div>
+                                    </TableCell>
+                                </TableRow>
+                            )
                         )}
                     </TableBody>
                 </Table>

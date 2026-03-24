@@ -155,7 +155,7 @@ const routes: RouteAttributes[] = [
         name: 'All Indent',
         icon: <ClipboardList size={20} />,
         element: <AllIndent />,
-        notifications: () => 0,
+        notifications: ({ indentSheet }) => indentSheet.length,
     },
     {
         path: 'approve-indent',
@@ -163,8 +163,8 @@ const routes: RouteAttributes[] = [
         name: 'Approve Indent',
         icon: <ClipboardCheck size={20} />,
         element: <ApproveIndent />,
-        notifications: (sheets) =>
-            sheets.filter(
+        notifications: ({ indentSheet }) =>
+            indentSheet.filter(
                 (sheet) =>
                     (sheet.planned1 && sheet.planned1 !== '') &&
                     (!sheet.actual1 || sheet.actual1 === '') &&
@@ -177,8 +177,8 @@ const routes: RouteAttributes[] = [
         name: 'Vendor Rate Update',
         icon: <UserCheck size={20} />,
         element: <VendorUpdate />,
-        notifications: (sheets) =>
-            sheets.filter((sheet) => (sheet.planned2 && sheet.planned2 !== '') && (!sheet.actual2 || sheet.actual2 === '')).length,
+        notifications: ({ indentSheet }) =>
+            indentSheet.filter((sheet) => (sheet.planned2 && sheet.planned2 !== '') && (!sheet.actual2 || sheet.actual2 === '')).length,
     },
     {
         path: 'three-party-approval',
@@ -186,8 +186,8 @@ const routes: RouteAttributes[] = [
         name: 'Three Party Approval',
         icon: <Users size={20} />,
         element: <RateApproval />,
-        notifications: (sheets) =>
-            sheets.filter(
+        notifications: ({ indentSheet }) =>
+            indentSheet.filter(
                 (sheet) =>
                     (sheet.planned3 && sheet.planned3 !== '') &&
                     (!sheet.actual3 || sheet.actual3 === '') &&
@@ -200,8 +200,8 @@ const routes: RouteAttributes[] = [
         name: 'Pending POs',
         icon: <ListTodo size={20} />,
         element: <PendingIndents />,
-        notifications: (sheets) =>
-            sheets.filter((sheet) => (sheet.planned4 && sheet.planned4 !== '') && (!sheet.actual4 || sheet.actual4 === '')).length,
+        notifications: ({ indentSheet }) =>
+            indentSheet.filter((sheet) => (sheet.planned4 && sheet.planned4 !== '') && (!sheet.actual4 || sheet.actual4 === '')).length,
     },
     {
         path: 'create-po',
@@ -225,7 +225,16 @@ const routes: RouteAttributes[] = [
         name: 'PO History',
         icon: <Package2 size={20} />,
         element: <Order />,
-        notifications: () => 0,
+        notifications: ({ indentSheet, receivedSheet, poMasterSheet }) => {
+            // Count POs that exist in po_master but whose po_number is NOT in receivedSheet (Not Received)
+            const receivedPoNums = new Set(receivedSheet.map(r => r.poNumber));
+            const uniquePoNums = new Set(poMasterSheet.map(p => p.po_number).filter(Boolean) as string[]);
+            let notReceived = 0;
+            uniquePoNums.forEach(po => {
+                if (!receivedPoNums.has(po)) notReceived++;
+            });
+            return notReceived;
+        },
     },
     {
         path: 'receive-items',
@@ -233,8 +242,8 @@ const routes: RouteAttributes[] = [
         name: 'Receive Items',
         icon: <Truck size={20} />,
         element: <ReceiveItems />,
-        notifications: (sheets) =>
-            sheets.filter((sheet) => (sheet.planned5 && sheet.planned5 !== '') && (!sheet.actual5 || sheet.actual5 === '')).length,
+        notifications: ({ indentSheet }) =>
+            indentSheet.filter((sheet) => (sheet.planned5 && sheet.planned5 !== '') && (!sheet.actual5 || sheet.actual5 === '')).length,
     },
     {
         path: 'get-purchase',
@@ -242,7 +251,8 @@ const routes: RouteAttributes[] = [
         name: 'Get Purchase',
         icon: <Package2 size={20} />,
         element: <GetPurchase />,
-        notifications: () => 0,
+        notifications: ({ indentSheet }) =>
+            indentSheet.filter((sheet) => (sheet.planned7 && sheet.planned7 !== '') && (!sheet.actual7 || sheet.actual7 === '')).length,
     },
     {
         path: 'store-out-approval',
@@ -250,8 +260,8 @@ const routes: RouteAttributes[] = [
         name: 'Store Out Approval',
         icon: <PackageCheck size={20} />,
         element: <StoreOutApproval />,
-        notifications: (sheets) =>
-            sheets.filter(
+        notifications: ({ indentSheet }) =>
+            indentSheet.filter(
                 (sheet) =>
                     (sheet.planned6 && sheet.planned6 !== '') &&
                     (!sheet.actual6 || sheet.actual6 === '') &&
@@ -264,7 +274,8 @@ const routes: RouteAttributes[] = [
         name: 'Quotation',
         icon: <ClipboardList size={20} />,
         element: <Quotation />,
-        notifications: () => 0,
+        notifications: ({ indentSheet }) =>
+            indentSheet.filter((sheet) => (sheet.planned2 && sheet.planned2 !== '') && (!sheet.actual2 || sheet.actual2 === '')).length,
     },
     {
         path: 'master-data',

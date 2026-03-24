@@ -9,11 +9,11 @@ import { useFieldArray, useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { Form, FormControl, FormField, FormItem, FormLabel } from '../ui/form';
 import type { PoMasterSheet } from '@/types';
-import { postToSheet, uploadFile, fetchSheet, fetchVendors, fetchFromSupabasePaginated } from '@/lib/fetchers';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useSheets } from '@/context/SheetsContext';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select';
 import { supabase } from '@/lib/supabaseClient';
+import { getCache, setCache, fetchFromSupabasePaginated, fetchSheet, fetchVendors, uploadFile } from '@/lib/fetchers';
 import {
     calculateGrandTotal,
     calculateSubtotal,
@@ -99,6 +99,8 @@ export default () => {
     const [poMasterSheetData, setPoMasterSheetData] = useState<any[]>([]);
     const [detailsData, setDetailsData] = useState<any>(null);
     const [vendorsData, setVendorsData] = useState<any[]>([]);
+    const [supplierList, setSupplierList] = useState<string[]>([]);
+    const [poNumberList, setPoNumberList] = useState<string[]>([]);
     const [readOnly, setReadOnly] = useState(-1);
     const [mode, setMode] = useState<'create' | 'revise'>('create');
     const [isEditingDestination, setIsEditingDestination] = useState(false);
@@ -114,29 +116,65 @@ export default () => {
 
     // Fetch data from Supabase
     useEffect(() => {
+        // Load from cache initially for instant UI
+        const cachedVendors = getCache('vendors_data');
+        const cachedDetails = getCache('master_details');
+        const cachedSuppliers = getCache('supplier_list');
+        const cachedPoNumbers = getCache('po_numbers_list');
+        
+        if (cachedVendors) setVendorsData(cachedVendors);
+        if (cachedDetails) setDetailsData(cachedDetails);
+        if (cachedSuppliers) setSupplierList(cachedSuppliers);
+        if (cachedPoNumbers) setPoNumberList(cachedPoNumbers);
+
         const fetchData = async () => {
             setLoading(true);
             try {
-                // Fetch pending indents (Stage 4: Pending POs) with pagination
-                const indentData = await fetchFromSupabasePaginated(
-                    'indent',
-                    '*',
-                    { column: 'planned_4', options: { ascending: false } },
-                    (q) => q.not('planned_4', 'is', null).is('actual_4', null)
-                );
+                // Fetch basic dropdown data in parallel for instant population
+                const fetchSuppliersTask = supabase
+                    .from('indent')
+                    .select('approved_vendor_name')
+                    .not('planned_4', 'is', null)
+                    .is('actual_4', null)
+                    .not('approved_vendor_name', 'is', null)
+                    .not('approved_vendor_name', 'eq', '')
+                    .then(({ data }) => {
+                        if (data) {
+                            const unique = Array.from(new Set(data.map(d => d.approved_vendor_name)));
+                            setSupplierList(unique as string[]);
+                            setCache('supplier_list', unique as string[], 60);
+                        }
+                    });
 
-                // Fetch PO master data with pagination
-                const poData = await fetchFromSupabasePaginated(
+                const fetchPoNumbersTask = fetchFromSupabasePaginated(
                     'po_master',
-                    '*',
+                    'po_number',
                     { column: 'timestamp', options: { ascending: false } }
-                );
+                ).then((data) => {
+                    if (data) {
+                        const unique = Array.from(new Set(data.map(p => p.po_number).filter(Boolean)));
+                        setPoNumberList(unique as string[]);
+                        setCache('po_numbers_list', unique as string[], 60);
+                    }
+                });
 
-                // Fetch master data using fetchSheet
-                const masterData = await fetchSheet('MASTER') as any;
+                // Fetch main datasets in parallel
+                const [indentData, poData, masterData, vendorsRaw] = await Promise.all([
+                    fetchFromSupabasePaginated(
+                        'indent',
+                        'indent_number, approved_vendor_name, product_name, specifications, approved_quantity, uom, approved_rate',
+                        { column: 'planned_4', options: { ascending: false } },
+                        (q) => q.not('planned_4', 'is', null).is('actual_4', null)
+                    ),
+                    fetchFromSupabasePaginated(
+                        'po_master',
+                        '*', // Keep * for po_master as it's used for full details in revise mode
+                        { column: 'timestamp', options: { ascending: false } }
+                    ),
+                    fetchSheet('MASTER'),
+                    fetchVendors()
+                ]);
 
-                // Fetch vendors from master_data table using organized fetcher
-                const vendorsRaw = await fetchVendors();
                 const vendorsMapped = vendorsRaw.map(v => ({
                     vendor_name: v.vendorName,
                     vendor_address: v.address,
@@ -147,7 +185,13 @@ export default () => {
                 setIndentSheetData(indentData || []);
                 setPoMasterSheetData(poData || []);
                 setDetailsData(masterData);
-                setVendorsData(vendorsMapped); // Use mapped vendors
+                setVendorsData(vendorsMapped);
+
+                // Update cache
+                setCache('vendors_data', vendorsMapped, 60);
+                setCache('master_details', masterData, 60);
+
+                await Promise.all([fetchSuppliersTask, fetchPoNumbersTask]);
             } catch (error: any) {
                 console.error('Error fetching data from Supabase:', error);
                 toast.error('Failed to fetch data: ' + error.message);
@@ -158,6 +202,21 @@ export default () => {
 
         fetchData();
     }, []);
+
+    // Sync helper lists if main data changes (fallback/sync)
+    useEffect(() => {
+        if (indentSheetData.length > 0 && supplierList.length === 0) {
+            const unique = Array.from(new Set(indentSheetData.map(i => i.approved_vendor_name).filter(Boolean)));
+            setSupplierList(unique as string[]);
+        }
+    }, [indentSheetData]);
+
+    useEffect(() => {
+        if (poMasterSheetData.length > 0 && poNumberList.length === 0) {
+            const unique = Array.from(new Set(poMasterSheetData.map(p => p.po_number).filter(Boolean)));
+            setPoNumberList(unique as string[]);
+        }
+    }, [poMasterSheetData]);
 
     const schema = z.object({
         poNumber: z.string().nonempty(),
@@ -188,7 +247,7 @@ export default () => {
     const form = useForm<FormData>({
         resolver: zodResolver(schema),
         defaultValues: {
-            poNumber: generatePoNumber(poMasterSheetData.map((p: any) => p.po_number).filter(po => po != null)),
+            poNumber: '', // Start empty, useEffect will populate it fast
             poDate: new Date(),
             supplierName: '',
             supplierAddress: '',
@@ -200,7 +259,7 @@ export default () => {
             ourEnqNo: '',
             enquiryDate: undefined,
             indents: [],
-            terms: detailsData?.defaultTerms || [], // Updated to camelCase
+            terms: detailsData?.defaultTerms || [],
         },
     });
 
@@ -228,16 +287,13 @@ export default () => {
     });
 
     useEffect(() => {
-        if (mode === 'create') {
+        if (mode === 'create' && poNumberList.length > 0) {
             form.setValue(
                 'poNumber',
-                generatePoNumber(
-                    poMasterSheetData.map((p: any) => p.po_number).filter(po => po != null),
-                    poDate
-                )
+                generatePoNumber(poNumberList, poDate)
             );
         }
-    }, [poDate, poMasterSheetData, mode]);
+    }, [poDate, poNumberList, mode]);
 
     useEffect(() => {
         if (mode === 'revise') {
@@ -256,9 +312,9 @@ export default () => {
                 indents: [],
                 terms: [],
             });
-        } else {
+        } else if (mode === 'create') {
             form.reset({
-                poNumber: generatePoNumber(poMasterSheetData.map((p: any) => p.po_number).filter(po => po != null)),
+                poNumber: poNumberList.length > 0 ? generatePoNumber(poNumberList, new Date()) : '',
                 poDate: new Date(),
                 supplierName: '',
                 supplierAddress: '',
@@ -270,10 +326,10 @@ export default () => {
                 ourEnqNo: '',
                 enquiryDate: undefined,
                 indents: [],
-                terms: detailsData?.defaultTerms || [], // Updated to camelCase
+                terms: detailsData?.defaultTerms || [],
             });
         }
-    }, [mode, poMasterSheetData, detailsData]);
+    }, [mode, poNumberList, detailsData]);
 
     useEffect(() => {
         if (vendor && mode === 'create') {
@@ -339,19 +395,19 @@ export default () => {
         }
     }, [poNumber, poMasterSheetData, vendorsData]);
 
-    const handleDestinationEdit = () => {
+    const handleDestinationEdit = useCallback(() => {
         setIsEditingDestination(true);
-    };
+    }, []);
 
-    const handleDestinationSave = () => {
+    const handleDestinationSave = useCallback(() => {
         setIsEditingDestination(false);
         toast.success('Destination address updated');
-    };
+    }, []);
 
-    const handleDestinationCancel = () => {
+    const handleDestinationCancel = useCallback(() => {
         setDestinationAddress(detailsData?.destinationAddress || ''); // Updated to camelCase
         setIsEditingDestination(false);
-    };
+    }, [detailsData]);
 
     const getCurrentFormattedDateTime = () => {
         const now = new Date();
@@ -559,12 +615,20 @@ export default () => {
             toast.success(`Successfully ${mode}d purchase order`);
             updateIndentSheet(); // Update context for sidebars
             updatePoMasterSheet(); // Update context for PO history
+            
+            // Add the new PO number to local list to ensure next one is generated correctly
+            if (mode === 'create') {
+                const updatedList = Array.from(new Set([...poNumberList, poNumber]));
+                setPoNumberList(updatedList);
+                setCache('po_numbers_list', updatedList, 60);
+            }
+            
             form.reset();
 
             // Refresh data after submission
             const { data: updatedIndentData, error: indentError } = await supabase
                 .from('indent')
-                .select('*')
+                .select('indent_number, approved_vendor_name, product_name, specifications, approved_quantity, uom, approved_rate')
                 .not('planned_4', 'is', null)
                 .is('actual_4', null);
 
@@ -667,14 +731,12 @@ export default () => {
                                                                 </SelectTrigger>
                                                             </FormControl>
                                                             <SelectContent>
-                                                                {filterUniquePoNumbers(
-                                                                    poMasterSheetData
-                                                                ).map((i: any, k) => (
+                                                                {poNumberList.map((poNum, k) => (
                                                                     <SelectItem
                                                                         key={k}
-                                                                        value={i.po_number}
+                                                                        value={poNum}
                                                                     >
-                                                                        {i.po_number}
+                                                                        {poNum}
                                                                     </SelectItem>
                                                                 ))}
                                                             </SelectContent>
@@ -737,18 +799,9 @@ export default () => {
                                                                 </SelectTrigger>
                                                             </FormControl>
                                                             <SelectContent>
-                                                                {[
-                                                                    ...new Map(
-                                                                        indentSheetData
-                                                                            .filter(
-                                                                                (i: any) =>
-                                                                                    i.approved_vendor_name !== ''
-                                                                            )
-                                                                            .map((i: any) => [i.approved_vendor_name, i]) // Use approved_vendor_name as the key
-                                                                    ).values()
-                                                                ].map((i: any, k) => (
-                                                                    <SelectItem key={k} value={i.approved_vendor_name}>
-                                                                        {i.approved_vendor_name}
+                                                                {supplierList.map((supplier, k) => (
+                                                                    <SelectItem key={k} value={supplier}>
+                                                                        {supplier}
                                                                     </SelectItem>
                                                                 ))}
                                                             </SelectContent>
