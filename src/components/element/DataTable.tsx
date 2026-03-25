@@ -45,6 +45,7 @@ interface DataTableProps<TData, TValue> {
     // Infinite Scroll props
     infiniteScroll?: boolean;
     onLoadMore?: () => void;
+    hasMore?: boolean;
     searchExtra?: ReactNode;
 }
 
@@ -74,13 +75,14 @@ export default function DataTable<TData, TValue>({
     onPaginationChange,
     infiniteScroll = false,
     onLoadMore,
+    hasMore = false,
     searchExtra,
 }: DataTableProps<TData, TValue>) {
     const [globalFilter, setGlobalFilter] = useState('');
     const observerTarget = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
-        if (!infiniteScroll || !onLoadMore) return;
+        if (!infiniteScroll || !onLoadMore || !hasMore || dataLoading) return;
 
         const observer = new IntersectionObserver(
             (entries) => {
@@ -96,7 +98,7 @@ export default function DataTable<TData, TValue>({
         }
 
         return () => observer.disconnect();
-    }, [infiniteScroll, onLoadMore, data]);
+    }, [infiniteScroll, onLoadMore, hasMore, dataLoading, data]);
 
     const table = useReactTable({
         data,

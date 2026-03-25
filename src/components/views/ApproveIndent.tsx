@@ -64,37 +64,38 @@ export default () => {
     const [master, setMaster] = useState<any>(null);
     const [searchTermProductHistory, setSearchTermProductHistory] = useState(''); // Added search for history products
 
-    // Infinite Scroll state - Pending
+    // Pagination state - Pending
     const [pendingPageIndex, setPendingPageIndex] = useState(0);
+    const [pendingPageSize] = useState(10);
     const [pendingTotal, setPendingTotal] = useState(0);
-    const [pendingHasMore, setPendingHasMore] = useState(true);
+    const [hasMorePending, setHasMorePending] = useState(true);
 
-    // Infinite Scroll state - History
+    // Pagination state - History
     const [historyPageIndex, setHistoryPageIndex] = useState(0);
+    const [historyPageSize] = useState(10);
     const [historyTotal, setHistoryTotal] = useState(0);
-    const [historyHasMore, setHistoryHasMore] = useState(true);
-
-    const PAGE_SIZE = 50;
+    const [hasMoreHistory, setHasMoreHistory] = useState(true);
 
     const PENDING_COLUMNS = "indent_number, indenter_name, department, product_name, quantity, uom, attachment, specifications, vendor_type, created_at";
     const HISTORY_COLUMNS = "indent_number, indenter_name, department, product_name, group_head, approved_quantity, quantity, vendor_type, uom, specifications, created_at, actual_1";
 
-    const fetchPendingData = async (pageToFetch: number = pendingPageIndex, isAppend: boolean = false) => {
+    const fetchPendingData = async (reset = false) => {
         setDataLoading(true);
         try {
+            const currentPage = reset ? 0 : pendingPageIndex;
+            const from = currentPage * pendingPageSize;
+            const to = from + pendingPageSize - 1;
+
             const { data, count } = await fetchFromSupabaseWithCount(
                 'indent',
                 PENDING_COLUMNS,
-                {
-                    from: pageToFetch * PAGE_SIZE,
-                    to: (pageToFetch + 1) * PAGE_SIZE - 1
-                },
+                { from, to },
                 { column: 'created_at', options: { ascending: false } },
                 (q) => q.not('planned_1', 'is', null).is('actual_1', null).eq('indent_type', 'Purchase')
             );
 
             if (data) {
-                const pendingTableData = data.map((record: any) => ({
+                const pendingBatch = data.map((record: any) => ({
                     indentNo: record.indent_number || '',
                     indenter: record.indenter_name || '',
                     department: record.department || '',
@@ -107,14 +108,16 @@ export default () => {
                     date: formatDate(new Date(record.created_at)),
                 }));
 
-                if (isAppend) {
-                    setTableData(prev => [...prev, ...pendingTableData]);
+                if (reset) {
+                    setTableData(pendingBatch);
+                    setPendingPageIndex(1);
+                    setHasMorePending(pendingBatch.length < (count || 0));
                 } else {
-                    setTableData(pendingTableData);
+                    setTableData(prev => [...prev, ...pendingBatch]);
+                    setPendingPageIndex(prev => prev + 1);
+                    setHasMorePending((tableData.length + pendingBatch.length) < (count || 0));
                 }
-
-                setPendingTotal(count);
-                setPendingHasMore((pageToFetch + 1) * PAGE_SIZE < count);
+                setPendingTotal(count || 0);
             }
         } catch (error: any) {
             console.error('Error fetching pending data:', error);
@@ -124,40 +127,28 @@ export default () => {
         }
     };
 
-    const handleLoadMorePending = () => {
-        if (!dataLoading && pendingHasMore) {
-            const nextPage = pendingPageIndex + 1;
-            setPendingPageIndex(nextPage);
-            fetchPendingData(nextPage, true);
-        }
-    };
-
-    useEffect(() => {
-        setPendingPageIndex(0);
-        fetchPendingData(0, false);
-    }, []);
-
-    const fetchHistoryData = async (pageToFetch: number = historyPageIndex, isAppend: boolean = false) => {
+    const fetchHistoryData = async (reset = false) => {
         setLoading(true);
         try {
+            const currentPage = reset ? 0 : historyPageIndex;
+            const from = currentPage * historyPageSize;
+            const to = from + historyPageSize - 1;
+
             const { data, count } = await fetchFromSupabaseWithCount(
                 'indent',
                 HISTORY_COLUMNS,
-                {
-                    from: pageToFetch * PAGE_SIZE,
-                    to: (pageToFetch + 1) * PAGE_SIZE - 1
-                },
+                { from, to },
                 { column: 'created_at', options: { ascending: false } },
                 (q) => q.not('planned_1', 'is', null).not('actual_1', 'is', null).eq('indent_type', 'Purchase')
             );
 
             if (data) {
-                const historyTableData = data.map((record: any) => ({
+                const historyBatch = data.map((record: any) => ({
                     indentNo: record.indent_number || '',
                     indenter: record.indenter_name || '',
                     department: record.department || '',
                     product: record.product_name || '',
-                    groupHead: record.group_head || '', // Mapped group_head
+                    groupHead: record.group_head || '',
                     approvedQuantity: record.approved_quantity || record.quantity || 0,
                     vendorType: record.vendor_type as HistoryData['vendorType'],
                     uom: record.uom || '',
@@ -166,14 +157,16 @@ export default () => {
                     approvedDate: formatDate(new Date(record.actual_1)),
                 }));
 
-                if (isAppend) {
-                    setHistoryData(prev => [...prev, ...historyTableData]);
+                if (reset) {
+                    setHistoryData(historyBatch);
+                    setHistoryPageIndex(1);
+                    setHasMoreHistory(historyBatch.length < (count || 0));
                 } else {
-                    setHistoryData(historyTableData);
+                    setHistoryData(prev => [...prev, ...historyBatch]);
+                    setHistoryPageIndex(prev => prev + 1);
+                    setHasMoreHistory((historyData.length + historyBatch.length) < (count || 0));
                 }
-
-                setHistoryTotal(count);
-                setHistoryHasMore((pageToFetch + 1) * PAGE_SIZE < count);
+                setHistoryTotal(count || 0);
             }
         } catch (error: any) {
             console.error('Error fetching history data:', error);
@@ -183,17 +176,12 @@ export default () => {
         }
     };
 
-    const handleLoadMoreHistory = () => {
-        if (!loading && historyHasMore) {
-            const nextPage = historyPageIndex + 1;
-            setHistoryPageIndex(nextPage);
-            fetchHistoryData(nextPage, true);
-        }
-    };
+    useEffect(() => {
+        fetchPendingData(true);
+    }, []);
 
     useEffect(() => {
-        setHistoryPageIndex(0);
-        fetchHistoryData(0, false);
+        fetchHistoryData(true);
     }, []);
 
     useEffect(() => {
@@ -348,10 +336,8 @@ export default () => {
             updateIndentSheet(); // Update context to sync sidebar counts
 
             // Refresh the current page
-            setPendingPageIndex(0);
-            await fetchPendingData(0, false);
-            setHistoryPageIndex(0);
-            await fetchHistoryData(0, false);
+            fetchPendingData();
+            fetchHistoryData();
 
             setSelectedRows(new Set());
             setBulkUpdates(new Map());
@@ -461,8 +447,7 @@ export default () => {
             }
 
             // Refresh the current history page
-            setHistoryPageIndex(0);
-            await fetchHistoryData(0, false);
+            fetchHistoryData();
 
             setEditingRow(null);
             setEditValues({});
@@ -1034,14 +1019,14 @@ export default () => {
                 <div className="p-5 pt-2">
                     <TabsContent value="pending" className="w-full mt-0">
                         <div className="space-y-4 h-[calc(100vh-210px)] flex flex-col">
-                            <div className="w-full flex-1 overflow-hidden min-h-0">
-                                <DataTable
+                            <div className="w-full flex-1 overflow-hidden min-h-0">                                <DataTable
                                     data={tableData}
                                     columns={columns}
                                     searchFields={['indentNo', 'product', 'department', 'indenter', 'vendorType', 'date', 'specifications', 'quantity', 'uom']}
                                     dataLoading={dataLoading}
-                                    infiniteScroll
-                                    onLoadMore={handleLoadMorePending}
+                                    infiniteScroll={true}
+                                    onLoadMore={() => fetchPendingData(false)}
+                                    hasMore={hasMorePending}
                                     extraActions={
                                         <Button
                                             variant="default"
@@ -1066,14 +1051,14 @@ export default () => {
                         </div>
                     </TabsContent>
                     <TabsContent value="history" className="w-full mt-0">
-                        <div className="w-full h-[calc(100vh-210px)] overflow-hidden flex flex-col">
-                            <DataTable
+                        <div className="w-full h-[calc(100vh-210px)] overflow-hidden flex flex-col">                            <DataTable
                                 data={historyData}
                                 columns={historyColumns}
                                 searchFields={['indentNo', 'product', 'department', 'indenter', 'vendorType', 'date', 'approvedDate', 'specifications', 'approvedQuantity', 'uom']}
                                 dataLoading={loading}
-                                infiniteScroll
-                                onLoadMore={handleLoadMoreHistory}
+                                infiniteScroll={true}
+                                onLoadMore={() => fetchHistoryData(false)}
+                                hasMore={hasMoreHistory}
                             />
                         </div>
                     </TabsContent>

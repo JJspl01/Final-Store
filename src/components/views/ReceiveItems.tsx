@@ -8,7 +8,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { DownloadOutlined } from "@ant-design/icons";
 import * as XLSX from 'xlsx';
 import { supabase } from '@/lib/supabaseClient';
-import { uploadFile, fetchFromSupabasePaginated } from '@/lib/fetchers';
+import { uploadFile, fetchFromSupabasePaginated, fetchFromSupabaseWithCount } from '@/lib/fetchers';
 import {
     Dialog,
     DialogContent,
@@ -89,117 +89,172 @@ const ReceiveItems = () => {
     const [masterItems, setMasterItems] = useState<string[]>([]);
     const [productSearch, setProductSearch] = useState('');
 
-    useEffect(() => {
-        const fetchPendingItems = async () => {
-            setLocalIndentLoading(true);
+    // Pending Tab Pagination
+    const [pendingPageIndex, setPendingPageIndex] = useState(0);
+    const [pendingPageSize] = useState(10);
+    const [pendingTotalCount, setPendingTotalCount] = useState(0);
+    const [hasMorePending, setHasMorePending] = useState(true);
 
-            // Fetch indents with pagination (Stage 4 passed means PO created)
-            const indentData = await fetchFromSupabasePaginated(
-                'indent',
-                'indent_number, po_number, uom, po_copy, approved_vendor_name, approved_quantity, actual_4, product_name, planned_5, actual_5',
-                { column: 'planned_5', options: { ascending: false } },
-                (q) => q.not('planned_5', 'is', null).is('actual_5', null)
-            );
+    // History Tab Pagination
+    const [historyPageIndex, setHistoryPageIndex] = useState(0);
+    const [historyPageSize] = useState(10);
+    const [historyTotalCount, setHistoryTotalCount] = useState(0);
+    const [hasMoreHistory, setHasMoreHistory] = useState(true);
 
-            // Fetch all received records with pagination to calculate totals
-            const receivedData = await fetchFromSupabasePaginated(
-                'received',
-                'indent_number, received_quantity',
-                { column: 'timestamp', options: { ascending: false } }
-            );
+    const fetchPendingItems = async (isInitial = false) => {
+        setLocalIndentLoading(true);
 
-            const mappedData = indentData.map((item: any) => {
-                const totalReceived = receivedData
-                    .filter((r: any) => r.indent_number === item.indent_number)
-                    .reduce((sum: number, r: any) => sum + (Number(r.received_quantity) || 0), 0);
+        const currentPage = isInitial ? 0 : pendingPageIndex;
+        const from = currentPage * pendingPageSize;
+        const to = (currentPage + 1) * pendingPageSize - 1;
 
-                const approvedQty = Number(item.approved_quantity) || 0;
-                const remainingQty = Math.max(0, approvedQty - totalReceived);
+        // Fetch indents with pagination
+        const { data: indentData, count } = await fetchFromSupabaseWithCount(
+            'indent',
+            'indent_number, po_number, uom, po_copy, approved_vendor_name, approved_quantity, actual_4, product_name, planned_5, actual_5, department, indenter_name, vendor_type',
+            { from, to },
+            { column: 'planned_5', options: { ascending: false } },
+            (q) => q.not('planned_5', 'is', null).is('actual_5', null)
+        );
 
-                return {
-                    indentNumber: item.indent_number,
-                    poNumber: item.po_number,
-                    uom: item.uom,
-                    poCopy: item.po_copy,
-                    vendor: item.approved_vendor_name,
-                    quantity: approvedQty,
-                    receivedQty: totalReceived,
-                    remainingQty: remainingQty,
-                    poDate: item.actual_4,
-                    product: item.product_name,
-                };
-            }).filter((item) => item.remainingQty > 0); // Only show items with remaining quantity
-
-            setTableData(mappedData.reverse());
+        if (!indentData || indentData.length === 0) {
+            if (isInitial) setTableData([]);
+            setPendingTotalCount(0);
+            setHasMorePending(false);
             setLocalIndentLoading(false);
-        };
+            return;
+        }
 
-        fetchPendingItems();
+        const indentNumbers = (indentData as any[]).map(i => i.indent_number).filter(Boolean);
+        let receivedData: any[] = [];
+        if (indentNumbers.length > 0) {
+            const { data: rData } = await supabase
+                .from('received')
+                .select('indent_number, received_quantity')
+                .in('indent_number', indentNumbers);
+            receivedData = rData || [];
+        }
+
+        const mappedBatch = (indentData as any[]).map((item: any) => {
+            const totalReceived = receivedData
+                .filter((r: any) => r.indent_number === item.indent_number)
+                .reduce((sum: number, r: any) => sum + (Number(r.received_quantity) || 0), 0);
+
+            const approvedQty = Number(item.approved_quantity) || 0;
+            const remainingQty = Math.max(0, approvedQty - totalReceived);
+
+            return {
+                indentNumber: item.indent_number,
+                poNumber: item.po_number,
+                uom: item.uom,
+                poCopy: item.po_copy,
+                vendor: item.approved_vendor_name,
+                quantity: approvedQty,
+                receivedQty: totalReceived,
+                remainingQty: remainingQty,
+                poDate: item.actual_4,
+                product: item.product_name,
+                department: item.department || '',
+                indenter: item.indenter_name || '',
+                vendorType: item.vendor_type || ''
+            };
+        });
+
+        if (isInitial) {
+            setTableData(mappedBatch);
+            setPendingPageIndex(1);
+        } else {
+            setTableData(prev => [...prev, ...mappedBatch]);
+            setPendingPageIndex(prev => prev + 1);
+        }
+
+        const total = count || 0;
+        setPendingTotalCount(total);
+        setHasMorePending((isInitial ? mappedBatch.length : tableData.length + mappedBatch.length) < total);
+        setLocalIndentLoading(false);
+    };
+
+    const fetchHistoryItems = async (isInitial = false) => {
+        setLocalReceivedLoading(true);
+
+        const currentPage = isInitial ? 0 : historyPageIndex;
+        const from = currentPage * historyPageSize;
+        const to = (currentPage + 1) * historyPageSize - 1;
+
+        const { data: receivedData, count } = await fetchFromSupabaseWithCount(
+            'received',
+            '*',
+            { from, to },
+            { column: 'timestamp', options: { ascending: false } }
+        );
+
+        if (!receivedData || receivedData.length === 0) {
+            if (isInitial) setHistoryData([]);
+            setHistoryTotalCount(0);
+            setHasMoreHistory(false);
+            setLocalReceivedLoading(false);
+            return;
+        }
+
+        const indentNumbers = (receivedData as any[]).map(r => r.indent_number).filter(Boolean);
+        let indentData: any[] = [];
+        if (indentNumbers.length > 0) {
+            const { data: iData } = await supabase
+                .from('indent')
+                .select('indent_number, po_number, actual_4, approved_vendor_name, product_name, approved_quantity, uom, planned_5, actual_5')
+                .in('indent_number', indentNumbers);
+            indentData = iData || [];
+        }
+
+        const mappedBatch = (receivedData as any[]).map((receivedRecord: any) => {
+            const indent = indentData.find(i => i.indent_number === receivedRecord.indent_number);
+            const approvedQty = indent ? (Number(indent.approved_quantity) || 0) : 0;
+
+            return {
+                id: receivedRecord.id,
+                indentNumber: receivedRecord.indent_number || indent?.indent_number || '',
+                receiveStatus: receivedRecord.received_status || 'Unknown',
+                poNumber: receivedRecord.po_number || indent?.po_number,
+                poDate: receivedRecord.po_date ? formatDate(new Date(receivedRecord.po_date)) : (indent ? formatDate(new Date(indent.actual_4)) : ''),
+                vendor: receivedRecord.vendor || indent?.approved_vendor_name,
+                product: indent?.product_name || '',
+                orderQuantity: approvedQty,
+                receivedQuantity: Number(receivedRecord.received_quantity) || 0,
+                uom: receivedRecord.uom || indent?.uom,
+                photoOfProduct: receivedRecord.photo_of_product || '',
+                receivedDate: receivedRecord.timestamp ? formatDate(new Date(receivedRecord.timestamp)) : '',
+                warrantyStatus: receivedRecord.warranty_status || '',
+                warrantyEndDate: receivedRecord.end_date ? formatDate(new Date(receivedRecord.end_date)) : '',
+                billStatus: receivedRecord.bill_status || '',
+                billNumber: receivedRecord.bill_number || '',
+                billAmount: receivedRecord.bill_amount || 0,
+                photoOfBill: receivedRecord.photo_of_bill || '',
+                anyTransport: receivedRecord.any_transportations || '',
+                transporterName: receivedRecord.transporter_name || '',
+                transportingAmount: receivedRecord.transporting_amount || 0,
+            };
+        });
+
+        if (isInitial) {
+            setHistoryData(mappedBatch);
+            setHistoryPageIndex(1);
+        } else {
+            setHistoryData(prev => [...prev, ...mappedBatch]);
+            setHistoryPageIndex(prev => prev + 1);
+        }
+
+        const total = count || 0;
+        setHistoryTotalCount(total);
+        setHasMoreHistory((isInitial ? mappedBatch.length : historyData.length + mappedBatch.length) < total);
+        setLocalReceivedLoading(false);
+    };
+
+    useEffect(() => {
+        fetchPendingItems(true);
     }, []);
 
     useEffect(() => {
-        const fetchHistoryItems = async () => {
-            setLocalReceivedLoading(true);
-
-            // Fetch indents with pagination
-            const indentData = await fetchFromSupabasePaginated(
-                'indent',
-                'indent_number, po_number, actual_4, approved_vendor_name, product_name, approved_quantity, uom, planned_5, actual_5',
-                { column: 'actual_5', options: { ascending: false } },
-                (q) => q.not('planned_5', 'is', null).not('actual_5', 'is', null)
-            );
-
-            // Fetch received items with pagination
-            const receivedData = await fetchFromSupabasePaginated(
-                'received',
-                '*',
-                { column: 'timestamp', options: { ascending: false } }
-            );
-
-            // Map the combined data
-            const mappedData = receivedData.map((receivedRecord: any) => {
-                const indent = indentData.find(i => i.indent_number === receivedRecord.indent_number);
-
-                // Calculate totals for this indent to show context
-                const totalReceivedForIndent = receivedData
-                    .filter((r: any) => r.indent_number === receivedRecord.indent_number)
-                    .reduce((sum: number, r: any) => sum + (Number(r.received_quantity) || 0), 0);
-
-                const approvedQty = indent ? (Number(indent.approved_quantity) || 0) : 0;
-                const remainingQty = Math.max(0, approvedQty - totalReceivedForIndent);
-
-                return {
-                    id: receivedRecord.id,
-                    indentNumber: receivedRecord.indent_number || indent?.indent_number || '',
-                    receiveStatus: receivedRecord.received_status || 'Unknown',
-                    poNumber: receivedRecord.po_number || indent?.po_number,
-                    poDate: receivedRecord.po_date ? formatDate(new Date(receivedRecord.po_date)) : (indent ? formatDate(new Date(indent.actual_4)) : ''),
-                    vendor: receivedRecord.vendor || indent?.approved_vendor_name,
-                    product: indent?.product_name || '',
-                    orderQuantity: approvedQty,
-                    receivedQuantity: Number(receivedRecord.received_quantity) || 0,
-                    totalReceivedQty: totalReceivedForIndent,
-                    remainingQty: remainingQty,
-                    uom: receivedRecord.uom || indent?.uom,
-                    photoOfProduct: receivedRecord.photo_of_product || '',
-                    receivedDate: receivedRecord.timestamp ? formatDate(new Date(receivedRecord.timestamp)) : '',
-                    warrantyStatus: receivedRecord.warranty_status || '',
-                    warrantyEndDate: receivedRecord.end_date ? formatDate(new Date(receivedRecord.end_date)) : '',
-                    billStatus: receivedRecord.bill_status || '',
-                    billNumber: receivedRecord.bill_number || '',
-                    billAmount: receivedRecord.bill_amount || 0,
-                    photoOfBill: receivedRecord.photo_of_bill || '',
-                    anyTransport: receivedRecord.any_transportations || '',
-                    transporterName: receivedRecord.transporter_name || '',
-                    transportingAmount: receivedRecord.transporting_amount || 0,
-                };
-            });
-
-            setHistoryData(mappedData.reverse());
-            setLocalReceivedLoading(false);
-        };
-
-        fetchHistoryItems();
+        fetchHistoryItems(true);
     }, []);
 
     // Fetch master items for product dropdown
@@ -1027,8 +1082,11 @@ const ReceiveItems = () => {
                         <DataTable
                             data={tableData}
                             columns={columns}
-                            searchFields={['indentNumber', 'poNumber', 'poDate', 'vendor', 'product', 'department', 'indenter', 'vendorType']}
+                            searchFields={['indentNumber', 'poNumber', 'product', 'vendor']}
                             dataLoading={localIndentLoading}
+                            infiniteScroll={true}
+                            onLoadMore={() => fetchPendingItems(false)}
+                            hasMore={hasMorePending}
                             extraActions={
                                 <Button
                                     variant="default"
@@ -1056,17 +1114,11 @@ const ReceiveItems = () => {
                         <DataTable
                             data={historyData}
                             columns={historyColumns}
-                            searchFields={[
-                                'indentNumber',
-                                'poNumber',
-                                'poDate',
-                                'vendor',
-                                'receiveStatus',
-                                'product',
-                                'receivedDate',
-                                'billNumber'
-                            ]}
+                            searchFields={['indentNumber', 'poNumber', 'product', 'vendor']}
                             dataLoading={localReceivedLoading}
+                            infiniteScroll={true}
+                            onLoadMore={() => fetchHistoryItems(false)}
+                            hasMore={hasMoreHistory}
                         />
                     </TabsContent>
                 </Tabs>

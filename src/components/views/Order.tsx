@@ -5,7 +5,7 @@ import Heading from '../element/Heading';
 import { useSheets } from '@/context/SheetsContext';
 import { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabaseClient';
-import { fetchFromSupabasePaginated } from '@/lib/fetchers';
+import { fetchFromSupabasePaginated, fetchFromSupabaseWithCount } from '@/lib/fetchers';
 import type { ColumnDef } from '@tanstack/react-table';
 import { formatDate } from '@/lib/utils';
 import DataTable from '../element/DataTable';
@@ -33,49 +33,63 @@ export default () => {
 
 
     const [historyData, setHistoryData] = useState<HistoryData[]>([]);
+    const [pageIndex, setPageIndex] = useState(0);
+    const [pageSize] = useState(10);
+    const [hasMore, setHasMore] = useState(true);
 
 
     // Fetching table data directly from Supabase to ensure snake_case fields match
-    useEffect(() => {
-        const fetchPOMaster = async () => {
-            setPoMasterLoading(true);
-            try {
-                const data = await fetchFromSupabasePaginated(
-                    'po_master',
-                    '*',
-                    { column: 'timestamp', options: { ascending: false } }
-                );
+    const fetchPOMaster = async (isInitial = true) => {
+        setPoMasterLoading(true);
+        try {
+            const currentPage = isInitial ? 0 : pageIndex;
+            const from = currentPage * pageSize;
+            const to = from + pageSize - 1;
 
-                if (data) {
-                    setHistoryData(
-                        data
-                            // Filter out any invalid items, if necessary
-                            .filter(sheet => sheet.po_number || sheet.party_name)
-                            .map((sheet, index) => ({
-                                approvedBy: sheet.approved_by || '',
-                                poCopy: sheet.pdf_url || sheet.pdf_link || '', // Check both possible column names
-                                poNumber: sheet.po_number || '',
-                                preparedBy: sheet.prepared_by || '',
-                                totalAmount: Number(sheet.total_po_amount) || 0,
-                                vendorName: sheet.party_name || '',
-                                indentNumber: sheet.internal_code || '',
-                                id: sheet.id || 0,
-                                status: (indentSheet.map((s) => s.poNumber).includes(sheet.po_number || '')
-                                    ? receivedSheet.map((r) => r.poNumber).includes(sheet.po_number || '')
-                                        ? 'Recieved'
-                                        : 'Not Recieved'
-                                    : 'Revised') as 'Revised' | 'Not Recieved' | 'Recieved',
-                            }))
-                    );
+            const { data, count } = await fetchFromSupabaseWithCount(
+                'po_master',
+                '*',
+                { from, to },
+                { column: 'timestamp', options: { ascending: false } }
+            );
+
+            if (data) {
+                const newHistoryData = (data as any[])
+                    .filter(sheet => sheet.po_number || sheet.party_name)
+                    .map((sheet) => ({
+                        approvedBy: sheet.approved_by || '',
+                        poCopy: sheet.pdf_url || sheet.pdf_link || '',
+                        poNumber: sheet.po_number || '',
+                        preparedBy: sheet.prepared_by || '',
+                        totalAmount: Number(sheet.total_po_amount) || 0,
+                        vendorName: sheet.party_name || '',
+                        indentNumber: sheet.internal_code || '',
+                        id: sheet.id || 0,
+                        status: (indentSheet.map((s) => s.poNumber).includes(sheet.po_number || '')
+                            ? receivedSheet.map((r) => r.poNumber).includes(sheet.po_number || '')
+                                ? 'Recieved'
+                                : 'Not Recieved'
+                            : 'Revised') as 'Revised' | 'Not Recieved' | 'Recieved',
+                    }));
+
+                if (isInitial) {
+                    setHistoryData(newHistoryData);
+                    setPageIndex(1);
+                } else {
+                    setHistoryData(prev => [...prev, ...newHistoryData]);
+                    setPageIndex(prev => prev + 1);
                 }
-            } catch (error) {
-                console.error('Error fetching PO history:', error);
-            } finally {
-                setPoMasterLoading(false);
+                setHasMore(data.length === pageSize);
             }
-        };
+        } catch (error) {
+            console.error('Error fetching PO history:', error);
+        } finally {
+            setPoMasterLoading(false);
+        }
+    };
 
-        fetchPOMaster();
+    useEffect(() => {
+        fetchPOMaster(true);
     }, [indentSheet, receivedSheet]);
 
 
@@ -188,6 +202,9 @@ export default () => {
                         columns={historyColumns}
                         searchFields={['vendorName', 'poNumber', 'indentNumber']}
                         dataLoading={poMasterLoading}
+                        infiniteScroll={true}
+                        onLoadMore={() => fetchPOMaster(false)}
+                        hasMore={hasMore}
                     />
                 </div>
             </div>

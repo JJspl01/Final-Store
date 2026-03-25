@@ -16,7 +16,7 @@ import {
     DialogFooter,
     DialogClose,
 } from '../ui/dialog';
-import { postToSheet, uploadFile, fetchFromSupabasePaginated } from '@/lib/fetchers';
+import { postToSheet, uploadFile, fetchFromSupabasePaginated, fetchFromSupabaseWithCount } from '@/lib/fetchers';
 import { z } from 'zod';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -140,6 +140,18 @@ export default () => {
 
 
 
+    // Pending Tab Pagination
+    const [pendingPageIndex, setPendingPageIndex] = useState(0);
+    const [pendingPageSize] = useState(10);
+    const [pendingTotalCount, setPendingTotalCount] = useState(0);
+    const [hasMorePending, setHasMorePending] = useState(true);
+
+    // History Tab Pagination
+    const [historyPageIndex, setHistoryPageIndex] = useState(0);
+    const [historyPageSize] = useState(10);
+    const [historyTotalCount, setHistoryTotalCount] = useState(0);
+    const [hasMoreHistory, setHasMoreHistory] = useState(true);
+
     const inputRefs = useRef<{ [key: string]: HTMLInputElement | null }>({});
 
 
@@ -147,31 +159,38 @@ export default () => {
     // const [editedData, setEditedData] = useState<{ [indentNo: string]: { product?: string; quantity?: number; uom?: string; qty?: number; billNumber?: string; leadTime?: string; typeOfBill?: string; billAmount?: number; discountAmount?: number; paymentType?: string; advanceAmount?: number; rate?: number; photoOfBill?: string } }>({});
     // Fetching table data - updated
     // Fetching table data from Supabase
-    const fetchTableData = async () => {
+    const fetchTableData = async (isInitial = false) => {
         try {
             setLoading(true);
+            const currentPage = isInitial ? 0 : pendingPageIndex;
+            const from = currentPage * pendingPageSize;
+            const to = (currentPage + 1) * pendingPageSize - 1;
 
-            // 1. Fetch Indents with pagination (Stage 7 Pending/Partials)
-            const indentData = await fetchFromSupabasePaginated(
+            const { data: indentData, count } = await fetchFromSupabaseWithCount(
                 'indent',
                 '*',
+                { from, to },
                 { column: 'planned_7', options: { ascending: false } },
                 (q) => q.not('planned_7', 'is', null).is('actual_7', null)
             );
 
-            // 2. Fetch Received Data with pagination to calculate what's available for billing
-            const receivedData = await fetchFromSupabasePaginated(
-                'received',
-                'indent_number, received_quantity, bill_number',
-                { column: 'timestamp', options: { ascending: false } }
-            );
+            const indentNumbers = (indentData as any[])?.map(i => i.indent_number).filter(Boolean) || [];
+            
+            let receivedData: any[] = [];
+            if (indentNumbers.length > 0) {
+                const { data: rData } = await supabase
+                    .from('received')
+                    .select('indent_number, received_quantity, bill_number')
+                    .in('indent_number', indentNumbers);
+                receivedData = rData || [];
+            }
 
             if (indentData) {
                 const seenPoNumbers = new Set();
 
                 // Pre-calculate stats for all indents
                 const indentStats = new Map();
-                indentData.forEach((sheet) => {
+                (indentData as any[]).forEach((sheet) => {
                     const indentReceipts = receivedData?.filter(r => r.indent_number === sheet.indent_number) || [];
                     const totalReceived = indentReceipts.reduce((sum, r) => sum + (Number(r.received_quantity) || 0), 0);
                     const totalBilled = indentReceipts
@@ -186,28 +205,23 @@ export default () => {
                     });
                 });
 
-                const uniqueTableData = indentData
+                const uniqueBatch = (indentData as any[])
                     .filter((sheet) => {
-                        // Skip if no PO number
-                        if (!sheet.po_number) return false;
-
-                        // Skip if we've already processed this PO
+                        // Skip if we've already processed this PO in THIS page's batch
                         if (seenPoNumbers.has(sheet.po_number)) return false;
-
-                        // Check if this PO has ANY items with pending quantity to bill
-                        const poIndents = indentData.filter(i => i.po_number === sheet.po_number);
+                        seenPoNumbers.add(sheet.po_number);
+                        return true;
+                    })
+                    .map((sheet) => {
+                        const poIndents = (indentData as any[]).filter(i => i.po_number === sheet.po_number);
                         const hasPending = poIndents.some(i => {
                             const stats = indentStats.get(i.indent_number);
                             return stats && stats.remainingToBill > 0;
                         });
 
                         // Only show this PO if it has at least one pending item
-                        if (!hasPending) return false;
+                        if (!hasPending) return null;
 
-                        seenPoNumbers.add(sheet.po_number);
-                        return true;
-                    })
-                    .map((sheet) => {
                         const stats = indentStats.get(sheet.indent_number) || {
                             totalReceived: 0,
                             totalBilled: 0,
@@ -226,11 +240,21 @@ export default () => {
                             receivedQty: stats.totalReceived,    // NEW
                             billedQty: stats.totalBilled,        // NEW
                             remainingQty: stats.remainingToBill  // NEW (Available for billing)
-                        };
+                        } as GetPurchaseData;
                     })
-                    .reverse();
+                    .filter((item): item is GetPurchaseData => item !== null);
 
-                setTableData(uniqueTableData);
+                if (isInitial) {
+                    setTableData(uniqueBatch);
+                    setPendingPageIndex(1);
+                } else {
+                    setTableData(prev => [...prev, ...uniqueBatch]);
+                    setPendingPageIndex(prev => prev + 1);
+                }
+
+                const total = count || 0;
+                setPendingTotalCount(total);
+                setHasMorePending((isInitial ? uniqueBatch.length : tableData.length + uniqueBatch.length) < total);
             }
         } catch (error) {
             console.error('Error fetching data from Supabase:', error);
@@ -240,32 +264,40 @@ export default () => {
     };
 
     useEffect(() => {
-        fetchTableData();
+        fetchTableData(true);
     }, []);
 
     // History data - Fetch from RECEIVED table where bill_number is present
-    useEffect(() => {
-        const fetchHistoryData = async () => {
-            try {
-                // 1. Fetch Received items that have a bill (Bill History)
-                const { data: receivedData, error: receivedError } = await supabase
-                    .from('received')
-                    .select('*')
-                    .not('bill_number', 'is', null);
+    const fetchHistoryData = async (isInitial = false) => {
+        try {
+            setLoading(true);
+            const currentPage = isInitial ? 0 : historyPageIndex;
+            const from = currentPage * historyPageSize;
+            const to = (currentPage + 1) * historyPageSize - 1;
 
-                if (receivedError) throw receivedError;
+            // 1. Fetch Received items that have a bill (Bill History)
+            const { data: receivedData, count } = await fetchFromSupabaseWithCount(
+                'received',
+                '*',
+                { from, to },
+                { column: 'timestamp', options: { ascending: false } },
+                (q) => q.not('bill_number', 'is', null)
+            );
 
-                // If no billed items, set empty history and return
-                if (!receivedData || receivedData.length === 0) {
-                    setHistoryData([]);
-                    return;
-                }
+            if (!receivedData || receivedData.length === 0) {
+                if (isInitial) setHistoryData([]);
+                setHistoryTotalCount(0);
+                setHasMoreHistory(false);
+                return;
+            }
 
                 // 2. Fetch Indent details for product names etc.
-                const indentNumbers = receivedData.map(r => r.indent_number).filter(Boolean);
+                const indentNumbers = (receivedData as any[]).map(r => r.indent_number).filter(Boolean);
 
                 if (indentNumbers.length === 0) {
-                    setHistoryData([]);
+                    if (isInitial) setHistoryData([]);
+                    setHistoryTotalCount(count || 0);
+                    setHasMoreHistory(false);
                     return;
                 }
 
@@ -278,10 +310,10 @@ export default () => {
 
                 if (indentError) throw indentError;
 
-                const mappedHistory = receivedData
-                    .filter(r => indentData?.some(i => i.indent_number === r.indent_number))
+                const mappedHistory = (receivedData as any[])
+                    .filter(r => (indentData as any[])?.some(i => i.indent_number === r.indent_number))
                     .map(r => {
-                        const indent = indentData?.find(i => i.indent_number === r.indent_number);
+                        const indent = (indentData as any[])?.find(i => i.indent_number === r.indent_number);
                         return {
                             indentNo: r.indent_number,
                             indenter: indent?.indenter_name || '',
@@ -297,17 +329,29 @@ export default () => {
                             billAmount: Number(r.bill_amount) || 0,
                             photoOfBill: r.photo_of_bill || '',
                         };
-                    }).reverse(); // Newest first
+                    }); // Newest first - already handled by fetchFromSupabaseWithCount sort
 
-                setHistoryData(mappedHistory);
+                if (isInitial) {
+                    setHistoryData(mappedHistory);
+                    setHistoryPageIndex(1);
+                } else {
+                    setHistoryData(prev => [...prev, ...mappedHistory]);
+                    setHistoryPageIndex(prev => prev + 1);
+                }
 
+                const total = count || 0;
+                setHistoryTotalCount(total);
+                setHasMoreHistory((isInitial ? mappedHistory.length : historyData.length + mappedHistory.length) < total);
             } catch (error) {
-                console.error('Error fetching history:', error);
+                console.error('Error fetching history from Supabase:', error);
+            } finally {
+                setLoading(false);
             }
         };
 
-        fetchHistoryData();
-    }, [openDialog]); // Refresh when dialog closes (which updates table)
+    useEffect(() => {
+        fetchHistoryData(true);
+    }, []); // Refresh when dialog closes (which updates table)
 
     // Fetch master items for product dropdown in history tab
     useEffect(() => {
@@ -928,8 +972,11 @@ export default () => {
                                     <DataTable
                                         data={tableData}
                                         columns={columns}
-                                        searchFields={['indentNo', 'poNumber', 'product', 'department', 'indenter', 'date', 'billNumber']}
+                                        searchFields={['indentNo', 'poNumber', 'product']}
                                         dataLoading={loading}
+                                        infiniteScroll={true}
+                                        onLoadMore={() => fetchTableData(false)}
+                                        hasMore={hasMorePending}
                                     />
                                 </div>
                             </div>
@@ -939,8 +986,11 @@ export default () => {
                                 <DataTable
                                     data={historyData}
                                     columns={historyColumns}
-                                    searchFields={['indentNo', 'poNumber', 'product', 'department', 'indenter', 'date', 'billNumber']}
-                                    dataLoading={indentLoading}
+                                    searchFields={['billNumber', 'poNumber', 'product']}
+                                    dataLoading={loading}
+                                    infiniteScroll={true}
+                                    onLoadMore={() => fetchHistoryData(false)}
+                                    hasMore={hasMoreHistory}
                                 />
                             </div>
                         </TabsContent>

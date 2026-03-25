@@ -12,7 +12,7 @@ import {
     DialogFooter,
     DialogClose,
 } from '../ui/dialog';
-import { postToSheet, uploadFile, fetchVendors, fetchFromSupabasePaginated } from '@/lib/fetchers';
+import { postToSheet, uploadFile, fetchVendors, fetchFromSupabaseWithCount } from '@/lib/fetchers';
 import { z } from 'zod';
 import { useFieldArray, useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -149,6 +149,18 @@ export default () => {
     const [vendorTypeFilter, setVendorTypeFilter] = useState<'All' | 'Regular' | 'Three Party'>('All');
     const [departmentFilter, setDepartmentFilter] = useState<string>('All');
 
+    // Pagination state - Pending
+    const [pendingPageIndex, setPendingPageIndex] = useState(0);
+    const [pendingPageSize] = useState(10);
+    const [pendingTotalCount, setPendingTotalCount] = useState(0);
+    const [hasMorePending, setHasMorePending] = useState(true);
+
+    // Pagination state - History
+    const [historyPageIndex, setHistoryPageIndex] = useState(0);
+    const [historyPageSize] = useState(10);
+    const [historyTotalCount, setHistoryTotalCount] = useState(0);
+    const [hasMoreHistory, setHasMoreHistory] = useState(true);
+
     const refreshVendors = async () => {
         const vendorsList = await fetchVendors();
         setVendors(vendorsList);
@@ -234,65 +246,128 @@ export default () => {
     };
 
     // Fetching table data
-    useEffect(() => {
-        const fetchData = async () => {
-            setDataLoading(true);
-            try {
-                // Fetch pending data with pagination
-                const pendingData = await fetchFromSupabasePaginated(
-                    'indent',
-                    '*',
-                    { column: 'created_at', options: { ascending: false } },
-                    (q) => q.not('planned_2', 'is', null).is('actual_2', null)
-                );
+    const fetchPendingData = async (isInitial = true) => {
+        setDataLoading(true);
+        try {
+            const currentPage = isInitial ? 0 : pendingPageIndex;
+            const from = currentPage * pendingPageSize;
+            const to = from + pendingPageSize - 1;
 
-                if (pendingData) {
-                    const pendingTableData = pendingData.map((record: any) => ({
-                        indentNo: record.indent_number || '',
-                        indenter: record.indenter_name || '',
-                        department: record.department || '',
-                        product: record.product_name || '',
-                        quantity: record.approved_quantity || 0,
-                        uom: record.uom || '',
-                        vendorType: record.vendor_type as VendorUpdateData['vendorType'],
-                        vendorName: record.approved_vendor_name || record.vendor_name_1 || '',
-                    }));
+            const { data, count } = await fetchFromSupabaseWithCount(
+                'indent',
+                '*',
+                { from, to },
+                { column: 'created_at', options: { ascending: false } },
+                (q) => {
+                    let query = q.not('planned_2', 'is', null).is('actual_2', null);
+                    if (vendorTypeFilter !== 'All') {
+                        query = query.eq('vendor_type', vendorTypeFilter);
+                    }
+                    if (departmentFilter !== 'All') {
+                        query = query.eq('department', departmentFilter);
+                    }
+                    return query;
+                }
+            );
+
+            if (data) {
+                const pendingTableData = data.map((record: any) => ({
+                    indentNo: record.indent_number || '',
+                    indenter: record.indenter_name || '',
+                    department: record.department || '',
+                    product: record.product_name || '',
+                    quantity: record.approved_quantity || 0,
+                    uom: record.uom || '',
+                    vendorType: record.vendor_type as VendorUpdateData['vendorType'],
+                    vendorName: record.approved_vendor_name || record.vendor_name_1 || '',
+                }));
+                
+                if (isInitial) {
                     setTableData(pendingTableData);
+                    setPendingPageIndex(1);
+                } else {
+                    setTableData(prev => [...prev, ...pendingTableData]);
+                    setPendingPageIndex(prev => prev + 1);
                 }
-
-                // Fetch history data with pagination
-                const historyDataResult = await fetchFromSupabasePaginated(
-                    'indent',
-                    '*',
-                    { column: 'created_at', options: { ascending: false } },
-                    (q) => q.not('planned_2', 'is', null).not('actual_2', 'is', null)
-                );
-
-                if (historyDataResult) {
-                    const historyTableData = historyDataResult.map((record: any) => ({
-                        date: formatDate(new Date(record.actual_2)),
-                        indentNo: record.indent_number || '',
-                        indenter: record.indenter_name || '',
-                        department: record.department || '',
-                        product: record.product_name || '',
-                        quantity: record.quantity || 0,
-                        uom: record.uom || '',
-                        rate: record.approved_rate || 0,
-                        vendorType: record.vendor_type as HistoryData['vendorType'],
-                        vendorName: record.approved_vendor_name || record.vendor_name_1 || '',
-                    }));
-                    setHistoryData(historyTableData);
-                }
-            } catch (error: any) {
-                console.error('Error fetching data from Supabase:', error);
-                toast.error('Failed to fetch data: ' + error.message);
-            } finally {
-                setDataLoading(false);
+                
+                setPendingTotalCount(count || 0);
+                setHasMorePending(data.length === pendingPageSize);
             }
-        };
+        } catch (error: any) {
+            console.error('Error fetching data from Supabase:', error);
+            toast.error('Failed to fetch data: ' + error.message);
+        } finally {
+            setDataLoading(false);
+        }
+    };
 
-        fetchData();
-    }, []);
+    const fetchHistoryData = async (isInitial = true) => {
+        setDataLoading(true);
+        try {
+            const currentPage = isInitial ? 0 : historyPageIndex;
+            const from = currentPage * historyPageSize;
+            const to = from + historyPageSize - 1;
+
+            const { data, count } = await fetchFromSupabaseWithCount(
+                'indent',
+                '*',
+                { from, to },
+                { column: 'created_at', options: { ascending: false } },
+                (q) => {
+                    let query = q.not('planned_2', 'is', null).not('actual_2', 'is', null);
+                    if (vendorTypeFilter !== 'All') {
+                        query = query.eq('vendor_type', vendorTypeFilter);
+                    }
+                    if (departmentFilter !== 'All') {
+                        query = query.eq('department', departmentFilter);
+                    }
+                    return query;
+                }
+            );
+
+            if (data) {
+                const historyTableData = data.map((record: any) => ({
+                    date: record.actual_2 ? formatDate(new Date(record.actual_2)) : '',
+                    indentNo: record.indent_number || '',
+                    indenter: record.indenter_name || '',
+                    department: record.department || '',
+                    product: record.product_name || '',
+                    quantity: record.quantity || 0,
+                    uom: record.uom || '',
+                    rate: record.approved_rate || 0,
+                    vendorType: record.vendor_type as HistoryData['vendorType'],
+                    vendorName: record.approved_vendor_name || record.vendor_name_1 || '',
+                }));
+
+                if (isInitial) {
+                    setHistoryData(historyTableData);
+                    setHistoryPageIndex(1);
+                } else {
+                    setHistoryData(prev => [...prev, ...historyTableData]);
+                    setHistoryPageIndex(prev => prev + 1);
+                }
+
+                setHistoryTotalCount(count || 0);
+                setHasMoreHistory(data.length === historyPageSize);
+            }
+        } catch (error: any) {
+            console.error('Error fetching data from Supabase:', error);
+            toast.error('Failed to fetch data: ' + error.message);
+        } finally {
+            setDataLoading(false);
+        }
+    };
+
+
+    useEffect(() => {
+        setPendingPageIndex(0);
+        fetchPendingData(true);
+    }, [vendorTypeFilter, departmentFilter]);
+
+    useEffect(() => {
+        setHistoryPageIndex(0);
+        fetchHistoryData(true);
+    }, [vendorTypeFilter, departmentFilter]);
 
 
     const handleEditClick = (row: HistoryData) => {
@@ -349,30 +424,7 @@ export default () => {
             updateIndentSheet(); // Update context to sync sidebar counts
 
             // Refresh the data after update
-            const { data: historyDataResult, error: historyError } = await supabase
-                .from('indent')
-                .select('*')
-                .not('planned_2', 'is', null)
-                .not('actual_2', 'is', null)
-                .order('created_at', { ascending: false });
-
-            if (historyError) throw historyError;
-
-            if (historyDataResult) {
-                const historyTableData = historyDataResult.map((record: any) => ({
-                    date: formatDate(new Date(record.actual_2)),
-                    indentNo: record.indent_number || '',
-                    indenter: record.indenter_name || '',
-                    department: record.department || '',
-                    product: record.product_name || '',
-                    quantity: record.quantity || 0,
-                    uom: record.uom || '',
-                    rate: record.approved_rate || 0,
-                    vendorType: record.vendor_type as HistoryData['vendorType'],
-                    vendorName: record.approved_vendor_name || record.vendor_name_1 || '',
-                }));
-                setHistoryData(historyTableData);
-            }
+            fetchHistoryData(true);
 
             setEditingRow(null);
             setEditValues({});
@@ -852,28 +904,8 @@ export default () => {
             regularForm.reset();
 
             // Refresh the data after update
-            const { data: pendingData, error: pendingError } = await supabase
-                .from('indent')
-                .select('*')
-                .not('planned_2', 'is', null)
-                .is('actual_2', null)
-                .order('created_at', { ascending: false });
-
-            if (pendingError) throw pendingError;
-
-            if (pendingData) {
-                const pendingTableData = pendingData.map((record: any) => ({
-                    indentNo: record.indent_number || '',
-                    indenter: record.indenter_name || '',
-                    department: record.department || '',
-                    product: record.product_name || '',
-                    quantity: record.approved_quantity || 0,
-                    uom: record.uom || '',
-                    vendorType: record.vendor_type as VendorUpdateData['vendorType'],
-                    vendorName: record.approved_vendor_name || record.vendor_name_1 || '',
-                }));
-                setTableData(pendingTableData);
-            }
+            fetchPendingData();
+            fetchHistoryData();
         } catch (error: any) {
             console.error('Error updating vendor:', error);
             toast.error('Failed to update vendor: ' + error.message);
@@ -1021,29 +1053,8 @@ export default () => {
             setOpenDialog(false);
             historyUpdateForm.reset({ rate: undefined });
 
-            // Refresh the data after update with pagination
-            const historyDataResult = await fetchFromSupabasePaginated(
-                'indent',
-                '*',
-                { column: 'created_at', options: { ascending: false } },
-                (q) => q.not('planned_2', 'is', null).not('actual_2', 'is', null)
-            );
-
-            if (historyDataResult) {
-                const historyTableData = historyDataResult.map((record: any) => ({
-                    date: formatDate(new Date(record.actual_2)),
-                    indentNo: record.indent_number || '',
-                    indenter: record.indenter_name || '',
-                    department: record.department || '',
-                    product: record.product_name || '',
-                    quantity: record.quantity || 0,
-                    uom: record.uom || '',
-                    rate: record.approved_rate || 0,
-                    vendorType: record.vendor_type as HistoryData['vendorType'],
-                    vendorName: record.approved_vendor_name || record.vendor_name_1 || '',
-                }));
-                setHistoryData(historyTableData);
-            }
+            // Refresh the data after update
+            fetchHistoryData();
         } catch (error: any) {
             console.error('Error updating vendor:', error);
             toast.error('Failed to update vendor: ' + error.message);
@@ -1073,13 +1084,13 @@ export default () => {
                             <div className="space-y-4 h-[calc(100vh-210px)] flex flex-col">
                                 <div className="w-full h-full flex-1 overflow-hidden min-h-0 flex flex-col">
                                     <DataTable
-                                        data={tableData.filter(r => 
-                                            (vendorTypeFilter === 'All' || r.vendorType === vendorTypeFilter) &&
-                                            (departmentFilter === 'All' || r.department === departmentFilter)
-                                        )}
+                                        data={tableData}
                                         columns={columns}
                                         searchFields={['indentNo', 'product', 'department', 'indenter', 'vendorType', 'vendorName', 'date']}
                                         dataLoading={dataLoading}
+                                        infiniteScroll={true}
+                                        onLoadMore={() => fetchPendingData(false)}
+                                        hasMore={hasMorePending}
                                         searchExtra={
                                             <div className="flex gap-2">
                                                 <Select value={vendorTypeFilter} onValueChange={(v) => setVendorTypeFilter(v as typeof vendorTypeFilter)}>
@@ -1114,13 +1125,13 @@ export default () => {
                             <div className="space-y-4 h-[calc(100vh-210px)] flex flex-col">
                                 <div className="w-full h-full flex-1 overflow-hidden min-h-0 flex flex-col">
                                     <DataTable
-                                        data={historyData.filter(r => 
-                                            (vendorTypeFilter === 'All' || r.vendorType === vendorTypeFilter) &&
-                                            (departmentFilter === 'All' || r.department === departmentFilter)
-                                        )}
+                                        data={historyData}
                                         columns={historyColumns}
                                         searchFields={['indentNo', 'product', 'department', 'indenter', 'vendorType', 'vendorName', 'date']}
                                         dataLoading={dataLoading}
+                                        infiniteScroll={true}
+                                        onLoadMore={() => fetchHistoryData(false)}
+                                        hasMore={hasMoreHistory}
                                         searchExtra={
                                             <div className="flex gap-2">
                                                 <Select value={vendorTypeFilter} onValueChange={(v) => setVendorTypeFilter(v as typeof vendorTypeFilter)}>

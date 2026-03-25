@@ -16,7 +16,7 @@ import { Form, FormControl, FormField, FormItem, FormLabel } from '../ui/form';
 import { z } from 'zod';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { postToSheet, uploadFile, fetchFromSupabasePaginated } from '@/lib/fetchers';
+import { postToSheet, uploadFile, fetchFromSupabaseWithCount } from '@/lib/fetchers';
 import { toast } from 'sonner';
 import { PuffLoader as Loader } from 'react-spinners';
 import { RadioGroup, RadioGroupItem } from '../ui/radio-group';
@@ -58,63 +58,114 @@ export default () => {
     const [openDialog, setOpenDialog] = useState(false);
     const [dataLoading, setDataLoading] = useState(true);
 
-    // Fetching table data
-    useEffect(() => {
-        const fetchData = async () => {
-            setDataLoading(true);
-            try {
-                const [pendingData, historyDataResult] = await Promise.all([
-                    fetchFromSupabasePaginated(
-                        'indent',
-                        'indent_number, indenter_name, department, product_name, comparison_sheet, created_at, vendor_name_1, rate_1, payment_term_1, vendor_name_2, rate_2, payment_term_2, vendor_name_3, rate_3, payment_term_3',
-                        { column: 'created_at', options: { ascending: false } },
-                        (q) => q.not('planned_3', 'is', null).is('actual_3', null).eq('vendor_type', 'Three Party')
-                    ),
-                    fetchFromSupabasePaginated(
-                        'indent',
-                        'indent_number, indenter_name, department, product_name, created_at, approved_vendor_name, approved_rate',
-                        { column: 'created_at', options: { ascending: false } },
-                        (q) => q.not('planned_3', 'is', null).not('actual_3', 'is', null).eq('vendor_type', 'Three Party')
-                    )
-                ]);
+    // Pagination state - Pending
+    const [pendingPageIndex, setPendingPageIndex] = useState(0);
+    const [pendingPageSize] = useState(10);
+    const [pendingTotalCount, setPendingTotalCount] = useState(0);
+    const [hasMorePending, setHasMorePending] = useState(true);
 
-                if (pendingData) {
-                    const pendingTableData = pendingData.map((record: any) => ({
-                        indentNo: record.indent_number || '',
-                        indenter: record.indenter_name || '',
-                        department: record.department || '',
-                        product: record.product_name || '',
-                        comparisonSheet: record.comparison_sheet || '',
-                        date: formatDate(new Date(record.created_at)),
-                        vendors: [
-                            [record.vendor_name_1 || '', record.rate_1?.toString() || '0', record.payment_term_1 || ''] as [string, string, string],
-                            [record.vendor_name_2 || '', record.rate_2?.toString() || '0', record.payment_term_2 || ''] as [string, string, string],
-                            [record.vendor_name_3 || '', record.rate_3?.toString() || '0', record.payment_term_3 || ''] as [string, string, string],
-                        ],
-                    }));
+    // Pagination state - History
+    const [historyPageIndex, setHistoryPageIndex] = useState(0);
+    const [historyPageSize] = useState(10);
+    const [historyTotalCount, setHistoryTotalCount] = useState(0);
+    const [hasMoreHistory, setHasMoreHistory] = useState(true);
+
+    const fetchPendingData = async (isInitial = true) => {
+        setDataLoading(true);
+        try {
+            const currentPage = isInitial ? 0 : pendingPageIndex;
+            const from = currentPage * pendingPageSize;
+            const to = from + pendingPageSize - 1;
+
+            const { data, count } = await fetchFromSupabaseWithCount(
+                'indent',
+                'indent_number, indenter_name, department, product_name, comparison_sheet, created_at, vendor_name_1, rate_1, payment_term_1, vendor_name_2, rate_2, payment_term_2, vendor_name_3, rate_3, payment_term_3',
+                { from, to },
+                { column: 'created_at', options: { ascending: false } },
+                (q) => q.not('planned_3', 'is', null).is('actual_3', null).eq('vendor_type', 'Three Party')
+            );
+
+            if (data) {
+                const pendingTableData = data.map((record: any) => ({
+                    indentNo: record.indent_number || '',
+                    indenter: record.indenter_name || '',
+                    department: record.department || '',
+                    product: record.product_name || '',
+                    comparisonSheet: record.comparison_sheet || '',
+                    date: formatDate(new Date(record.created_at)),
+                    vendors: [
+                        [record.vendor_name_1 || '', record.rate_1?.toString() || '0', record.payment_term_1 || ''] as [string, string, string],
+                        [record.vendor_name_2 || '', record.rate_2?.toString() || '0', record.payment_term_2 || ''] as [string, string, string],
+                        [record.vendor_name_3 || '', record.rate_3?.toString() || '0', record.payment_term_3 || ''] as [string, string, string],
+                    ],
+                }));
+                
+                if (isInitial) {
                     setTableData(pendingTableData);
+                    setPendingPageIndex(1);
+                } else {
+                    setTableData(prev => [...prev, ...pendingTableData]);
+                    setPendingPageIndex(prev => prev + 1);
                 }
-
-                if (historyDataResult) {
-                    const historyTableData = historyDataResult.map((record: any) => ({
-                        indentNo: record.indent_number || '',
-                        indenter: record.indenter_name || '',
-                        department: record.department || '',
-                        product: record.product_name || '',
-                        date: new Date(record.created_at).toDateString(),
-                        vendor: [record.approved_vendor_name || '', record.approved_rate?.toString() || '0'] as [string, string],
-                    }));
-                    setHistoryData(historyTableData);
-                }
-            } catch (error: any) {
-                console.error('Error fetching data from Supabase:', error);
-                toast.error('Failed to fetch data: ' + error.message);
-            } finally {
-                setDataLoading(false);
+                
+                setPendingTotalCount(count || 0);
+                setHasMorePending(data.length === pendingPageSize);
             }
-        };
+        } catch (error: any) {
+            console.error('Error fetching data from Supabase:', error);
+            toast.error('Failed to fetch data: ' + error.message);
+        } finally {
+            setDataLoading(false);
+        }
+    };
 
-        fetchData();
+    const fetchHistoryData = async (isInitial = true) => {
+        setDataLoading(true);
+        try {
+            const currentPage = isInitial ? 0 : historyPageIndex;
+            const from = currentPage * historyPageSize;
+            const to = from + historyPageSize - 1;
+
+            const { data, count } = await fetchFromSupabaseWithCount(
+                'indent',
+                'indent_number, indenter_name, department, product_name, created_at, approved_vendor_name, approved_rate',
+                { from, to },
+                { column: 'created_at', options: { ascending: false } },
+                (q) => q.not('planned_3', 'is', null).not('actual_3', 'is', null).eq('vendor_type', 'Three Party')
+            );
+
+            if (data) {
+                const historyTableData = data.map((record: any) => ({
+                    indentNo: record.indent_number || '',
+                    indenter: record.indenter_name || '',
+                    department: record.department || '',
+                    product: record.product_name || '',
+                    date: new Date(record.created_at).toDateString(),
+                    vendor: [record.approved_vendor_name || '', record.approved_rate?.toString() || '0'] as [string, string],
+                }));
+
+                if (isInitial) {
+                    setHistoryData(historyTableData);
+                    setHistoryPageIndex(1);
+                } else {
+                    setHistoryData(prev => [...prev, ...historyTableData]);
+                    setHistoryPageIndex(prev => prev + 1);
+                }
+
+                setHistoryTotalCount(count || 0);
+                setHasMoreHistory(data.length === historyPageSize);
+            }
+        } catch (error: any) {
+            console.error('Error fetching data from Supabase:', error);
+            toast.error('Failed to fetch data: ' + error.message);
+        } finally {
+            setDataLoading(false);
+        }
+    };
+
+    useEffect(() => {
+        fetchPendingData(true);
+        fetchHistoryData(true);
     }, []);
 
     // Creating table columns
@@ -278,37 +329,14 @@ export default () => {
                 })
                 .eq('indent_number', selectedIndent?.indentNo);
 
-            if (error) throw error;
-
-            toast.success(`Approved vendor for ${selectedIndent?.indentNo}`);
+            if (error) throw error;            toast.success(`Approved vendor for ${selectedIndent?.indentNo}`);
             updateIndentSheet(); // Update context to sync sidebar counts
             setOpenDialog(false);
             form.reset();
 
-            // Refresh the data after update with pagination
-            const pendingData = await fetchFromSupabasePaginated(
-                'indent',
-                'indent_number, indenter_name, department, product_name, comparison_sheet, created_at, vendor_name_1, rate_1, payment_term_1, vendor_name_2, rate_2, payment_term_2, vendor_name_3, rate_3, payment_term_3',
-                { column: 'created_at', options: { ascending: false } },
-                (q) => q.not('planned_3', 'is', null).is('actual_3', null).eq('vendor_type', 'Three Party')
-            );
-
-            if (pendingData) {
-                const pendingTableData = pendingData.map((record: any) => ({
-                    indentNo: record.indent_number || '',
-                    indenter: record.indenter_name || '',
-                    department: record.department || '',
-                    product: record.product_name || '',
-                    comparisonSheet: record.comparison_sheet || '',
-                    date: formatDate(new Date(record.created_at)),
-                    vendors: [
-                        [record.vendor_name_1 || '', record.rate_1?.toString() || '0', record.payment_term_1 || ''] as [string, string, string],
-                        [record.vendor_name_2 || '', record.rate_2?.toString() || '0', record.payment_term_2 || ''] as [string, string, string],
-                        [record.vendor_name_3 || '', record.rate_3?.toString() || '0', record.payment_term_3 || ''] as [string, string, string],
-                    ],
-                }));
-                setTableData(pendingTableData);
-            }
+            // Refresh the data after update
+            fetchPendingData(true);
+            fetchHistoryData(true);
         } catch (error: any) {
             console.error('Error updating vendor:', error);
             toast.error('Failed to update vendor: ' + error.message);
@@ -349,27 +377,7 @@ export default () => {
             historyUpdateForm.reset({ rate: undefined });
 
             // Refresh the data after update
-            const { data: historyDataResult, error: historyError } = await supabase
-                .from('indent')
-                .select('indent_number, indenter_name, department, product_name, created_at, approved_vendor_name, approved_rate')
-                .not('planned_3', 'is', null)
-                .not('actual_3', 'is', null)
-                .eq('vendor_type', 'Three Party')
-                .order('created_at', { ascending: false });
-
-            if (historyError) throw historyError;
-
-            if (historyDataResult) {
-                const historyTableData = historyDataResult.map((record: any) => ({
-                    indentNo: record.indent_number || '',
-                    indenter: record.indenter_name || '',
-                    department: record.department || '',
-                    product: record.product_name || '',
-                    date: new Date(record.created_at).toDateString(),
-                    vendor: [record.approved_vendor_name || '', record.approved_rate?.toString() || '0'] as [string, string],
-                }));
-                setHistoryData(historyTableData);
-            }
+            fetchHistoryData(true);
         } catch (error: any) {
             console.error('Error updating vendor:', error);
             toast.error('Failed to update vendor: ' + error.message);
@@ -399,6 +407,9 @@ export default () => {
                                 columns={columns}
                                 searchFields={['indentNo', 'product', 'department', 'indenter', 'date']}
                                 dataLoading={dataLoading}
+                                infiniteScroll={true}
+                                onLoadMore={() => fetchPendingData(false)}
+                                hasMore={hasMorePending}
                             />
                         </div>
                     </TabsContent>
@@ -409,6 +420,9 @@ export default () => {
                                 columns={historyColumns}
                                 searchFields={['indentNo', 'product', 'department', 'indenter', 'date']}
                                 dataLoading={dataLoading}
+                                infiniteScroll={true}
+                                onLoadMore={() => fetchHistoryData(false)}
+                                hasMore={hasMoreHistory}
                             />
                         </div>
                     </TabsContent>

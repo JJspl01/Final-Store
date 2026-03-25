@@ -44,45 +44,37 @@ export default () => {
     const [indentLoading, setIndentLoading] = useState(true);
     const [downloading, setDownloading] = useState(false);
 
-    // Infinite Scroll state
+    // Pagination state
     const [pageIndex, setPageIndex] = useState(0);
-    const [pageSize] = useState(50);
+    const [pageSize] = useState(10);
     const [totalCount, setTotalCount] = useState(0);
     const [hasMore, setHasMore] = useState(true);
-    // Caching state
-    const [dataCache, setDataCache] = useState<Map<number, AllIndentTableData[]>>(new Map());
 
     const ALL_INDENT_COLUMNS = "*";
 
-    const fetchIndents = async (pageToFetch: number = pageIndex, isAppend: boolean = false) => {
-        // If data is already in cache AND this isn't a forced refresh/append, use it.
-        if (!isAppend && dataCache.has(pageToFetch)) {
-            setTableData(dataCache.get(pageToFetch)!);
-            return;
-        }
-
-        const isPrefetch = isAppend && tableData.length > 0;
-        if (!isPrefetch) setIndentLoading(true);
+    const fetchIndents = async (isInitial = false) => {
+        setIndentLoading(true);
 
         try {
+            const currentPage = isInitial ? 0 : pageIndex;
+            const from = currentPage * pageSize;
+            const to = (currentPage + 1) * pageSize - 1;
+
             const { data, count } = await fetchFromSupabaseWithCount(
                 'indent',
                 ALL_INDENT_COLUMNS,
-                {
-                    from: pageToFetch * pageSize,
-                    to: (pageToFetch + 1) * pageSize - 1
-                },
+                { from, to },
                 { column: 'indent_number', options: { ascending: false } }
             );
 
             if (data) {
-                const transformedData = data.map((record: any) => ({
+                const transformedBatch = data.map((record: any) => ({
                     id: record.id ? record.id.toString() : Math.random().toString(),
                     timestamp: record.timestamp ? formatDate(new Date(record.timestamp)) : '',
                     indentNumber: record.indent_number || '',
                     indenterName: record.indenter_name || '',
                     indentApproveBy: record.indent_approve_by || '',
-                    indentType: record.indent_type as 'Purchase' | 'Store Out' || 'Purchase',
+                    indentType: (record.indent_type as 'Purchase' | 'Store Out') || 'Purchase',
                     department: record.department || '',
                     groupHead: record.group_head || '',
                     productName: record.product_name || '',
@@ -94,43 +86,28 @@ export default () => {
                     vendorType: record.vendor_type || '',
                 }));
 
-                if (isAppend) {
-                    setTableData(prev => [...prev, ...transformedData]);
+                if (isInitial) {
+                    setTableData(transformedBatch);
+                    setPageIndex(1);
                 } else {
-                    setTableData(transformedData);
-                    setDataCache(prev => {
-                        const next = new Map(prev);
-                        next.set(pageToFetch, transformedData);
-                        return next;
-                    });
+                    setTableData(prev => [...prev, ...transformedBatch]);
+                    setPageIndex(prev => prev + 1);
                 }
 
-                const newHasMore = (pageToFetch + 1) * pageSize < count;
-                setTotalCount(count);
-                setHasMore(newHasMore);
+                const total = count || 0;
+                setTotalCount(total);
+                setHasMore((isInitial ? transformedBatch.length : tableData.length + transformedBatch.length) < total);
             }
         } catch (error: any) {
             console.error('Error fetching indents:', error);
-            if (!isPrefetch) {
-                toast.error('Failed to fetch indents: ' + error.message);
-            }
+            toast.error('Failed to load indents');
         } finally {
-            if (!isPrefetch) setIndentLoading(false);
-        }
-    };
-
-    const handleLoadMore = () => {
-        if (!indentLoading && hasMore) {
-            const nextPage = pageIndex + 1;
-            setPageIndex(nextPage);
-            fetchIndents(nextPage, true);
+            setIndentLoading(false);
         }
     };
 
     useEffect(() => {
-        // Initial load
-        setPageIndex(0);
-        fetchIndents(0, false);
+        fetchIndents(true);
     }, []);
 
     const handleDownloadExcel = async () => {
@@ -317,10 +294,8 @@ export default () => {
 
             toast.success(`Updated ${updatesToProcess.length} indents successfully`);
 
-            // Clear cache and refresh
-            setDataCache(new Map());
-            setPageIndex(0);
-            await fetchIndents(0, false);
+            // Refresh
+            await fetchIndents(true);
 
             setSelectedRows(new Set());
             setBulkUpdates(new Map());
@@ -668,7 +643,8 @@ export default () => {
                         searchFields={['indentNumber', 'indenterName', 'department', 'productName', 'groupHead']}
                         dataLoading={indentLoading}
                         infiniteScroll={true}
-                        onLoadMore={handleLoadMore}
+                        onLoadMore={() => fetchIndents(false)}
+                        hasMore={hasMore}
                         extraActions={
                             <Button
                                 onClick={handleDownloadExcel}

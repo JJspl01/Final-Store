@@ -6,7 +6,7 @@ import type { ColumnDef } from '@tanstack/react-table';
 import { formatDate } from '@/lib/utils';
 import { supabase } from '@/lib/supabaseClient';
 import DataTable from '../element/DataTable';
-import { fetchFromSupabasePaginated } from '@/lib/fetchers';
+import { fetchFromSupabasePaginated, fetchFromSupabaseWithCount } from '@/lib/fetchers';
 
 interface PendingIndentsData {
     timestamp: string;
@@ -68,63 +68,75 @@ export default () => {
     const [loading, setLoading] = useState(true);
     const [tableData, setTableData] = useState<PendingIndentsData[]>([]);
 
-    useEffect(() => {
-        const fetchPOMaster = async () => {
-            try {
-                setLoading(true);
-                const data = await fetchFromSupabasePaginated(
-                    'po_master',
-                    '*',
-                    { column: 'timestamp', options: { ascending: true } }
-                );
+    // Pagination state
+    const [pageIndex, setPageIndex] = useState(0);
+    const [pageSize] = useState(10);
+    const [totalCount, setTotalCount] = useState(0);
+    const [hasMore, setHasMore] = useState(true);
 
-                if (data) {
-                    setTableData(
-                        data
-                            // Filter for pending POs - adjust this condition based on your pending criteria
-                            .filter(() => {
-                                // Example: You can add filtering logic here if needed
-                                // For now, showing all records
-                                return true;
-                            })
-                            .map((sheet) => {
-                                // Try different possible property names for GST
-                                let gstValue = sheet.gst_percent || 0; // Updated to gst_percent
+    const fetchPOMaster = async (isInitial = false) => {
+        try {
+            setLoading(true);
 
-                                return {
-                                    timestamp: sheet.timestamp ? formatDate(new Date(sheet.timestamp)) : '',
-                                    partyName: sheet.party_name || '',
-                                    poNumber: sheet.po_number || '',
-                                    quotationNumber: sheet.quotation_number || '', // Database uses quotation_number
-                                    quotationDate: sheet.quotation_date ? formatDate(new Date(sheet.quotation_date)) : '',
-                                    enquiryNumber: sheet.enquiry_number || '',
-                                    enquiryDate: sheet.enquiry_date ? formatDate(new Date(sheet.enquiry_date)) : '',
-                                    internalCode: sheet.internal_code || '',
-                                    product: sheet.product || '',
-                                    description: sheet.description || '',
-                                    quantity: Number(sheet.quantity) || 0,
-                                    unit: sheet.unit || '',
-                                    rate: Number(sheet.rate) || 0,
-                                    gstPercent: parseGSTPercent(gstValue),
-                                    discountPercent: Number(sheet.discount_percent) || 0,
-                                    amount: Number(sheet.amount) || 0,
-                                    totalPoAmount: Number(sheet.total_po_amount) || 0,
-                                    preparedBy: sheet.prepared_by || '',
-                                    approvedBy: sheet.approved_by || '',
-                                    pdf: sheet.pdf_link || sheet.pdf_url || '', // Database likely uses pdf_link based on previous files, checking both
-                                };
-                            })
-                            .reverse()
-                    );
+            const currentPage = isInitial ? 0 : pageIndex;
+            const from = currentPage * pageSize;
+            const to = (currentPage + 1) * pageSize - 1;
+
+            const { data, count } = await fetchFromSupabaseWithCount(
+                'po_master',
+                '*',
+                { from, to },
+                { column: 'timestamp', options: { ascending: false } }
+            );
+
+            if (data) {
+                const mappedBatch = (data as any[]).map((sheet) => {
+                    let gstValue = sheet.gst_percent || 0;
+                    return {
+                        timestamp: sheet.timestamp ? formatDate(new Date(sheet.timestamp)) : '',
+                        partyName: sheet.party_name || '',
+                        poNumber: sheet.po_number || '',
+                        quotationNumber: sheet.quotation_number || '',
+                        quotationDate: sheet.quotation_date ? formatDate(new Date(sheet.quotation_date)) : '',
+                        enquiryNumber: sheet.enquiry_number || '',
+                        enquiryDate: sheet.enquiry_date ? formatDate(new Date(sheet.enquiry_date)) : '',
+                        internalCode: sheet.internal_code || '',
+                        product: sheet.product || '',
+                        description: sheet.description || '',
+                        quantity: Number(sheet.quantity) || 0,
+                        unit: sheet.unit || '',
+                        rate: Number(sheet.rate) || 0,
+                        gstPercent: parseGSTPercent(gstValue),
+                        discountPercent: Number(sheet.discount_percent) || 0,
+                        amount: Number(sheet.amount) || 0,
+                        totalPoAmount: Number(sheet.total_po_amount) || 0,
+                        preparedBy: sheet.prepared_by || '',
+                        approvedBy: sheet.approved_by || '',
+                        pdf: sheet.pdf_link || sheet.pdf_url || '',
+                    };
+                });
+
+                if (isInitial) {
+                    setTableData(mappedBatch);
+                    setPageIndex(1);
+                } else {
+                    setTableData(prev => [...prev, ...mappedBatch]);
+                    setPageIndex(prev => prev + 1);
                 }
-            } catch (error) {
-                console.error('Error fetching PO master:', error);
-            } finally {
-                setLoading(false);
-            }
-        };
 
-        fetchPOMaster();
+                const total = count || 0;
+                setTotalCount(total);
+                setHasMore((isInitial ? mappedBatch.length : tableData.length + mappedBatch.length) < total);
+            }
+        } catch (error) {
+            console.error('Error fetching PO master:', error);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    useEffect(() => {
+        fetchPOMaster(true);
     }, []);
 
     // Creating table columns based on PO MASTER sheet structure (Columns A-T)
@@ -217,6 +229,9 @@ export default () => {
                     'approvedBy'
                 ]}
                 dataLoading={loading}
+                infiniteScroll={true}
+                onLoadMore={() => fetchPOMaster(false)}
+                hasMore={hasMore}
                 className="h-[80dvh]"
             />
         </div>
