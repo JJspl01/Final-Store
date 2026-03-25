@@ -245,15 +245,15 @@ const routes: RouteAttributes[] = [
         notifications: ({ indentSheet }) =>
             indentSheet.filter((sheet) => (sheet.planned5 && sheet.planned5 !== '') && (!sheet.actual5 || sheet.actual5 === '')).length,
     },
-    {
-        path: 'get-purchase',
-        gateKey: 'getPurchase',
-        name: 'Get Purchase',
-        icon: <Package2 size={20} />,
-        element: <GetPurchase />,
-        notifications: ({ indentSheet }) =>
-            indentSheet.filter((sheet) => (sheet.planned7 && sheet.planned7 !== '') && (!sheet.actual7 || sheet.actual7 === '')).length,
-    },
+    // {
+    //     path: 'get-purchase',
+    //     gateKey: 'getPurchase',
+    //     name: 'Get Purchase',
+    //     icon: <Package2 size={20} />,
+    //     element: <GetPurchase />,
+    //     notifications: ({ indentSheet }) =>
+    //         indentSheet.filter((sheet) => (sheet.planned7 && sheet.planned7 !== '') && (!sheet.actual7 || sheet.actual7 === '')).length,
+    // },
     {
         path: 'store-out-approval',
         gateKey: 'storeOutApprovalView',

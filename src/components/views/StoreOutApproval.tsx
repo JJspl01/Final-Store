@@ -32,6 +32,8 @@ import { DownloadOutlined } from "@ant-design/icons";
 import * as XLSX from 'xlsx';
 import { EditOutlined, SaveOutlined } from "@ant-design/icons";
 import { supabase } from '@/lib/supabaseClient';
+import { IndentForm } from './CreateIndent';
+import { PlusOutlined } from "@ant-design/icons";
 
 interface StoreOutTableData {
     indentNo: string;
@@ -63,6 +65,7 @@ export default () => {
     const { user } = useAuth();
     const { updateIndentSheet } = useSheets();
     const [openDialog, setOpenDialog] = useState(false);
+    const [openCreateDialog, setOpenCreateDialog] = useState(false);
     const [tableData, setTableData] = useState<StoreOutTableData[]>([]);
     const [historyData, setHistoryData] = useState<HistoryData[]>([]);
     const [selectedIndent, setSelectedIndent] = useState<StoreOutTableData | null>(null);
@@ -496,7 +499,8 @@ export default () => {
 
 
     return (
-        <Dialog open={openDialog} onOpenChange={setOpenDialog}>
+        <div className="space-y-4">
+            <Dialog open={openDialog} onOpenChange={setOpenDialog}>
             <Tabs defaultValue="pending">
                 <Heading heading="Store Out Approval" subtext="Approve store out requests" tabs>
                     <PackageCheck size={50} className="text-primary" />
@@ -508,24 +512,33 @@ export default () => {
                         searchFields={['indentNo', 'product', 'department', 'indenter', 'date', 'areaOfUse', 'quantity', 'uom', 'specifications']}
                         dataLoading={dataLoading}
                         extraActions={
-                            <Button
-                                variant="default"
-                                onClick={onDownloadClick}
-                                style={{
-                                    background: "linear-gradient(90deg, #4CAF50, #2E7D32)",
-                                    border: "none",
-                                    borderRadius: "8px",
-                                    padding: "0 16px",
-                                    fontWeight: "bold",
-                                    boxShadow: "0 4px 8px rgba(0,0,0,0.15)",
-                                    display: "flex",
-                                    alignItems: "center",
-                                    gap: "8px",
-                                }}
-                            >
-                                <DownloadOutlined />
-                                {loading ? "Downloading..." : "Download"}
-                            </Button>
+                            <div className="flex gap-2">
+                                <Button
+                                    variant="outline"
+                                    onClick={() => setOpenCreateDialog(true)}
+                                    className="flex items-center gap-2 font-bold"
+                                >
+                                    <PlusOutlined /> Create Store Out
+                                </Button>
+                                <Button
+                                    variant="default"
+                                    onClick={onDownloadClick}
+                                    style={{
+                                        background: "linear-gradient(90deg, #4CAF50, #2E7D32)",
+                                        border: "none",
+                                        borderRadius: "8px",
+                                        padding: "0 16px",
+                                        fontWeight: "bold",
+                                        boxShadow: "0 4px 8px rgba(0,0,0,0.15)",
+                                        display: "flex",
+                                        alignItems: "center",
+                                        gap: "8px",
+                                    }}
+                                >
+                                    <DownloadOutlined />
+                                    {loading ? "Downloading..." : "Download"}
+                                </Button>
+                            </div>
                         }
                     />
                 </TabsContent>
@@ -709,5 +722,22 @@ export default () => {
                 </DialogContent>
             )}
         </Dialog>
+        <Dialog open={openCreateDialog} onOpenChange={setOpenCreateDialog}>
+            <DialogContent className="w-full max-w-[95vw] sm:max-w-7xl max-h-[95vh] overflow-y-auto p-0">
+                <div className="p-6">
+                    <DialogHeader>
+                        <DialogTitle>Create Store Out Indent</DialogTitle>
+                    </DialogHeader>
+                    <IndentForm 
+                        defaultIndentType="Store Out" 
+                        onSuccess={() => {
+                            setOpenCreateDialog(false);
+                            fetchData();
+                        }} 
+                    />
+                </div>
+            </DialogContent>
+        </Dialog>
+    </div>
     );
 };

@@ -1,4 +1,3 @@
-
 import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useForm, useFieldArray } from 'react-hook-form';
@@ -82,14 +81,23 @@ const AddMasterDataSection = ({
                 }}
                 className="h-8 w-8"
             >
-                {isAdding ? <Loader size={12} color="currentColor" /> : <Plus className="h-4 w-4" />}
+                {isAdding ? (
+                    <Loader size={12} color="currentColor" />
+                ) : (
+                    <Plus className="h-4 w-4" />
+                )}
             </Button>
         </div>
     );
 };
 
-
-export default () => {
+export const IndentForm = ({
+    defaultIndentType = 'Purchase',
+    onSuccess,
+}: {
+    defaultIndentType?: 'Purchase' | 'Store Out';
+    onSuccess?: () => void;
+}) => {
     const { indentSheet: sheet, updateIndentSheet } = useSheets();
     const [indentSheet, setIndentSheet] = useState<IndentSheet[]>([]);
     const [master, setMaster] = useState<any>(null);
@@ -135,7 +143,7 @@ export default () => {
         defaultValues: {
             indenterName: '',
             indentApproveBy: '',
-            indentType: '' as any, // Change from undefined to ''
+            indentType: defaultIndentType as any,
             products: [
                 {
                     attachment: undefined,
@@ -156,6 +164,8 @@ export default () => {
         control: form.control,
         name: 'products',
     });
+
+
 
     // Function to generate next indent number
     // Function to generate next indent number from Supabase
@@ -193,10 +203,14 @@ export default () => {
     };
 
     // Function to submit new product to Supabase master table
-    const handleAddMasterData = async (columnName: string, value: string, additionalData: any = {}) => {
+    const handleAddMasterData = async (
+        columnName: string,
+        value: string,
+        additionalData: any = {}
+    ) => {
         const { error } = await supabase.from('master').insert({
             [columnName]: value,
-            ...additionalData
+            ...additionalData,
         });
 
         if (error) throw error;
@@ -241,7 +255,7 @@ export default () => {
                     uom: product.uom,
                     specifications: product.specifications || '',
                     indent_approved_by: data.indentApproveBy,
-                    indent_type: data.indentType,
+                    indent_type: defaultIndentType,
                 };
 
                 if (product.attachment !== undefined) {
@@ -265,11 +279,12 @@ export default () => {
 
             toast.success('Indent created successfully');
             updateIndentSheet(); // Update context for sidebars
+            if (onSuccess) onSuccess();
 
             form.reset({
                 indenterName: '',
                 indentApproveBy: '',
-                indentType: '' as any,
+                indentType: defaultIndentType as any,
                 products: [
                     {
                         attachment: undefined,
@@ -283,7 +298,6 @@ export default () => {
                     },
                 ],
             });
-
         } catch (_) {
             toast.error('Error while creating indent! Please try again');
         }
@@ -318,29 +332,7 @@ export default () => {
                             )}
                         />
 
-                        <FormField
-                            control={form.control}
-                            name="indentType"
-                            render={({ field }) => (
-                                <FormItem>
-                                    <FormLabel>
-                                        Indent Type
-                                        <span className="text-destructive">*</span>
-                                    </FormLabel>
-                                    <Select onValueChange={field.onChange} value={field.value}>
-                                        <FormControl>
-                                            <SelectTrigger className="w-full">
-                                                <SelectValue placeholder="Select type" />
-                                            </SelectTrigger>
-                                        </FormControl>
-                                        <SelectContent>
-                                            <SelectItem value="Purchase">Purchase</SelectItem>
-                                            <SelectItem value="Store Out">Store Out</SelectItem>
-                                        </SelectContent>
-                                    </Select>
-                                </FormItem>
-                            )}
-                        />
+
 
                         <FormField
                             control={form.control}
@@ -384,7 +376,6 @@ export default () => {
                         </div>
 
                         {fields.map((field, index) => {
-
                             const createGroupHead = products[index]?.createGroupHead;
 
                             // Get products from the corrected master data structure
@@ -435,13 +426,22 @@ export default () => {
                                                                 <AddMasterDataSection
                                                                     placeholder="Department"
                                                                     onAdd={async (val) => {
-                                                                        await handleAddMasterData('department', val, {
-                                                                            item_name: '-', // Satisfy not-null constraint
-                                                                            create_group_head: '-', // Optional placeholder
-                                                                            group_head: '-', // Optional placeholder
-                                                                            inventory_status: 'Show' // Satisfy not-null constraint
-                                                                        });
-                                                                        form.setValue(`products.${index}.department`, val);
+                                                                        await handleAddMasterData(
+                                                                            'department',
+                                                                            val,
+                                                                            {
+                                                                                item_name: '-', // Satisfy not-null constraint
+                                                                                create_group_head:
+                                                                                    '-', // Optional placeholder
+                                                                                group_head: '-', // Optional placeholder
+                                                                                inventory_status:
+                                                                                    'Show', // Satisfy not-null constraint
+                                                                            }
+                                                                        );
+                                                                        form.setValue(
+                                                                            `products.${index}.department`,
+                                                                            val
+                                                                        );
                                                                     }}
                                                                 />
                                                                 <div className="flex items-center border-b px-3 pb-3">
@@ -469,14 +469,19 @@ export default () => {
                                                                                     searchTerm.toLowerCase()
                                                                                 )
                                                                         )
-                                                                        .map((dep: string, i: number) => (
-                                                                            <SelectItem
-                                                                                key={i}
-                                                                                value={dep}
-                                                                            >
-                                                                                {dep}
-                                                                            </SelectItem>
-                                                                        ))}
+                                                                        .map(
+                                                                            (
+                                                                                dep: string,
+                                                                                i: number
+                                                                            ) => (
+                                                                                <SelectItem
+                                                                                    key={i}
+                                                                                    value={dep}
+                                                                                >
+                                                                                    {dep}
+                                                                                </SelectItem>
+                                                                            )
+                                                                        )}
                                                                 </div>
                                                             </SelectContent>
                                                         </Select>
@@ -489,7 +494,7 @@ export default () => {
                                                 render={({ field }) => (
                                                     <FormItem>
                                                         <FormLabel>
-                                                           Group Head
+                                                            Group Head
                                                             <span className="text-destructive">
                                                                 *
                                                             </span>
@@ -507,12 +512,20 @@ export default () => {
                                                                 <AddMasterDataSection
                                                                     placeholder="Category"
                                                                     onAdd={async (val) => {
-                                                                        await handleAddMasterData('create_group_head', val, {
-                                                                            group_head: val, // Keep both in sync
-                                                                            item_name: '-', // Satisfy not-null constraint
-                                                                            inventory_status: 'Show' // Satisfy not-null constraint
-                                                                        });
-                                                                        form.setValue(`products.${index}.createGroupHead`, val);
+                                                                        await handleAddMasterData(
+                                                                            'create_group_head',
+                                                                            val,
+                                                                            {
+                                                                                group_head: val, // Keep both in sync
+                                                                                item_name: '-', // Satisfy not-null constraint
+                                                                                inventory_status:
+                                                                                    'Show', // Satisfy not-null constraint
+                                                                            }
+                                                                        );
+                                                                        form.setValue(
+                                                                            `products.${index}.createGroupHead`,
+                                                                            val
+                                                                        );
                                                                     }}
                                                                 />
                                                                 <div className="flex items-center border-b px-3 pb-3">
@@ -540,14 +553,19 @@ export default () => {
                                                                                     searchTermGroupHead.toLowerCase()
                                                                                 )
                                                                         )
-                                                                        .map((gh: string, i: number) => (
-                                                                            <SelectItem
-                                                                                key={i}
-                                                                                value={gh}
-                                                                            >
-                                                                                {gh}
-                                                                            </SelectItem>
-                                                                        ))}
+                                                                        .map(
+                                                                            (
+                                                                                gh: string,
+                                                                                i: number
+                                                                            ) => (
+                                                                                <SelectItem
+                                                                                    key={i}
+                                                                                    value={gh}
+                                                                                >
+                                                                                    {gh}
+                                                                                </SelectItem>
+                                                                            )
+                                                                        )}
                                                                 </div>
                                                             </SelectContent>
                                                         </Select>
@@ -600,15 +618,27 @@ export default () => {
                                                                     placeholder="Product"
                                                                     onAdd={async (val) => {
                                                                         if (!createGroupHead) {
-                                                                            toast.error('Please select a category first');
+                                                                            toast.error(
+                                                                                'Please select a category first'
+                                                                            );
                                                                             return;
                                                                         }
-                                                                        await handleAddMasterData('item_name', val, {
-                                                                            create_group_head: createGroupHead,
-                                                                            group_head: createGroupHead, // Satisfy not-null constraint
-                                                                            inventory_status: 'Show' // Satisfy not-null constraint
-                                                                        });
-                                                                        form.setValue(`products.${index}.productName`, val);
+                                                                        await handleAddMasterData(
+                                                                            'item_name',
+                                                                            val,
+                                                                            {
+                                                                                create_group_head:
+                                                                                    createGroupHead,
+                                                                                group_head:
+                                                                                    createGroupHead, // Satisfy not-null constraint
+                                                                                inventory_status:
+                                                                                    'Show', // Satisfy not-null constraint
+                                                                            }
+                                                                        );
+                                                                        form.setValue(
+                                                                            `products.${index}.productName`,
+                                                                            val
+                                                                        );
                                                                     }}
                                                                 />
                                                                 <div className="flex items-center border-b px-3 pb-3">
@@ -639,14 +669,19 @@ export default () => {
                                                                                     searchTermProductName.toLowerCase()
                                                                                 )
                                                                         )
-                                                                        .map((dep: string, i: number) => (
-                                                                            <SelectItem
-                                                                                key={i}
-                                                                                value={dep}
-                                                                            >
-                                                                                {dep}
-                                                                            </SelectItem>
-                                                                        ))}
+                                                                        .map(
+                                                                            (
+                                                                                dep: string,
+                                                                                i: number
+                                                                            ) => (
+                                                                                <SelectItem
+                                                                                    key={i}
+                                                                                    value={dep}
+                                                                                >
+                                                                                    {dep}
+                                                                                </SelectItem>
+                                                                            )
+                                                                        )}
                                                                 </div>
                                                             </SelectContent>
                                                         </Select>
@@ -751,7 +786,7 @@ export default () => {
             </Form>
         </div>
     );
-};;
+};
 async function fetchIndentData() {
     // This function should update the indent sheet context
     // Since we don't have access to the updateIndentSheet function here,
@@ -759,3 +794,8 @@ async function fetchIndentData() {
     // The updateIndentSheet function is called directly from the context
 }
 
+export default () => {
+    return (
+        <IndentForm defaultIndentType="Purchase" />
+    );
+};
