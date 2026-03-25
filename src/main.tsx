@@ -10,6 +10,7 @@ import CreateIndent from './components/views/CreateIndent';
 import Dashboard from './components/views/Dashboard';
 import App from './App';
 import ApproveIndent from '@/components/views/ApproveIndent';
+import { SidebarProvider } from '@/components/ui/sidebar';
 import { SheetsProvider } from './context/SheetsContext';
 import VendorUpdate from './components/views/VendorUpdate';
 import RateApproval from './components/views/RateApproval';
@@ -21,6 +22,7 @@ import License from './components/views/License';
 import AllIndent from './components/views/AllIndent';
 import Quotation from './components/views/Quotation';
 import MasterData from './components/views/MasterData';
+import PublicStoreOut from './components/views/PublicStoreOut';
 import type { RouteAttributes } from './types';
 
 import {
@@ -314,6 +316,16 @@ createRoot(document.getElementById('root')!).render(
             <BrowserRouter>
                 <Routes>
                     <Route path="/login" element={<Login />} />
+                    <Route 
+                        path="/public-store-out" 
+                        element={
+                            <SidebarProvider>
+                                <SheetsProvider>
+                                    <PublicStoreOut />
+                                </SheetsProvider>
+                            </SidebarProvider>
+                        } 
+                    />
                     <Route
                         path="/"
                         element={

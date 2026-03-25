@@ -22,7 +22,7 @@ import { Input } from '../ui/input';
 import { PuffLoader as Loader } from 'react-spinners';
 import { Textarea } from '../ui/textarea';
 import { toast } from 'sonner';
-import { PackageCheck } from 'lucide-react';
+import { PackageCheck, QrCode, Copy } from 'lucide-react';
 import { Tabs, TabsContent } from '../ui/tabs';
 import { useAuth } from '@/context/AuthContext';
 import Heading from '../element/Heading';
@@ -66,6 +66,7 @@ export default () => {
     const { updateIndentSheet } = useSheets();
     const [openDialog, setOpenDialog] = useState(false);
     const [openCreateDialog, setOpenCreateDialog] = useState(false);
+    const [openQrDialog, setOpenQrDialog] = useState(false);
     const [tableData, setTableData] = useState<StoreOutTableData[]>([]);
     const [historyData, setHistoryData] = useState<HistoryData[]>([]);
     const [selectedIndent, setSelectedIndent] = useState<StoreOutTableData | null>(null);
@@ -538,6 +539,13 @@ export default () => {
                                     <DownloadOutlined />
                                     {loading ? "Downloading..." : "Download"}
                                 </Button>
+                                <Button
+                                    variant="outline"
+                                    onClick={() => setOpenQrDialog(true)}
+                                    className="flex items-center gap-2 font-bold border-primary text-primary hover:bg-primary hover:text-white"
+                                >
+                                    <QrCode size={18} /> Share QR
+                                </Button>
                             </div>
                         }
                     />
@@ -736,6 +744,49 @@ export default () => {
                         }} 
                     />
                 </div>
+            </DialogContent>
+        </Dialog>
+        <Dialog open={openQrDialog} onOpenChange={setOpenQrDialog}>
+            <DialogContent className="sm:max-w-md">
+                <DialogHeader>
+                    <DialogTitle>Share Store Out Form</DialogTitle>
+                    <DialogDescription>
+                        Scan this QR code to open the Store Out indent form on any device.
+                    </DialogDescription>
+                </DialogHeader>
+                <div className="flex flex-col items-center justify-center p-6 space-y-4">
+                    <div className="bg-white p-4 rounded-xl shadow-inner border">
+                        <img 
+                            src={`https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(`${window.location.origin}/public-store-out`)}`}
+                            alt="Store Out QR Code"
+                            className="w-48 h-48 md:w-64 md:h-64"
+                        />
+                    </div>
+                    <div className="flex items-center space-x-2 w-full">
+                        <Input 
+                            readOnly 
+                            value={`${window.location.origin}/public-store-out`}
+                            className="flex-1 text-xs"
+                        />
+                        <Button 
+                            size="sm" 
+                            variant="secondary"
+                            onClick={() => {
+                                navigator.clipboard.writeText(`${window.location.origin}/public-store-out`);
+                                toast.success("Link copied to clipboard");
+                            }}
+                        >
+                            <Copy size={16} className="mr-2" /> Copy
+                        </Button>
+                    </div>
+                </div>
+                <DialogFooter className="sm:justify-center">
+                    <DialogClose asChild>
+                        <Button type="button" variant="secondary">
+                            Close
+                        </Button>
+                    </DialogClose>
+                </DialogFooter>
             </DialogContent>
         </Dialog>
     </div>
