@@ -228,7 +228,7 @@ const routes: RouteAttributes[] = [
         notifications: ({ indentSheet, receivedSheet, poMasterSheet }) => {
             // Count POs that exist in po_master but whose po_number is NOT in receivedSheet (Not Received)
             const receivedPoNums = new Set(receivedSheet.map(r => r.poNumber));
-            const uniquePoNums = new Set(poMasterSheet.map(p => p.po_number).filter(Boolean) as string[]);
+            const uniquePoNums = new Set(poMasterSheet.map((p: any) => p.po_number || p.poNumber).filter(Boolean) as string[]);
             let notReceived = 0;
             uniquePoNums.forEach(po => {
                 if (!receivedPoNums.has(po)) notReceived++;
