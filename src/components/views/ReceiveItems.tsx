@@ -18,7 +18,6 @@ import {
     DialogFooter,
     DialogHeader,
     DialogTitle,
-    DialogTrigger,
     DialogClose,
 } from '../ui/dialog';
 import { Button } from '../ui/button';
@@ -28,7 +27,7 @@ import { toast } from 'sonner';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select';
 import { Input } from '../ui/input';
 import { Truck, SquarePen, Check, X, Search } from 'lucide-react';
-import { Tabs, TabsContent } from '../ui/tabs';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '../ui/tabs';
 import { useAuth } from '@/context/AuthContext';
 import Heading from '../element/Heading';
 import { formatDate } from '@/lib/utils';
@@ -98,6 +97,7 @@ const ReceiveItems = () => {
     } = useInfiniteSupabaseQuery(['receivePending'], {
         tableName: 'indent',
         queryBuilder: (q) => q.not('planned_5', 'is', null).is('actual_5', null),
+        orderBy: { column: 'timestamp', options: { ascending: false } },
         pageSize: 10,
     });
 
@@ -110,7 +110,7 @@ const ReceiveItems = () => {
         isFetchingNextPage: isFetchingNextHistoryPage,
     } = useInfiniteSupabaseQuery(['receiveHistory'], {
         tableName: 'received',
-        queryBuilder: (q) => q.order('timestamp', { ascending: false }),
+        orderBy: { column: 'timestamp', options: { ascending: false } },
         pageSize: 10,
     });
 
@@ -354,16 +354,15 @@ const ReceiveItems = () => {
                         const indent = row.original;
 
                         return (
-                            <DialogTrigger asChild>
-                                <Button
-                                    variant="outline"
-                                    onClick={() => {
-                                        setSelectedIndent(indent);
-                                    }}
-                                >
-                                    Store In
-                                </Button>
-                            </DialogTrigger>
+                            <Button
+                                variant="outline"
+                                onClick={() => {
+                                    setSelectedIndent(indent);
+                                    setOpenDialog(true);
+                                }}
+                            >
+                                Store In
+                            </Button>
                         );
                     },
                 },
@@ -959,44 +958,52 @@ const ReceiveItems = () => {
 
     return (
         <div className="flex flex-col h-[calc(100vh-2rem)] overflow-hidden">
+            <Tabs defaultValue="pending" className="flex flex-col h-full overflow-hidden">
+                <div className="shrink-0 mb-1 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                    <Heading
+                        heading="Receive Items"
+                        subtext="Receive items from purchase orders"
+                    >
+                        <Truck size={50} className="text-primary" />
+                    </Heading>
+                    <TabsList className="grid w-full sm:w-[400px] grid-cols-2">
+                        <TabsTrigger value="pending" className="flex items-center gap-2">
+                            Pending
+                        </TabsTrigger>
+                        <TabsTrigger value="history" className="flex items-center gap-2">
+                            History
+                        </TabsTrigger>
+                    </TabsList>
+                </div>
+
+                <TabsContent value="pending" className="m-0 flex-1 flex flex-col overflow-hidden min-h-0">
+                    <DataTable
+                        data={tableData}
+                        columns={columns}
+                        searchFields={['indentNumber', 'product', 'department', 'indenter', 'vendor', 'poNumber']}
+                        dataLoading={pendingLoading}
+                        isFetchingNextPage={isFetchingNextPendingPage}
+                        infiniteScroll={true}
+                        onLoadMore={fetchNextPendingPage}
+                        hasMore={hasNextPendingPage}
+                    />
+                </TabsContent>
+
+                <TabsContent value="history" className="m-0 flex-1 flex flex-col overflow-hidden min-h-0">
+                    <DataTable
+                        data={historyData}
+                        columns={historyColumns}
+                        searchFields={['indentNumber', 'product', 'vendor', 'poNumber', 'billNumber']}
+                        dataLoading={historyLoading}
+                        isFetchingNextPage={isFetchingNextHistoryPage}
+                        infiniteScroll={true}
+                        onLoadMore={fetchNextHistoryPage}
+                        hasMore={hasNextHistoryPage}
+                    />
+                </TabsContent>
+            </Tabs>
+
             <Dialog open={openDialog} onOpenChange={setOpenDialog}>
-                <Tabs defaultValue="pending" className="flex flex-col h-full overflow-hidden">
-                    <div className="shrink-0 mb-1">
-                        <Heading
-                            heading="Receive Items"
-                            subtext="Receive items from purchase orders"
-                        >
-                            <Truck size={50} className="text-primary" />
-                        </Heading>
-                    </div>
-
-                    <TabsContent value="pending" className="m-0 flex-1 flex flex-col overflow-hidden min-h-0">
-                        <DataTable
-                            data={tableData}
-                            columns={columns}
-                            searchFields={['indentNumber', 'product', 'department', 'indenter', 'vendor', 'poNumber']}
-                            dataLoading={pendingLoading}
-                            isFetchingNextPage={isFetchingNextPendingPage}
-                            infiniteScroll={true}
-                            onLoadMore={fetchNextPendingPage}
-                            hasMore={hasNextPendingPage}
-                        />
-                    </TabsContent>
-
-                    <TabsContent value="history" className="m-0 flex-1 flex flex-col overflow-hidden min-h-0">
-                        <DataTable
-                            data={historyData}
-                            columns={historyColumns}
-                            searchFields={['indentNumber', 'product', 'vendor', 'poNumber', 'billNumber']}
-                            dataLoading={historyLoading}
-                            isFetchingNextPage={isFetchingNextHistoryPage}
-                            infiniteScroll={true}
-                            onLoadMore={fetchNextHistoryPage}
-                            hasMore={hasNextHistoryPage}
-                        />
-                    </TabsContent>
-                </Tabs>
-
                 {selectedIndent && (
                     <DialogContent className="w-full max-w-[95vw] sm:max-w-3xl lg:max-w-4xl max-h-[90vh] overflow-y-auto">
                         <Form {...form}>

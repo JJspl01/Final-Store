@@ -9,7 +9,6 @@ import {
     DialogContent,
     DialogDescription,
     DialogTitle,
-    DialogTrigger,
     DialogHeader,
     DialogFooter,
     DialogClose,
@@ -168,6 +167,7 @@ export default () => {
             }
             return query;
         },
+        orderBy: { column: 'timestamp', options: { ascending: false } },
         pageSize: 10,
     });
 
@@ -190,6 +190,7 @@ export default () => {
             }
             return query;
         },
+        orderBy: { column: 'actual_2', options: { ascending: false } },
         pageSize: 10,
     });
 
@@ -387,16 +388,15 @@ export default () => {
 
                         return (
                             <div>
-                                <DialogTrigger asChild>
-                                    <Button
-                                        variant="outline"
-                                        onClick={() => {
-                                            setSelectedIndent(indent);
-                                        }}
-                                    >
-                                        Update
-                                    </Button>
-                                </DialogTrigger>
+                                <Button
+                                    variant="outline"
+                                    onClick={() => {
+                                        setSelectedIndent(indent);
+                                        setOpenDialog(true);
+                                    }}
+                                >
+                                    Update
+                                </Button>
                             </div>
                         );
                     },
@@ -452,17 +452,16 @@ export default () => {
 
                     return (
                         <div>
-                            <DialogTrigger asChild>
-                                <Button
-                                    variant="outline"
-                                    disabled={indent.vendorType === "Three Party"}
-                                    onClick={() => {
-                                        setSelectedHistory(indent);
-                                    }}
-                                >
-                                    Update
-                                </Button>
-                            </DialogTrigger>
+                            <Button
+                                variant="outline"
+                                disabled={indent.vendorType === "Three Party"}
+                                onClick={() => {
+                                    setSelectedHistory(indent);
+                                    setOpenDialog(true);
+                                }}
+                            >
+                                Update
+                            </Button>
                         </div>
                     );
                 },

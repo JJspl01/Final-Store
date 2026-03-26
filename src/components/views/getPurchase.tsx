@@ -11,7 +11,6 @@ import {
     DialogContent,
     DialogDescription,
     DialogTitle,
-    DialogTrigger,
     DialogHeader,
     DialogFooter,
     DialogClose,
@@ -143,7 +142,8 @@ export default () => {
         isFetchingNextPage: isFetchingNextPendingPage,
     } = useInfiniteSupabaseQuery(['purchasePending'], {
         tableName: 'indent',
-        queryBuilder: (q) => q.not('planned_7', 'is', null).is('actual_7', null).order('planned_7', { ascending: false }),
+        queryBuilder: (q) => q.not('planned_7', 'is', null).is('actual_7', null),
+        orderBy: { column: 'planned_7', options: { ascending: false } },
         pageSize: 10,
     });
 
@@ -156,7 +156,8 @@ export default () => {
         isFetchingNextPage: isFetchingNextHistoryPage,
     } = useInfiniteSupabaseQuery(['purchaseHistory'], {
         tableName: 'received',
-        queryBuilder: (q) => q.not('bill_number', 'is', null).order('timestamp', { ascending: false }),
+        queryBuilder: (q) => q.not('bill_number', 'is', null),
+        orderBy: { column: 'timestamp', options: { ascending: false } },
         pageSize: 10,
     });
 
@@ -460,16 +461,15 @@ export default () => {
 
                         return (
                             <div>
-                                <DialogTrigger asChild>
-                                    <Button
-                                        variant="outline"
-                                        onClick={() => {
-                                            setSelectedIndent(indent);
-                                        }}
-                                    >
-                                        Update
-                                    </Button>
-                                </DialogTrigger>
+                                <Button
+                                    variant="outline"
+                                    onClick={() => {
+                                        setSelectedIndent(indent);
+                                        setOpenDialog(true);
+                                    }}
+                                >
+                                    Update
+                                </Button>
                             </div>
                         );
                     },

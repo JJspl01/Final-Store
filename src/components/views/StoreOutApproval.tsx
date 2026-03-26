@@ -97,6 +97,7 @@ export default () => {
     } = useInfiniteSupabaseQuery(['storeOutPending'], {
         tableName: 'indent',
         queryBuilder: (q) => q.eq('indent_type', 'Store Out').not('planned_6', 'is', null).is('actual_6', null),
+        orderBy: { column: 'timestamp', options: { ascending: false } },
         pageSize: 10,
     });
 
@@ -110,6 +111,7 @@ export default () => {
     } = useInfiniteSupabaseQuery(['storeOutHistory'], {
         tableName: 'indent',
         queryBuilder: (q) => q.eq('indent_type', 'Store Out').not('planned_6', 'is', null).not('actual_6', 'is', null),
+        orderBy: { column: 'timestamp', options: { ascending: false } },
         pageSize: 10,
     });
 

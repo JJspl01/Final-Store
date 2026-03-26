@@ -7,7 +7,6 @@ import {
     DialogFooter,
     DialogHeader,
     DialogTitle,
-    DialogTrigger,
 } from '../ui/dialog';
 import { useEffect, useState, useMemo } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
@@ -126,16 +125,15 @@ export default () => {
 
                         return (
                             <div>
-                                <DialogTrigger asChild>
-                                    <Button
-                                        variant="outline"
-                                        onClick={() => {
-                                            setSelectedIndent(indent);
-                                        }}
-                                    >
-                                        Approve
-                                    </Button>
-                                </DialogTrigger>
+                                <Button
+                                    variant="outline"
+                                    onClick={() => {
+                                        setSelectedIndent(indent);
+                                        setOpenDialog(true);
+                                    }}
+                                >
+                                    Approve
+                                </Button>
                             </div>
                         );
                     },
@@ -190,16 +188,15 @@ export default () => {
 
                     return (
                         <div>
-                            <DialogTrigger asChild>
-                                <Button
-                                    variant="outline"
-                                    onClick={() => {
-                                        setSelectedHistory(indent);
-                                    }}
-                                >
-                                    Update
-                                </Button>
-                            </DialogTrigger>
+                            <Button
+                                variant="outline"
+                                onClick={() => {
+                                    setSelectedHistory(indent);
+                                    setOpenDialog(true);
+                                }}
+                            >
+                                Update
+                            </Button>
                         </div>
                     );
                 },
