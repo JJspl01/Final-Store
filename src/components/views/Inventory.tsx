@@ -1,12 +1,10 @@
-import { useEffect, useState } from 'react';
+import { useMemo } from 'react';
 import type { ColumnDef } from '@tanstack/react-table';
 import { Pill } from '../ui/pill';
 import { Store } from 'lucide-react';
 import DataTable from '../element/DataTable';
 import Heading from '../element/Heading';
-
-import { fetchFromSupabaseWithCount } from '@/lib/fetchers';
-import { supabase } from '@/lib/supabaseClient';
+import { useInfiniteSupabaseQuery } from '@/hooks/useInfiniteSupabaseQuery';
 
 interface InventoryTable {
     itemName: string;
@@ -24,66 +22,37 @@ interface InventoryTable {
 }
 
 export default () => {
-    const [tableData, setTableData] = useState<InventoryTable[]>([]);
-    const [loading, setLoading] = useState(true);
-    const [pageIndex, setPageIndex] = useState(0);
-    const [pageSize] = useState(20);
-    const [totalCount, setTotalCount] = useState(0);
-    const [hasMore, setHasMore] = useState(true);
+    // Data Query
+    const {
+        data: inventoryDataRaw,
+        fetchNextPage,
+        hasNextPage,
+        isLoading: dataLoading,
+        isFetchingNextPage,
+    } = useInfiniteSupabaseQuery(['inventory'], {
+        tableName: 'inventory_view',
+        queryBuilder: (q) => q.order('item_name', { ascending: true }),
+        pageSize: 20,
+    });
 
-    const fetchInventory = async (isInitial = false) => {
-        setLoading(true);
-        try {
-            const currentPage = isInitial ? 0 : pageIndex;
-            const from = currentPage * pageSize;
-            const to = (currentPage + 1) * pageSize - 1;
-
-            const { data, count } = await fetchFromSupabaseWithCount(
-                'inventory_view', // Using the view for consolidated stats
-                '*',
-                { from, to },
-                { column: 'item_name', options: { ascending: true } }
-            );
-
-            if (data) {
-                const mappedData = (data as any[]).map((i) => ({
-                    totalPrice: i.totalPrice || 0,
-                    approvedIndents: i.approved || 0,
-                    uom: i.uom || '',
-                    rate: i.individualRate || 0,
-                    current: i.current || 0,
-                    status: i.colorCode || '',
-                    indented: i.indented || 0,
-                    opening: i.opening || 0,
-                    itemName: i.item_name || '',
-                    groupHead: i.group_head || '',
-                    purchaseQuantity: i.purchase_quantity || 0,
-                    approved: i.approved || 0,
-                    outQuantity: i.out_quantity || 0,
-                }));
-
-                if (isInitial) {
-                    setTableData(mappedData);
-                    setPageIndex(1);
-                } else {
-                    setTableData(prev => [...prev, ...mappedData]);
-                    setPageIndex(prev => prev + 1);
-                }
-
-                const total = count || 0;
-                setTotalCount(total);
-                setHasMore(tableData.length + mappedData.length < total);
-            }
-        } catch (error) {
-            console.error('Error fetching inventory:', error);
-        } finally {
-            setLoading(false);
-        }
-    };
-
-    useEffect(() => {
-        fetchInventory(true);
-    }, []);
+    const tableData = useMemo(() => {
+        if (!inventoryDataRaw) return [];
+        return inventoryDataRaw.pages.flatMap(page => page.data).map((i: any) => ({
+            totalPrice: i.totalPrice || 0,
+            approvedIndents: i.approved || 0,
+            uom: i.uom || '',
+            rate: i.individualRate || 0,
+            current: i.current || 0,
+            status: i.colorCode || '',
+            indented: i.indented || 0,
+            opening: i.opening || 0,
+            itemName: i.item_name || '',
+            groupHead: i.group_head || '',
+            purchaseQuantity: i.purchase_quantity || 0,
+            approved: i.approved || 0,
+            outQuantity: i.out_quantity || 0,
+        }));
+    }, [inventoryDataRaw]);
     const columns: ColumnDef<InventoryTable>[] = [
         {
             accessorKey: 'itemName',
@@ -145,10 +114,11 @@ export default () => {
                 data={tableData}
                 columns={columns}
                 searchFields={['itemName', 'groupHead']}
-                dataLoading={loading}
+                dataLoading={dataLoading}
+                isFetchingNextPage={isFetchingNextPage}
                 infiniteScroll={true}
-                onLoadMore={() => fetchInventory(false)}
-                hasMore={hasMore}
+                onLoadMore={fetchNextPage}
+                hasMore={hasNextPage}
             />
         </div>
     );

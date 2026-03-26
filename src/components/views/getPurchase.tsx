@@ -1,11 +1,11 @@
-
 import { useSheets } from '@/context/SheetsContext';
 import { supabase } from '@/lib/supabaseClient';
 import type { ColumnDef, Row } from '@tanstack/react-table';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo, useCallback, useRef } from 'react';
+import { useQueryClient, useQuery } from '@tanstack/react-query';
+import { useInfiniteSupabaseQuery } from '@/hooks/useInfiniteSupabaseQuery';
 import DataTable from '../element/DataTable';
 import { Button } from '../ui/button';
-import { useRef } from 'react';
 import {
     Dialog,
     DialogContent,
@@ -16,7 +16,7 @@ import {
     DialogFooter,
     DialogClose,
 } from '../ui/dialog';
-import { postToSheet, uploadFile, fetchFromSupabasePaginated, fetchFromSupabaseWithCount } from '@/lib/fetchers';
+import { postToSheet, uploadFile, fetchFromSupabasePaginated } from '@/lib/fetchers';
 import { z } from 'zod';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -32,7 +32,7 @@ import Heading from '../element/Heading';
 import { Pill } from '../ui/pill';
 import { formatDate } from '@/lib/utils';
 
-import { useCallback } from 'react';
+
 
 interface EditedData {
     product?: string;
@@ -119,239 +119,162 @@ interface EditedData {
 export default () => {
     const { indentSheet, indentLoading, updateIndentSheet } = useSheets();
     const { user } = useAuth();
-
+    const queryClient = useQueryClient();
 
     const [selectedIndent, setSelectedIndent] = useState<GetPurchaseData | null>(null);
-    const [historyData, setHistoryData] = useState<HistoryData[]>([]);
-    const [tableData, setTableData] = useState<GetPurchaseData[]>([]);
-    const [loading, setLoading] = useState(true);
     const [openDialog, setOpenDialog] = useState(false);
-    const [rateOptions, setRateOptions] = useState<string[]>([]);
     const [relatedProducts, setRelatedProducts] = useState<ProductDetail[]>([]);
     const [productRates, setProductRates] = useState<{ [indentNo: string]: number }>({});
     const [productQty, setProductQty] = useState<{ [indentNo: string]: number }>({});
-    const [editingRow, setEditingRow] = useState<string | null>(null);
-    const [editedData, setEditedData] = useState<{ [indentNo: string]: EditedData }>({});
     const [editingCell, setEditingCell] = useState<{ rowId: string; field: 'product' | 'billedQty' | 'billAmount' } | null>(null);
     const [editCellValue, setEditCellValue] = useState<string | number>('');
     const [masterItems, setMasterItems] = useState<string[]>([]);
     const [productSearch, setProductSearch] = useState('');
-
-
-
-
-    // Pending Tab Pagination
-    const [pendingPageIndex, setPendingPageIndex] = useState(0);
-    const [pendingPageSize] = useState(10);
-    const [pendingTotalCount, setPendingTotalCount] = useState(0);
-    const [hasMorePending, setHasMorePending] = useState(true);
-
-    // History Tab Pagination
-    const [historyPageIndex, setHistoryPageIndex] = useState(0);
-    const [historyPageSize] = useState(10);
-    const [historyTotalCount, setHistoryTotalCount] = useState(0);
-    const [hasMoreHistory, setHasMoreHistory] = useState(true);
-
     const inputRefs = useRef<{ [key: string]: HTMLInputElement | null }>({});
+
+    // ─── Queries ───
+    
+    // 1. Pending Bills Query
+    const {
+        data: pendingBillsDataRaw,
+        fetchNextPage: fetchNextPagePending,
+        hasNextPage: hasNextPagePending,
+        isLoading: pendingLoading,
+        isFetchingNextPage: isFetchingNextPendingPage,
+    } = useInfiniteSupabaseQuery(['purchasePending'], {
+        tableName: 'indent',
+        queryBuilder: (q) => q.not('planned_7', 'is', null).is('actual_7', null).order('planned_7', { ascending: false }),
+        pageSize: 10,
+    });
+
+    // 2. History Bills Query
+    const {
+        data: historyBillsDataRaw,
+        fetchNextPage: fetchNextPageHistory,
+        hasNextPage: hasNextPageHistory,
+        isLoading: historyLoading,
+        isFetchingNextPage: isFetchingNextHistoryPage,
+    } = useInfiniteSupabaseQuery(['purchaseHistory'], {
+        tableName: 'received',
+        queryBuilder: (q) => q.not('bill_number', 'is', null).order('timestamp', { ascending: false }),
+        pageSize: 10,
+    });
+
+    // 3. Batch Fetch Received Stats for Pending Tab
+    const pendingIndentNumbers = useMemo(() => {
+        if (!pendingBillsDataRaw) return [];
+        return pendingBillsDataRaw.pages.flatMap(p => p.data.map((i: any) => i.indent_number)).filter(Boolean);
+    }, [pendingBillsDataRaw]);
+
+    const { data: receivedStats } = useQuery({
+        queryKey: ['receivedStatsForPurchase', pendingIndentNumbers],
+        queryFn: async () => {
+            if (pendingIndentNumbers.length === 0) return [];
+            const { data } = await supabase
+                .from('received')
+                .select('indent_number, received_quantity, bill_number')
+                .in('indent_number', pendingIndentNumbers);
+            return data || [];
+        },
+        enabled: pendingIndentNumbers.length > 0,
+    });
+
+    // 4. Batch Fetch Indents for History Tab
+    const historyIndentNumbers = useMemo(() => {
+        if (!historyBillsDataRaw) return [];
+        return historyBillsDataRaw.pages.flatMap(p => p.data.map((r: any) => r.indent_number)).filter(Boolean);
+    }, [historyBillsDataRaw]);
+
+    const { data: historyIndentDetails } = useQuery({
+        queryKey: ['indentDetailsForPurchaseHistory', historyIndentNumbers],
+        queryFn: async () => {
+            if (historyIndentNumbers.length === 0) return [];
+            const { data } = await supabase
+                .from('indent')
+                .select('indent_number, product_name, department, indenter_name, approved_quantity, uom')
+                .in('indent_number', historyIndentNumbers);
+            return data || [];
+        },
+        enabled: historyIndentNumbers.length > 0,
+    });
+
+    // ─── Mappings ───
+
+    const tableData = useMemo(() => {
+        if (!pendingBillsDataRaw) return [];
+        
+        const seenPoNumbers = new Set();
+        const firstIteration = (pendingBillsDataRaw.pages.flatMap(p => p.data) as any[]);
+
+        return firstIteration
+            .filter((sheet: any) => {
+                if (seenPoNumbers.has(sheet.po_number)) return false;
+                seenPoNumbers.add(sheet.po_number);
+                return true;
+            })
+            .map((sheet: any) => {
+                const poIndents = firstIteration.filter(i => i.po_number === sheet.po_number);
+                
+                const getStats = (indentNo: string) => {
+                    const indentReceipts = receivedStats?.filter((r: any) => r.indent_number === indentNo) || [];
+                    const totalReceived = indentReceipts.reduce((sum, r) => sum + (Number(r.received_quantity) || 0), 0);
+                    const totalBilled = indentReceipts
+                        .filter((r: any) => r.bill_number)
+                        .reduce((sum, r) => sum + (Number(r.received_quantity) || 0), 0);
+                    const remainingToBill = Math.max(0, totalReceived - totalBilled);
+                    return { totalReceived, totalBilled, remainingToBill };
+                };
+
+                const hasPending = poIndents.some(i => getStats(i.indent_number).remainingToBill > 0);
+                if (!hasPending) return null;
+
+                const stats = getStats(sheet.indent_number);
+
+                return {
+                    indentNo: sheet.indent_number || '',
+                    indenter: sheet.indenter_name || '',
+                    department: sheet.department || '',
+                    product: sheet.product_name || '',
+                    quantity: Number(sheet.approved_quantity) || 0,
+                    uom: sheet.uom || '',
+                    poNumber: sheet.po_number || '',
+                    approvedRate: Number(sheet.approved_rate) || 0,
+                    receivedQty: stats.totalReceived,
+                    billedQty: stats.totalBilled,
+                    remainingQty: stats.remainingToBill
+                } as GetPurchaseData;
+            })
+            .filter((item): item is GetPurchaseData => item !== null);
+    }, [pendingBillsDataRaw, receivedStats]);
+
+    const historyData = useMemo(() => {
+        if (!historyBillsDataRaw) return [];
+        return (historyBillsDataRaw.pages.flatMap(p => p.data) as any[])
+            .map((r: any) => {
+                const indent = historyIndentDetails?.find((i: any) => i.indent_number === r.indent_number);
+                return {
+                    indentNo: r.indent_number,
+                    indenter: indent?.indenter_name || '',
+                    department: indent?.department || '',
+                    product: indent?.product_name || '',
+                    quantity: Number(indent?.approved_quantity) || 0,
+                    billedQty: Number(r.received_quantity) || 0,
+                    uom: r.uom || indent?.uom || '',
+                    poNumber: r.po_number,
+                    billStatus: r.bill_status || 'Submitted',
+                    date: r.timestamp ? formatDate(new Date(r.timestamp)) : '',
+                    billNumber: r.bill_number,
+                    billAmount: Number(r.bill_amount) || 0,
+                    photoOfBill: r.photo_of_bill || '',
+                } as HistoryData;
+            });
+    }, [historyBillsDataRaw, historyIndentDetails]);
 
 
     // const [editedData, setEditedData] = useState<{ product?: string; quantity?: number; uom?: string }>({});
     // const [editedData, setEditedData] = useState<{ [indentNo: string]: { product?: string; quantity?: number; uom?: string; qty?: number; billNumber?: string; leadTime?: string; typeOfBill?: string; billAmount?: number; discountAmount?: number; paymentType?: string; advanceAmount?: number; rate?: number; photoOfBill?: string } }>({});
     // Fetching table data - updated
     // Fetching table data from Supabase
-    const fetchTableData = async (isInitial = false) => {
-        try {
-            setLoading(true);
-            const currentPage = isInitial ? 0 : pendingPageIndex;
-            const from = currentPage * pendingPageSize;
-            const to = (currentPage + 1) * pendingPageSize - 1;
-
-            const { data: indentData, count } = await fetchFromSupabaseWithCount(
-                'indent',
-                '*',
-                { from, to },
-                { column: 'planned_7', options: { ascending: false } },
-                (q) => q.not('planned_7', 'is', null).is('actual_7', null)
-            );
-
-            const indentNumbers = (indentData as any[])?.map(i => i.indent_number).filter(Boolean) || [];
-            
-            let receivedData: any[] = [];
-            if (indentNumbers.length > 0) {
-                const { data: rData } = await supabase
-                    .from('received')
-                    .select('indent_number, received_quantity, bill_number')
-                    .in('indent_number', indentNumbers);
-                receivedData = rData || [];
-            }
-
-            if (indentData) {
-                const seenPoNumbers = new Set();
-
-                // Pre-calculate stats for all indents
-                const indentStats = new Map();
-                (indentData as any[]).forEach((sheet) => {
-                    const indentReceipts = receivedData?.filter(r => r.indent_number === sheet.indent_number) || [];
-                    const totalReceived = indentReceipts.reduce((sum, r) => sum + (Number(r.received_quantity) || 0), 0);
-                    const totalBilled = indentReceipts
-                        .filter(r => r.bill_number)
-                        .reduce((sum, r) => sum + (Number(r.received_quantity) || 0), 0);
-                    const remainingToBill = Math.max(0, totalReceived - totalBilled);
-
-                    indentStats.set(sheet.indent_number, {
-                        totalReceived,
-                        totalBilled,
-                        remainingToBill
-                    });
-                });
-
-                const uniqueBatch = (indentData as any[])
-                    .filter((sheet) => {
-                        // Skip if we've already processed this PO in THIS page's batch
-                        if (seenPoNumbers.has(sheet.po_number)) return false;
-                        seenPoNumbers.add(sheet.po_number);
-                        return true;
-                    })
-                    .map((sheet) => {
-                        const poIndents = (indentData as any[]).filter(i => i.po_number === sheet.po_number);
-                        const hasPending = poIndents.some(i => {
-                            const stats = indentStats.get(i.indent_number);
-                            return stats && stats.remainingToBill > 0;
-                        });
-
-                        // Only show this PO if it has at least one pending item
-                        if (!hasPending) return null;
-
-                        const stats = indentStats.get(sheet.indent_number) || {
-                            totalReceived: 0,
-                            totalBilled: 0,
-                            remainingToBill: 0
-                        };
-
-                        return {
-                            indentNo: sheet.indent_number || '',
-                            indenter: sheet.indenter_name || '',
-                            department: sheet.department || '',
-                            product: sheet.product_name || '',
-                            quantity: Number(sheet.approved_quantity) || 0, // Ordered Qty
-                            uom: sheet.uom || '',
-                            poNumber: sheet.po_number || '',
-                            approvedRate: Number(sheet.approved_rate) || 0,
-                            receivedQty: stats.totalReceived,    // NEW
-                            billedQty: stats.totalBilled,        // NEW
-                            remainingQty: stats.remainingToBill  // NEW (Available for billing)
-                        } as GetPurchaseData;
-                    })
-                    .filter((item): item is GetPurchaseData => item !== null);
-
-                if (isInitial) {
-                    setTableData(uniqueBatch);
-                    setPendingPageIndex(1);
-                } else {
-                    setTableData(prev => [...prev, ...uniqueBatch]);
-                    setPendingPageIndex(prev => prev + 1);
-                }
-
-                const total = count || 0;
-                setPendingTotalCount(total);
-                setHasMorePending((isInitial ? uniqueBatch.length : tableData.length + uniqueBatch.length) < total);
-            }
-        } catch (error) {
-            console.error('Error fetching data from Supabase:', error);
-        } finally {
-            setLoading(false);
-        }
-    };
-
-    useEffect(() => {
-        fetchTableData(true);
-    }, []);
-
-    // History data - Fetch from RECEIVED table where bill_number is present
-    const fetchHistoryData = async (isInitial = false) => {
-        try {
-            setLoading(true);
-            const currentPage = isInitial ? 0 : historyPageIndex;
-            const from = currentPage * historyPageSize;
-            const to = (currentPage + 1) * historyPageSize - 1;
-
-            // 1. Fetch Received items that have a bill (Bill History)
-            const { data: receivedData, count } = await fetchFromSupabaseWithCount(
-                'received',
-                '*',
-                { from, to },
-                { column: 'timestamp', options: { ascending: false } },
-                (q) => q.not('bill_number', 'is', null)
-            );
-
-            if (!receivedData || receivedData.length === 0) {
-                if (isInitial) setHistoryData([]);
-                setHistoryTotalCount(0);
-                setHasMoreHistory(false);
-                return;
-            }
-
-                // 2. Fetch Indent details for product names etc.
-                const indentNumbers = (receivedData as any[]).map(r => r.indent_number).filter(Boolean);
-
-                if (indentNumbers.length === 0) {
-                    if (isInitial) setHistoryData([]);
-                    setHistoryTotalCount(count || 0);
-                    setHasMoreHistory(false);
-                    return;
-                }
-
-                const { data: indentData, error: indentError } = await supabase
-                    .from('indent')
-                    .select('indent_number, product_name, department, indenter_name, approved_quantity, uom')
-                    .not('planned_7', 'is', null)
-                    .not('actual_7', 'is', null)
-                    .in('indent_number', indentNumbers);
-
-                if (indentError) throw indentError;
-
-                const mappedHistory = (receivedData as any[])
-                    .filter(r => (indentData as any[])?.some(i => i.indent_number === r.indent_number))
-                    .map(r => {
-                        const indent = (indentData as any[])?.find(i => i.indent_number === r.indent_number);
-                        return {
-                            indentNo: r.indent_number,
-                            indenter: indent?.indenter_name || '',
-                            department: indent?.department || '',
-                            product: indent?.product_name || '',
-                            quantity: Number(indent?.approved_quantity) || 0,
-                            billedQty: Number(r.received_quantity) || 0, // In this context, received = billed quantity for this row
-                            uom: r.uom || indent?.uom || '',
-                            poNumber: r.po_number,
-                            billStatus: r.bill_status || 'Submitted',
-                            date: r.timestamp ? formatDate(new Date(r.timestamp)) : '',
-                            billNumber: r.bill_number,
-                            billAmount: Number(r.bill_amount) || 0,
-                            photoOfBill: r.photo_of_bill || '',
-                        };
-                    }); // Newest first - already handled by fetchFromSupabaseWithCount sort
-
-                if (isInitial) {
-                    setHistoryData(mappedHistory);
-                    setHistoryPageIndex(1);
-                } else {
-                    setHistoryData(prev => [...prev, ...mappedHistory]);
-                    setHistoryPageIndex(prev => prev + 1);
-                }
-
-                const total = count || 0;
-                setHistoryTotalCount(total);
-                setHasMoreHistory((isInitial ? mappedHistory.length : historyData.length + mappedHistory.length) < total);
-            } catch (error) {
-                console.error('Error fetching history from Supabase:', error);
-            } finally {
-                setLoading(false);
-            }
-        };
-
-    useEffect(() => {
-        fetchHistoryData(true);
-    }, []); // Refresh when dialog closes (which updates table)
 
     // Fetch master items for product dropdown in history tab
     useEffect(() => {
@@ -428,14 +351,9 @@ export default () => {
 
             toast.success(`Updated ${editingCell.field} for ${editingCell.rowId}`);
 
-            // Update local state
-            setHistoryData(prev =>
-                prev.map(item =>
-                    item.indentNo === editingCell.rowId
-                        ? { ...item, ...localUpdate }
-                        : item
-                )
-            );
+            // Update local state is not needed anymore as we invalidate
+            queryClient.invalidateQueries({ queryKey: ['purchaseHistory'] });
+            queryClient.invalidateQueries({ queryKey: ['indentDetailsForPurchaseHistory'] });
 
             setEditingCell(null);
             setEditCellValue('');
@@ -928,17 +846,18 @@ export default () => {
 
             toast.success(`Updated purchase details for PO ${selectedIndent?.poNumber}`);
 
-            // Close dialog and reset form first
+            // After submit
+            toast.success('Purchase billing saved!');
             setOpenDialog(false);
+            queryClient.invalidateQueries({ queryKey: ['purchasePending'] });
+            queryClient.invalidateQueries({ queryKey: ['receivedStatsForPurchase'] });
+            queryClient.invalidateQueries({ queryKey: ['purchaseHistory'] });
+            queryClient.invalidateQueries({ queryKey: ['indentDetailsForPurchaseHistory'] });
+
             form.reset();
             setProductRates({});
             setProductQty({});
 
-            // Refresh data after brief delay to allow DB operations to complete
-            setTimeout(() => {
-                fetchTableData();
-                updateIndentSheet();
-            }, 500);
         } catch (error: any) {
             console.error('Detailed submission error:', error);
             toast.error(`Failed to update: ${error.message || 'Unknown error'}`);
@@ -972,25 +891,27 @@ export default () => {
                                     <DataTable
                                         data={tableData}
                                         columns={columns}
-                                        searchFields={['indentNo', 'poNumber', 'product']}
-                                        dataLoading={loading}
+                                        searchFields={['poNumber', 'indentNo', 'product', 'department', 'indenter']}
+                                        dataLoading={pendingLoading}
+                                        isFetchingNextPage={isFetchingNextPendingPage}
                                         infiniteScroll={true}
-                                        onLoadMore={() => fetchTableData(false)}
-                                        hasMore={hasMorePending}
+                                        onLoadMore={fetchNextPagePending}
+                                        hasMore={hasNextPagePending}
                                     />
                                 </div>
                             </div>
                         </TabsContent>
                         <TabsContent value="history" className="w-full mt-0">
                             <div className="w-full h-[calc(100vh-210px)] overflow-hidden flex flex-col">
-                                <DataTable
-                                    data={historyData}
-                                    columns={historyColumns}
-                                    searchFields={['billNumber', 'poNumber', 'product']}
-                                    dataLoading={loading}
+                                    <DataTable
+                                        data={historyData}
+                                        columns={historyColumns}
+                                        searchFields={['poNumber', 'indentNo', 'product', 'billNumber', 'department', 'indenter']}
+                                        dataLoading={historyLoading}
+                                    isFetchingNextPage={isFetchingNextHistoryPage}
                                     infiniteScroll={true}
-                                    onLoadMore={() => fetchHistoryData(false)}
-                                    hasMore={hasMoreHistory}
+                                    onLoadMore={fetchNextPageHistory}
+                                    hasMore={hasNextPageHistory}
                                 />
                             </div>
                         </TabsContent>

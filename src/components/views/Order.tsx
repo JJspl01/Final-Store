@@ -1,99 +1,58 @@
-
-
+import React from 'react';
 import { Package2, Trash2 } from 'lucide-react';
 import Heading from '../element/Heading';
-import { useSheets } from '@/context/SheetsContext';
-import { useEffect, useState } from 'react';
-import { supabase } from '@/lib/supabaseClient';
-import { fetchFromSupabasePaginated, fetchFromSupabaseWithCount } from '@/lib/fetchers';
+import { useMemo } from 'react';
 import type { ColumnDef } from '@tanstack/react-table';
-import { formatDate } from '@/lib/utils';
+import { useInfiniteSupabaseQuery } from '@/hooks/useInfiniteSupabaseQuery';
 import DataTable from '../element/DataTable';
-import { Pill } from '../ui/pill';
-
-
-interface HistoryData {
-    poNumber: string;
-    poCopy: string;
-    vendorName: string;
-    preparedBy: string;
-    approvedBy: string;
-    totalAmount: number;
-    status: 'Revised' | 'Not Recieved' | 'Recieved';
-    indentNumber: string;
-
-    id: number;
-}
-
+import { formatDate } from '@/lib/utils';
+import { useSheets } from '@/context/SheetsContext';
+import { useQueryClient } from '@tanstack/react-query';
+import { supabase } from '@/lib/supabaseClient';
+import { toast } from 'sonner';
 
 export default () => {
     // Use context only for status calculation (indent vs received)
     const { indentSheet, receivedSheet } = useSheets();
-    const [poMasterLoading, setPoMasterLoading] = useState(true);
+    const queryClient = useQueryClient();
+
+    // Data Query
+    const {
+        data: orderHistoryDataRaw,
+        fetchNextPage,
+        hasNextPage,
+        isLoading: historyLoading,
+        isFetchingNextPage,
+    } = useInfiniteSupabaseQuery(['orderHistory'], {
+        tableName: 'po_master',
+        queryBuilder: (q) => q.order('timestamp', { ascending: false }),
+        pageSize: 10,
+    });
+
+    const historyData = useMemo(() => {
+        if (!orderHistoryDataRaw) return [];
+        return orderHistoryDataRaw.pages.flatMap(page => page.data)
+            .filter((sheet: any) => sheet.po_number || sheet.party_name)
+            .map((sheet: any) => ({
+                approvedBy: sheet.approved_by || '',
+                poCopy: sheet.pdf_url || sheet.pdf_link || '',
+                poNumber: sheet.po_number || '',
+                preparedBy: sheet.prepared_by || '',
+                totalAmount: Number(sheet.total_po_amount) || 0,
+                vendorName: sheet.party_name || '',
+                indentNumber: sheet.internal_code || '',
+                id: sheet.id || 0,
+                status: (indentSheet.map((s) => s.poNumber).includes(sheet.po_number || '')
+                    ? receivedSheet.map((r) => r.poNumber).includes(sheet.po_number || '')
+                        ? 'Recieved'
+                        : 'Not Recieved'
+                    : 'Revised') as 'Revised' | 'Not Recieved' | 'Recieved',
+            }));
+    }, [orderHistoryDataRaw, indentSheet, receivedSheet]);
 
 
-    const [historyData, setHistoryData] = useState<HistoryData[]>([]);
-    const [pageIndex, setPageIndex] = useState(0);
-    const [pageSize] = useState(10);
-    const [hasMore, setHasMore] = useState(true);
 
 
-    // Fetching table data directly from Supabase to ensure snake_case fields match
-    const fetchPOMaster = async (isInitial = true) => {
-        setPoMasterLoading(true);
-        try {
-            const currentPage = isInitial ? 0 : pageIndex;
-            const from = currentPage * pageSize;
-            const to = from + pageSize - 1;
-
-            const { data, count } = await fetchFromSupabaseWithCount(
-                'po_master',
-                '*',
-                { from, to },
-                { column: 'timestamp', options: { ascending: false } }
-            );
-
-            if (data) {
-                const newHistoryData = (data as any[])
-                    .filter(sheet => sheet.po_number || sheet.party_name)
-                    .map((sheet) => ({
-                        approvedBy: sheet.approved_by || '',
-                        poCopy: sheet.pdf_url || sheet.pdf_link || '',
-                        poNumber: sheet.po_number || '',
-                        preparedBy: sheet.prepared_by || '',
-                        totalAmount: Number(sheet.total_po_amount) || 0,
-                        vendorName: sheet.party_name || '',
-                        indentNumber: sheet.internal_code || '',
-                        id: sheet.id || 0,
-                        status: (indentSheet.map((s) => s.poNumber).includes(sheet.po_number || '')
-                            ? receivedSheet.map((r) => r.poNumber).includes(sheet.po_number || '')
-                                ? 'Recieved'
-                                : 'Not Recieved'
-                            : 'Revised') as 'Revised' | 'Not Recieved' | 'Recieved',
-                    }));
-
-                if (isInitial) {
-                    setHistoryData(newHistoryData);
-                    setPageIndex(1);
-                } else {
-                    setHistoryData(prev => [...prev, ...newHistoryData]);
-                    setPageIndex(prev => prev + 1);
-                }
-                setHasMore(data.length === pageSize);
-            }
-        } catch (error) {
-            console.error('Error fetching PO history:', error);
-        } finally {
-            setPoMasterLoading(false);
-        }
-    };
-
-    useEffect(() => {
-        fetchPOMaster(true);
-    }, [indentSheet, receivedSheet]);
-
-
-    // Delete handler function using Apps Script
     // Delete handler function using Supabase
     const handleDelete = async (indentNumber: string, id: number) => {
         if (!id) {
@@ -117,57 +76,45 @@ export default () => {
 
             if (error) {
                 console.error('Delete error:', error);
-                alert('Failed to delete row: ' + error.message);
+                toast.error('Failed to delete row: ' + error.message);
                 return;
             }
 
-            alert('Row deleted successfully');
-            // Update local state to remove the deleted row
-            setHistoryData((prev) =>
-                prev.filter((item) => item.id !== id)
-            );
+            toast.success('Row deleted successfully');
+            queryClient.invalidateQueries({ queryKey: ['orderHistory'] });
         } catch (error) {
             console.error('Delete error:', error);
-            alert('Error deleting row: ' + (error as any).message);
+            toast.error('Error deleting row: ' + (error as any).message);
         }
     };
 
-
-    // Creating table columns
-    const historyColumns: ColumnDef<HistoryData>[] = [
+    const historyColumns: ColumnDef<any>[] = [
         { accessorKey: 'poNumber', header: 'PO Number' },
+        {
+            accessorKey: 'vendorName',
+            header: 'Vendor Name',
+            cell: ({ row }) => <div className="text-wrap max-w-40">{row.original.vendorName}</div>
+        },
         { accessorKey: 'indentNumber', header: 'Indent Number' },
-        {
-            accessorKey: 'poCopy',
-            header: 'PO Copy',
-            cell: ({ row }) => {
-                const attachment = row.original.poCopy;
-                return attachment ? (
-                    <a href={attachment} target="_blank">
-                        PDF
-                    </a>
-                ) : (
-                    <></>
-                );
-            },
-        },
-        { accessorKey: 'vendorName', header: 'Vendor Name' },
-        { accessorKey: 'preparedBy', header: 'Prepared By' },
-        { accessorKey: 'approvedBy', header: 'Approved By' },
-        {
-            accessorKey: 'totalAmount',
-            header: 'Amount',
-            cell: ({ row }) => {
-                return <>&#8377;{row.original.totalAmount}</>;
-            },
-        },
+        { accessorKey: 'totalAmount', header: 'Total Amount', cell: ({ row }) => <>&#8377;{row.original.totalAmount.toLocaleString()}</> },
         {
             accessorKey: 'status',
             header: 'Status',
             cell: ({ row }) => {
-                const variant = row.original.status === "Not Recieved" ? "secondary" : row.original.status === "Recieved" ? "primary" : "default"
-                return <Pill variant={variant}>{row.original.status}</Pill>
+                const status = row.original.status;
+                let color = 'text-gray-500';
+                if (status === 'Recieved') color = 'text-green-500 font-bold';
+                if (status === 'Not Recieved') color = 'text-red-500 font-medium';
+                if (status === 'Revised') color = 'text-orange-500 italic';
+                return <span className={color}>{status}</span>;
             }
+        },
+        {
+            accessorKey: 'poCopy',
+            header: 'PO Copy',
+            cell: ({ row }) => row.original.poCopy ? (
+                <a href={row.original.poCopy} target="_blank" rel="noreferrer" className="text-primary hover:underline">View</a>
+            ) : '-'
         },
         {
             id: 'actions',
@@ -200,11 +147,12 @@ export default () => {
                     <DataTable
                         data={historyData}
                         columns={historyColumns}
-                        searchFields={['vendorName', 'poNumber', 'indentNumber']}
-                        dataLoading={poMasterLoading}
+                        searchFields={['poNumber', 'vendorName', 'indentNumber']}
+                        dataLoading={historyLoading}
+                        isFetchingNextPage={isFetchingNextPage}
                         infiniteScroll={true}
-                        onLoadMore={() => fetchPOMaster(false)}
-                        hasMore={hasMore}
+                        onLoadMore={fetchNextPage}
+                        hasMore={hasNextPage}
                     />
                 </div>
             </div>

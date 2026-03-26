@@ -19,7 +19,7 @@ import {
     TableHeader,
     TableRow,
 } from '@/components/ui/table';
-import { useState, useRef, useEffect, type ReactNode } from 'react';
+import { useState, useRef, useEffect, useMemo, type ReactNode } from 'react';
 import { Input } from '../ui/input';
 import { Package } from 'lucide-react';
 import { Skeleton } from '../ui/skeleton';
@@ -46,6 +46,7 @@ interface DataTableProps<TData, TValue> {
     infiniteScroll?: boolean;
     onLoadMore?: () => void;
     hasMore?: boolean;
+    isFetchingNextPage?: boolean;
     searchExtra?: ReactNode;
 }
 
@@ -76,13 +77,14 @@ export default function DataTable<TData, TValue>({
     infiniteScroll = false,
     onLoadMore,
     hasMore = false,
+    isFetchingNextPage = false,
     searchExtra,
 }: DataTableProps<TData, TValue>) {
     const [globalFilter, setGlobalFilter] = useState('');
     const observerTarget = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
-        if (!infiniteScroll || !onLoadMore || !hasMore || dataLoading) return;
+        if (!infiniteScroll || !onLoadMore || !hasMore || dataLoading || isFetchingNextPage) return;
 
         const observer = new IntersectionObserver(
             (entries) => {
@@ -98,10 +100,22 @@ export default function DataTable<TData, TValue>({
         }
 
         return () => observer.disconnect();
-    }, [infiniteScroll, onLoadMore, hasMore, dataLoading, data]);
+    }, [infiniteScroll, onLoadMore, hasMore, dataLoading, isFetchingNextPage, data]);
+
+    // Client-side deduplication as a safety measure
+    const uniqueData = useMemo(() => {
+        if (!data) return [];
+        const seen = new Set();
+        return data.filter((item: any) => {
+            const id = item.id || item.indentNumber || item.poNumber || item.itemName || Math.random();
+            if (seen.has(id)) return false;
+            seen.add(id);
+            return true;
+        });
+    }, [data]);
 
     const table = useReactTable({
-        data,
+        data: uniqueData,
         columns,
         getCoreRowModel: getCoreRowModel(),
         getFilteredRowModel: getFilteredRowModel(),
@@ -219,7 +233,7 @@ export default function DataTable<TData, TValue>({
                 </Table>
                 {infiniteScroll && (
                     <div ref={observerTarget} className="h-10 w-full flex items-center justify-center">
-                        {dataLoading && <div className="text-xs text-muted-foreground">Loading more...</div>}
+                        {(dataLoading || isFetchingNextPage) && <div className="text-xs text-muted-foreground italic">Loading more records...</div>}
                     </div>
                 )}
             </div>

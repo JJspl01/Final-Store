@@ -1,6 +1,6 @@
 import { type ColumnDef, type Row } from '@tanstack/react-table';
 import DataTable from '../element/DataTable';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo, useCallback } from 'react';
 import { Button } from '../ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select';
 import { Input } from '../ui/input';
@@ -13,7 +13,9 @@ import * as XLSX from 'xlsx';
 import { useAuth } from '@/context/AuthContext';
 import Heading from '../element/Heading';
 import { supabase } from '@/lib/supabaseClient';
-import { fetchIndentMasterData, fetchFromSupabaseWithCount } from '@/lib/fetchers';
+import { fetchIndentMasterData } from '@/lib/fetchers';
+import { useInfiniteSupabaseQuery } from '@/hooks/useInfiniteSupabaseQuery';
+import { useQueryClient } from '@tanstack/react-query';
 
 interface AllIndentTableData {
     id: string;
@@ -35,80 +37,50 @@ interface AllIndentTableData {
 
 export default () => {
     const { user } = useAuth();
-    const [tableData, setTableData] = useState<AllIndentTableData[]>([]);
+    const queryClient = useQueryClient();
     const [selectedRows, setSelectedRows] = useState<Set<string>>(new Set());
     const [bulkUpdates, setBulkUpdates] = useState<Map<string, Partial<AllIndentTableData>>>(new Map());
     const [submitting, setSubmitting] = useState(false);
-    const [searchTermProduct, setSearchTermProduct] = useState('');
-
-    const [indentLoading, setIndentLoading] = useState(true);
     const [downloading, setDownloading] = useState(false);
-
-    // Pagination state
-    const [pageIndex, setPageIndex] = useState(0);
-    const [pageSize] = useState(10);
-    const [totalCount, setTotalCount] = useState(0);
-    const [hasMore, setHasMore] = useState(true);
-
+    
     const ALL_INDENT_COLUMNS = "*";
 
-    const fetchIndents = async (isInitial = false) => {
-        setIndentLoading(true);
+    // ─── Queries ───
 
-        try {
-            const currentPage = isInitial ? 0 : pageIndex;
-            const from = currentPage * pageSize;
-            const to = (currentPage + 1) * pageSize - 1;
+    const {
+        data: allIndentDataRaw,
+        fetchNextPage,
+        hasNextPage,
+        isLoading: dataLoading,
+        isFetchingNextPage,
+    } = useInfiniteSupabaseQuery(['allIndents'], {
+        tableName: 'indent',
+        queryBuilder: (q) => q.select(ALL_INDENT_COLUMNS).order('indent_number', { ascending: false }),
+        pageSize: 10,
+    });
 
-            const { data, count } = await fetchFromSupabaseWithCount(
-                'indent',
-                ALL_INDENT_COLUMNS,
-                { from, to },
-                { column: 'indent_number', options: { ascending: false } }
-            );
+    // ─── Mappings ───
 
-            if (data) {
-                const transformedBatch = data.map((record: any) => ({
-                    id: record.id ? record.id.toString() : Math.random().toString(),
-                    timestamp: record.timestamp ? formatDate(new Date(record.timestamp)) : '',
-                    indentNumber: record.indent_number || '',
-                    indenterName: record.indenter_name || '',
-                    indentApproveBy: record.indent_approve_by || '',
-                    indentType: (record.indent_type as 'Purchase' | 'Store Out') || 'Purchase',
-                    department: record.department || '',
-                    groupHead: record.group_head || '',
-                    productName: record.product_name || '',
-                    quantity: record.quantity || 0,
-                    uom: record.uom || '',
-                    areaOfUse: record.area_of_use || '',
-                    specifications: record.specifications || '',
-                    attachment: record.attachment || '',
-                    vendorType: record.vendor_type || '',
-                }));
-
-                if (isInitial) {
-                    setTableData(transformedBatch);
-                    setPageIndex(1);
-                } else {
-                    setTableData(prev => [...prev, ...transformedBatch]);
-                    setPageIndex(prev => prev + 1);
-                }
-
-                const total = count || 0;
-                setTotalCount(total);
-                setHasMore((isInitial ? transformedBatch.length : tableData.length + transformedBatch.length) < total);
-            }
-        } catch (error: any) {
-            console.error('Error fetching indents:', error);
-            toast.error('Failed to load indents');
-        } finally {
-            setIndentLoading(false);
-        }
-    };
-
-    useEffect(() => {
-        fetchIndents(true);
-    }, []);
+    const tableData = useMemo(() => {
+        if (!allIndentDataRaw) return [];
+        return allIndentDataRaw.pages.flatMap(p => p.data).map((record: any) => ({
+            id: record.id ? record.id.toString() : Math.random().toString(),
+            timestamp: record.timestamp ? formatDate(new Date(record.timestamp)) : '',
+            indentNumber: record.indent_number || '',
+            indenterName: record.indenter_name || '',
+            indentApproveBy: record.indent_approve_by || '',
+            indentType: (record.indent_type as 'Purchase' | 'Store Out') || 'Purchase',
+            department: record.department || '',
+            groupHead: record.group_head || '',
+            productName: record.product_name || '',
+            quantity: record.quantity || 0,
+            uom: record.uom || '',
+            areaOfUse: record.area_of_use || '',
+            specifications: record.specifications || '',
+            attachment: record.attachment || '',
+            vendorType: record.vendor_type || '',
+        }));
+    }, [allIndentDataRaw]);
 
     const handleDownloadExcel = async () => {
         setDownloading(true);
@@ -172,12 +144,11 @@ export default () => {
             setDownloading(false);
         }
     };
-    const handleRowSelect = (id: string, checked: boolean) => {
+    const handleRowSelect = useCallback((id: string, checked: boolean) => {
         setSelectedRows(prev => {
             const newSet = new Set(prev);
             if (checked) {
                 newSet.add(id);
-                // Initialize with current values when selected
                 const currentRow = tableData.find(row => row.id === id);
                 if (currentRow) {
                     setBulkUpdates(prevUpdates => {
@@ -188,7 +159,6 @@ export default () => {
                 }
             } else {
                 newSet.delete(id);
-                // Remove from bulk updates when unchecked
                 setBulkUpdates(prevUpdates => {
                     const newUpdates = new Map(prevUpdates);
                     newUpdates.delete(id);
@@ -197,12 +167,11 @@ export default () => {
             }
             return newSet;
         });
-    };
+    }, [tableData]);
 
-    const handleSelectAll = (checked: boolean) => {
+    const handleSelectAll = useCallback((checked: boolean) => {
         if (checked) {
             setSelectedRows(new Set(tableData.map(row => row.id)));
-            // Initialize bulk updates for all rows
             const newUpdates = new Map();
             tableData.forEach(row => {
                 newUpdates.set(row.id, { ...row });
@@ -212,9 +181,9 @@ export default () => {
             setSelectedRows(new Set());
             setBulkUpdates(new Map());
         }
-    };
+    }, [tableData]);
 
-    const handleBulkUpdate = (id: string, field: keyof AllIndentTableData, value: any) => {
+    const handleBulkUpdate = useCallback((id: string, field: keyof AllIndentTableData, value: any) => {
         setBulkUpdates(prevUpdates => {
             const newUpdates = new Map(prevUpdates);
             const currentUpdate = newUpdates.get(id) || {};
@@ -224,7 +193,7 @@ export default () => {
             });
             return newUpdates;
         });
-    };
+    }, []);
 
     const handleSubmitBulkUpdates = async () => {
         if (selectedRows.size === 0) {
@@ -295,7 +264,7 @@ export default () => {
             toast.success(`Updated ${updatesToProcess.length} indents successfully`);
 
             // Refresh
-            await fetchIndents(true);
+            queryClient.invalidateQueries({ queryKey: ['allIndent'] });
 
             setSelectedRows(new Set());
             setBulkUpdates(new Map());
@@ -312,60 +281,30 @@ export default () => {
     const columns: ColumnDef<AllIndentTableData>[] = [
         {
             id: 'select',
-            header: ({ table }) => (
-                <div className="px-1 z-30 align-middle select-none">
+            header: () => (
+                <div className="flex justify-center">
                     <input
                         type="checkbox"
-                        disabled={!user || !user.administrate}
-                        className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 cursor-pointer pointer-events-auto"
-                        checked={table.getIsAllPageRowsSelected()}
-                        ref={(input) => {
-                            if (input) {
-                                input.indeterminate = table.getIsSomePageRowsSelected();
-                            }
-                        }}
-                        onChange={(e) => {
-                            if (e.target.checked) {
-                                // Add all row IDs from current page to the Set
-                                const newSet = new Set(selectedRows);
-                                table.getRowModel().rows.forEach((row) => {
-                                    newSet.add(row.original.id);
-                                });
-                                setSelectedRows(newSet);
-                            } else {
-                                // Remove all row IDs from current page from the Set
-                                const newSet = new Set(selectedRows);
-                                table.getRowModel().rows.forEach((row) => {
-                                    newSet.delete(row.original.id);
-                                });
-                                setSelectedRows(newSet);
-                            }
-                            table.getToggleAllPageRowsSelectedHandler()(e);
-                        }}
+                        checked={selectedRows.size === tableData.length && tableData.length > 0}
+                        onChange={(e) => handleSelectAll(e.target.checked)}
+                        className="w-4 h-4"
                     />
                 </div>
             ),
-            cell: ({ row }) => (
-                <div className="px-1 z-30 align-middle select-none">
-                    <input
-                        type="checkbox"
-                        disabled={!user || !user.administrate}
-                        className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 cursor-pointer pointer-events-auto"
-                        checked={selectedRows.has(row.original.id)}
-                        onChange={(e) => {
-                            const newSet = new Set(selectedRows);
-                            if (e.target.checked) {
-                                newSet.add(row.original.id);
-                            } else {
-                                newSet.delete(row.original.id);
-                            }
-                            setSelectedRows(newSet);
-                        }}
-                        onClick={(e) => e.stopPropagation()}
-                    />
-                </div>
-            ),
-            size: 40,
+            cell: ({ row }: { row: Row<AllIndentTableData> }) => {
+                const indent = row.original;
+                return (
+                    <div className="flex justify-center">
+                        <input
+                            type="checkbox"
+                            checked={selectedRows.has(indent.id)}
+                            onChange={(e) => handleRowSelect(indent.id, e.target.checked)}
+                            className="w-4 h-4"
+                        />
+                    </div>
+                );
+            },
+            size: 50,
         },
         {
             accessorKey: 'indentNumber',
@@ -640,11 +579,12 @@ export default () => {
                     <DataTable
                         data={tableData}
                         columns={columns}
-                        searchFields={['indentNumber', 'indenterName', 'department', 'productName', 'groupHead']}
-                        dataLoading={indentLoading}
+                        searchFields={['indentNumber', 'productName', 'department', 'indenterName', 'groupHead', 'indentType']}
+                        dataLoading={dataLoading}
+                        isFetchingNextPage={isFetchingNextPage}
                         infiniteScroll={true}
-                        onLoadMore={() => fetchIndents(false)}
-                        hasMore={hasMore}
+                        onLoadMore={fetchNextPage}
+                        hasMore={hasNextPage}
                         extraActions={
                             <Button
                                 onClick={handleDownloadExcel}

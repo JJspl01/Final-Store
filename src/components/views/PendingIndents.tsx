@@ -1,12 +1,10 @@
 import { ListTodo } from 'lucide-react';
 import Heading from '../element/Heading';
-import { useEffect, useState } from 'react';
+import { useMemo } from 'react';
 import type { ColumnDef } from '@tanstack/react-table';
-import { formatDate } from '@/lib/utils';
+import { useInfiniteSupabaseQuery } from '@/hooks/useInfiniteSupabaseQuery';
 import DataTable from '../element/DataTable';
-import { supabase } from '@/lib/supabaseClient';
-
-import { fetchFromSupabaseWithCount } from '@/lib/fetchers';
+import { formatDate } from '@/lib/utils';
 
 interface PendingIndentsData {
     date: string;
@@ -21,68 +19,33 @@ interface PendingIndentsData {
 }
 
 export default () => {
-    const [tableData, setTableData] = useState<PendingIndentsData[]>([]);
-    const [dataLoading, setDataLoading] = useState(true);
-    const [pageIndex, setPageIndex] = useState(0);
-    const [pageSize] = useState(10);
-    const [totalCount, setTotalCount] = useState(0);
-    const [hasMore, setHasMore] = useState(true);
+    // Data Query
+    const {
+        data: pendingIndentsDataRaw,
+        fetchNextPage,
+        hasNextPage,
+        isLoading: dataLoading,
+        isFetchingNextPage,
+    } = useInfiniteSupabaseQuery(['pendingIndents'], {
+        tableName: 'indent',
+        queryBuilder: (q) => q.not('planned_4', 'is', null).is('actual_4', null),
+        pageSize: 10,
+    });
 
-    // Fetching table data
-    const fetchData = async (isInitial = false) => {
-        setDataLoading(true);
-        try {
-            const currentPage = isInitial ? 0 : pageIndex;
-            const from = currentPage * pageSize;
-            const to = from + pageSize - 1;
-
-            const { data, count } = await fetchFromSupabaseWithCount(
-                'indent',
-                '*',
-                { from, to },
-                { column: 'created_at', options: { ascending: false } },
-                (q) => q.not('planned_4', 'is', null).is('actual_4', null)
-            );
-
-            if (data) {
-                const pendingBatch = data.map((record: any) => ({
-                    date: formatDate(new Date(record.created_at)),
-                    indentNo: record.indent_number || '',
-                    product: record.product_name || '',
-                    quantity: record.approved_quantity || 0,
-                    rate: record.approved_rate || 0,
-                    uom: record.uom || '',
-                    vendorName: record.approved_vendor_name || '',
-                    paymentTerm: record.approved_payment_term || '',
-                    specifications: record.specifications || '',
-                }));
-
-                if (isInitial) {
-                    setTableData(pendingBatch);
-                    setPageIndex(1);
-                } else {
-                    setTableData(prev => [...prev, ...pendingBatch]);
-                    setPageIndex(prev => prev + 1);
-                }
-
-                const total = count || 0;
-                setTotalCount(total);
-                setHasMore((isInitial ? pendingBatch.length : tableData.length + pendingBatch.length) < total);
-            }
-        } catch (error: any) {
-            console.error('Error fetching data from Supabase:', error);
-        } finally {
-            setDataLoading(false);
-        }
-    };
-
-    useEffect(() => {
-        // Reset state for a new initial fetch
-        setTableData([]);
-        setPageIndex(0);
-        setHasMore(true);
-        fetchData(true);
-    }, []); // Empty dependency array to run only on mount for initial load
+    const tableData = useMemo(() => {
+        if (!pendingIndentsDataRaw) return [];
+        return pendingIndentsDataRaw.pages.flatMap(page => page.data).map((record: any) => ({
+            date: formatDate(new Date(record.created_at)),
+            indentNo: record.indent_number || '',
+            product: record.product_name || '',
+            quantity: record.approved_quantity || 0,
+            rate: record.approved_rate || 0,
+            uom: record.uom || '',
+            vendorName: record.approved_vendor_name || '',
+            paymentTerm: record.approved_payment_term || '',
+            specifications: record.specifications || '',
+        }));
+    }, [pendingIndentsDataRaw]);
 
     // Creating table columns with compact Product column
     const columns: ColumnDef<PendingIndentsData>[] = [
@@ -155,10 +118,11 @@ export default () => {
                 columns={columns}
                 searchFields={['indentNo', 'date', 'product', 'vendorName', 'paymentTerm', 'specifications']}
                 dataLoading={dataLoading}
+                isFetchingNextPage={isFetchingNextPage}
                 className="h-[80dvh]"
                 infiniteScroll={true}
-                onLoadMore={() => fetchData(false)}
-                hasMore={hasMore}
+                onLoadMore={fetchNextPage}
+                hasMore={hasNextPage}
             />
         </div>
     );

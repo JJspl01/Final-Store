@@ -1,6 +1,8 @@
 
 import type { ColumnDef, Row } from '@tanstack/react-table';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useInfiniteSupabaseQuery } from '@/hooks/useInfiniteSupabaseQuery';
 import DataTable from '../element/DataTable';
 import { z } from 'zod';
 import { useForm, type FieldErrors } from 'react-hook-form';
@@ -73,13 +75,10 @@ interface HistoryData {
 }
 
 const ReceiveItems = () => {
-    const [localIndentLoading, setLocalIndentLoading] = useState(false);
-    const [localReceivedLoading, setLocalReceivedLoading] = useState(false);
     const { user } = useAuth();
     const { updateIndentSheet, updateReceivedSheet } = useSheets();
+    const queryClient = useQueryClient();
 
-    const [tableData, setTableData] = useState<RecieveItemsData[]>([]);
-    const [historyData, setHistoryData] = useState<HistoryData[]>([]);
     const [selectedIndent, setSelectedIndent] = useState<RecieveItemsData | null>(null);
     const [matchingIndents, setMatchingIndents] = useState<RecieveItemsData[]>([]);
     const [openDialog, setOpenDialog] = useState(false);
@@ -89,54 +88,74 @@ const ReceiveItems = () => {
     const [masterItems, setMasterItems] = useState<string[]>([]);
     const [productSearch, setProductSearch] = useState('');
 
-    // Pending Tab Pagination
-    const [pendingPageIndex, setPendingPageIndex] = useState(0);
-    const [pendingPageSize] = useState(10);
-    const [pendingTotalCount, setPendingTotalCount] = useState(0);
-    const [hasMorePending, setHasMorePending] = useState(true);
+    // Pending Data Query
+    const {
+        data: pendingDataRaw,
+        fetchNextPage: fetchNextPendingPage,
+        hasNextPage: hasNextPendingPage,
+        isLoading: pendingLoading,
+        isFetchingNextPage: isFetchingNextPendingPage,
+    } = useInfiniteSupabaseQuery(['receivePending'], {
+        tableName: 'indent',
+        queryBuilder: (q) => q.not('planned_5', 'is', null).is('actual_5', null),
+        pageSize: 10,
+    });
 
-    // History Tab Pagination
-    const [historyPageIndex, setHistoryPageIndex] = useState(0);
-    const [historyPageSize] = useState(10);
-    const [historyTotalCount, setHistoryTotalCount] = useState(0);
-    const [hasMoreHistory, setHasMoreHistory] = useState(true);
+    // History Data Query
+    const {
+        data: historyDataRaw,
+        fetchNextPage: fetchNextHistoryPage,
+        hasNextPage: hasNextHistoryPage,
+        isLoading: historyLoading,
+        isFetchingNextPage: isFetchingNextHistoryPage,
+    } = useInfiniteSupabaseQuery(['receiveHistory'], {
+        tableName: 'received',
+        queryBuilder: (q) => q.order('timestamp', { ascending: false }),
+        pageSize: 10,
+    });
 
-    const fetchPendingItems = async (isInitial = false) => {
-        setLocalIndentLoading(true);
+    // Collect all indent numbers from pending pages to fetch received summary
+    const pendingIndentNumbers = useMemo(() => {
+        return pendingDataRaw?.pages.flatMap(page => page.data.map((i: any) => i.indent_number)).filter(Boolean) || [];
+    }, [pendingDataRaw]);
 
-        const currentPage = isInitial ? 0 : pendingPageIndex;
-        const from = currentPage * pendingPageSize;
-        const to = (currentPage + 1) * pendingPageSize - 1;
-
-        // Fetch indents with pagination
-        const { data: indentData, count } = await fetchFromSupabaseWithCount(
-            'indent',
-            'indent_number, po_number, uom, po_copy, approved_vendor_name, approved_quantity, actual_4, product_name, planned_5, actual_5, department, indenter_name, vendor_type',
-            { from, to },
-            { column: 'planned_5', options: { ascending: false } },
-            (q) => q.not('planned_5', 'is', null).is('actual_5', null)
-        );
-
-        if (!indentData || indentData.length === 0) {
-            if (isInitial) setTableData([]);
-            setPendingTotalCount(0);
-            setHasMorePending(false);
-            setLocalIndentLoading(false);
-            return;
-        }
-
-        const indentNumbers = (indentData as any[]).map(i => i.indent_number).filter(Boolean);
-        let receivedData: any[] = [];
-        if (indentNumbers.length > 0) {
-            const { data: rData } = await supabase
+    // Fetch received summary for pending indents
+    const { data: receivedSummary } = useQuery({
+        queryKey: ['receivedSummary', pendingIndentNumbers],
+        queryFn: async () => {
+            if (pendingIndentNumbers.length === 0) return [];
+            const { data } = await supabase
                 .from('received')
                 .select('indent_number, received_quantity')
-                .in('indent_number', indentNumbers);
-            receivedData = rData || [];
-        }
+                .in('indent_number', pendingIndentNumbers);
+            return data || [];
+        },
+        enabled: pendingIndentNumbers.length > 0,
+    });
 
-        const mappedBatch = (indentData as any[]).map((item: any) => {
-            const totalReceived = receivedData
+    // Collect all indent numbers from history pages to fetch related indent info
+    const historyIndentNumbers = useMemo(() => {
+        return historyDataRaw?.pages.flatMap(page => page.data.map((r: any) => r.indent_number)).filter(Boolean) || [];
+    }, [historyDataRaw]);
+
+    // Fetch indent info for history records
+    const { data: relatedIndents } = useQuery({
+        queryKey: ['relatedIndents', historyIndentNumbers],
+        queryFn: async () => {
+            if (historyIndentNumbers.length === 0) return [];
+            const { data } = await supabase
+                .from('indent')
+                .select('indent_number, po_number, actual_4, approved_vendor_name, product_name, approved_quantity, uom, planned_5, actual_5')
+                .in('indent_number', historyIndentNumbers);
+            return data || [];
+        },
+        enabled: historyIndentNumbers.length > 0,
+    });
+
+    const tableData = useMemo(() => {
+        if (!pendingDataRaw) return [];
+        return pendingDataRaw.pages.flatMap(page => page.data).map((item: any) => {
+            const totalReceived = (receivedSummary || [])
                 .filter((r: any) => r.indent_number === item.indent_number)
                 .reduce((sum: number, r: any) => sum + (Number(r.received_quantity) || 0), 0);
 
@@ -159,55 +178,12 @@ const ReceiveItems = () => {
                 vendorType: item.vendor_type || ''
             };
         });
+    }, [pendingDataRaw, receivedSummary]);
 
-        if (isInitial) {
-            setTableData(mappedBatch);
-            setPendingPageIndex(1);
-        } else {
-            setTableData(prev => [...prev, ...mappedBatch]);
-            setPendingPageIndex(prev => prev + 1);
-        }
-
-        const total = count || 0;
-        setPendingTotalCount(total);
-        setHasMorePending((isInitial ? mappedBatch.length : tableData.length + mappedBatch.length) < total);
-        setLocalIndentLoading(false);
-    };
-
-    const fetchHistoryItems = async (isInitial = false) => {
-        setLocalReceivedLoading(true);
-
-        const currentPage = isInitial ? 0 : historyPageIndex;
-        const from = currentPage * historyPageSize;
-        const to = (currentPage + 1) * historyPageSize - 1;
-
-        const { data: receivedData, count } = await fetchFromSupabaseWithCount(
-            'received',
-            '*',
-            { from, to },
-            { column: 'timestamp', options: { ascending: false } }
-        );
-
-        if (!receivedData || receivedData.length === 0) {
-            if (isInitial) setHistoryData([]);
-            setHistoryTotalCount(0);
-            setHasMoreHistory(false);
-            setLocalReceivedLoading(false);
-            return;
-        }
-
-        const indentNumbers = (receivedData as any[]).map(r => r.indent_number).filter(Boolean);
-        let indentData: any[] = [];
-        if (indentNumbers.length > 0) {
-            const { data: iData } = await supabase
-                .from('indent')
-                .select('indent_number, po_number, actual_4, approved_vendor_name, product_name, approved_quantity, uom, planned_5, actual_5')
-                .in('indent_number', indentNumbers);
-            indentData = iData || [];
-        }
-
-        const mappedBatch = (receivedData as any[]).map((receivedRecord: any) => {
-            const indent = indentData.find(i => i.indent_number === receivedRecord.indent_number);
+    const historyData = useMemo(() => {
+        if (!historyDataRaw) return [];
+        return historyDataRaw.pages.flatMap(page => page.data).map((receivedRecord: any) => {
+            const indent = (relatedIndents || []).find((i: any) => i.indent_number === receivedRecord.indent_number);
             const approvedQty = indent ? (Number(indent.approved_quantity) || 0) : 0;
 
             return {
@@ -234,28 +210,8 @@ const ReceiveItems = () => {
                 transportingAmount: receivedRecord.transporting_amount || 0,
             };
         });
+    }, [historyDataRaw, relatedIndents]);
 
-        if (isInitial) {
-            setHistoryData(mappedBatch);
-            setHistoryPageIndex(1);
-        } else {
-            setHistoryData(prev => [...prev, ...mappedBatch]);
-            setHistoryPageIndex(prev => prev + 1);
-        }
-
-        const total = count || 0;
-        setHistoryTotalCount(total);
-        setHasMoreHistory((isInitial ? mappedBatch.length : historyData.length + mappedBatch.length) < total);
-        setLocalReceivedLoading(false);
-    };
-
-    useEffect(() => {
-        fetchPendingItems(true);
-    }, []);
-
-    useEffect(() => {
-        fetchHistoryItems(true);
-    }, []);
 
     // Fetch master items for product dropdown
     useEffect(() => {
@@ -316,14 +272,12 @@ const ReceiveItems = () => {
 
                 if (error) throw error;
 
-                // Update local state for matching indentNumber
-                setHistoryData(prev =>
-                    prev.map(item =>
-                        item.indentNumber === editingCell.rowId
-                            ? { ...item, ...localUpdate }
-                            : item
-                    )
-                );
+                // Sync counts and invalidate queries
+                updateIndentSheet();
+                queryClient.invalidateQueries({ queryKey: ['receivePending'] });
+                queryClient.invalidateQueries({ queryKey: ['receiveHistory'] });
+                queryClient.invalidateQueries({ queryKey: ['receivedSummary'] });
+                queryClient.invalidateQueries({ queryKey: ['relatedIndents'] });
             } else {
                 const updatePayload: any = {};
                 if (editingCell.field === 'receivedQuantity') {
@@ -349,14 +303,12 @@ const ReceiveItems = () => {
                     if (error) throw error;
                 }
 
-                // Update local state ONLY for that specific specific record
-                setHistoryData(prev =>
-                    prev.map(item =>
-                        item.id === editingCell.recordId
-                            ? { ...item, ...localUpdate }
-                            : item
-                    )
-                );
+                // Sync counts and invalidate queries
+                updateReceivedSheet();
+                queryClient.invalidateQueries({ queryKey: ['receivePending'] });
+                queryClient.invalidateQueries({ queryKey: ['receiveHistory'] });
+                queryClient.invalidateQueries({ queryKey: ['receivedSummary'] });
+                queryClient.invalidateQueries({ queryKey: ['relatedIndents'] });
             }
 
             toast.success(`Updated ${editingCell.field}`);
@@ -990,69 +942,10 @@ const ReceiveItems = () => {
             setOpenDialog(false);
 
             // Refresh the data after successful submission
-            const fetchPendingItems = async () => {
-                setLocalIndentLoading(true);
-
-                // Fetch indents (Stage 4 passed means PO created)
-                const { data: indentData, error: indentError } = await supabase
-                    .from('indent')
-                    .select(`
-                        indent_number,
-                        po_number,
-                        uom,
-                        po_copy,
-                        approved_vendor_name,
-                        approved_quantity,
-                        actual_4,
-                        product_name
-                    `)
-                    .not('actual_4', 'is', null); // PO Created
-
-                if (indentError) {
-                    console.error('Error fetching pending items from Supabase:', indentError);
-                    toast.error('Failed to fetch pending items');
-                    setLocalIndentLoading(false);
-                    return;
-                }
-
-                // Fetch all received records to calculate totals
-                const { data: receivedData, error: receivedError } = await supabase
-                    .from('received')
-                    .select('indent_number, received_quantity');
-
-                if (receivedError) {
-                    console.error('Error fetching received data:', receivedError);
-                    setLocalIndentLoading(false);
-                    return;
-                }
-
-                const mappedData = indentData.map((item: any) => {
-                    const totalReceived = receivedData
-                        .filter((r: any) => r.indent_number === item.indent_number)
-                        .reduce((sum: number, r: any) => sum + (Number(r.received_quantity) || 0), 0);
-
-                    const approvedQty = Number(item.approved_quantity) || 0;
-                    const remainingQty = Math.max(0, approvedQty - totalReceived);
-
-                    return {
-                        indentNumber: item.indent_number,
-                        poNumber: item.po_number,
-                        uom: item.uom,
-                        poCopy: item.po_copy,
-                        vendor: item.approved_vendor_name,
-                        quantity: approvedQty,
-                        receivedQty: totalReceived,
-                        remainingQty: remainingQty,
-                        poDate: item.actual_4,
-                        product: item.product_name,
-                    };
-                }).filter((item) => item.remainingQty > 0); // Only show items with remaining quantity
-
-                setTableData(mappedData.reverse());
-                setLocalIndentLoading(false);
-            };
-
-            fetchPendingItems();
+            queryClient.invalidateQueries({ queryKey: ['receivePending'] });
+            queryClient.invalidateQueries({ queryKey: ['receiveHistory'] });
+            queryClient.invalidateQueries({ queryKey: ['receivedSummary'] });
+            queryClient.invalidateQueries({ queryKey: ['relatedIndents'] });
         } catch (error) {
             console.error('Error submitting received items:', error);
             toast.error('Failed to receive items');
@@ -1072,7 +965,6 @@ const ReceiveItems = () => {
                         <Heading
                             heading="Receive Items"
                             subtext="Receive items from purchase orders"
-                            tabs
                         >
                             <Truck size={50} className="text-primary" />
                         </Heading>
@@ -1082,31 +974,12 @@ const ReceiveItems = () => {
                         <DataTable
                             data={tableData}
                             columns={columns}
-                            searchFields={['indentNumber', 'poNumber', 'product', 'vendor']}
-                            dataLoading={localIndentLoading}
+                            searchFields={['indentNumber', 'product', 'department', 'indenter', 'vendor', 'poNumber']}
+                            dataLoading={pendingLoading}
+                            isFetchingNextPage={isFetchingNextPendingPage}
                             infiniteScroll={true}
-                            onLoadMore={() => fetchPendingItems(false)}
-                            hasMore={hasMorePending}
-                            extraActions={
-                                <Button
-                                    variant="default"
-                                    onClick={onDownloadClick}
-                                    style={{
-                                        background: "linear-gradient(90deg, #4CAF50, #2E7D32)",
-                                        border: "none",
-                                        borderRadius: "8px",
-                                        padding: "0 16px",
-                                        fontWeight: "bold",
-                                        boxShadow: "0 4px 8px rgba(0,0,0,0.15)",
-                                        display: "flex",
-                                        alignItems: "center",
-                                        gap: "8px",
-                                    }}
-                                >
-                                    <DownloadOutlined />
-                                    {loading ? "Downloading..." : "Download"}
-                                </Button>
-                            }
+                            onLoadMore={fetchNextPendingPage}
+                            hasMore={hasNextPendingPage}
                         />
                     </TabsContent>
 
@@ -1114,11 +987,12 @@ const ReceiveItems = () => {
                         <DataTable
                             data={historyData}
                             columns={historyColumns}
-                            searchFields={['indentNumber', 'poNumber', 'product', 'vendor']}
-                            dataLoading={localReceivedLoading}
+                            searchFields={['indentNumber', 'product', 'vendor', 'poNumber', 'billNumber']}
+                            dataLoading={historyLoading}
+                            isFetchingNextPage={isFetchingNextHistoryPage}
                             infiniteScroll={true}
-                            onLoadMore={() => fetchHistoryItems(false)}
-                            hasMore={hasMoreHistory}
+                            onLoadMore={fetchNextHistoryPage}
+                            hasMore={hasNextHistoryPage}
                         />
                     </TabsContent>
                 </Tabs>

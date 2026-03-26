@@ -1,4 +1,6 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
+import { useInfiniteSupabaseQuery } from '@/hooks/useInfiniteSupabaseQuery';
 import { useSheets } from '@/context/SheetsContext';
 import {
     Dialog,
@@ -69,13 +71,9 @@ export default () => {
     const [openDialog, setOpenDialog] = useState(false);
     const [openCreateDialog, setOpenCreateDialog] = useState(false);
     const [openQrDialog, setOpenQrDialog] = useState(false);
-    const [tableData, setTableData] = useState<StoreOutTableData[]>([]);
-    const [historyData, setHistoryData] = useState<HistoryData[]>([]);
     const [selectedIndent, setSelectedIndent] = useState<StoreOutTableData | null>(null);
     const [rejecting, setRejecting] = useState(false);
     const [loading, setLoading] = useState(false);
-    const [pendingLoading, setPendingLoading] = useState(true);
-    const [historyLoading, setHistoryLoading] = useState(true);
     const [editingRow, setEditingRow] = useState<string | null>(null);
     const [editValues, setEditValues] = useState<{
         quantity?: number;
@@ -87,17 +85,66 @@ export default () => {
 
     const [editingField, setEditingField] = useState<"quantity" | "requestedQuantity" | null>(null);
     
-    // Pagination state for Pending tab
-    const [pendingPageIndex, setPendingPageIndex] = useState(0);
-    const [pendingPageSize] = useState(10);
-    const [pendingTotalCount, setPendingTotalCount] = useState(0);
-    const [hasMorePending, setHasMorePending] = useState(true);
+    const queryClient = useQueryClient();
+    
+    // Pending Data Query
+    const {
+        data: pendingDataRaw,
+        fetchNextPage: fetchNextPendingPage,
+        hasNextPage: hasNextPendingPage,
+        isLoading: pendingLoading,
+        isFetchingNextPage: isFetchingNextPendingPage,
+    } = useInfiniteSupabaseQuery(['storeOutPending'], {
+        tableName: 'indent',
+        queryBuilder: (q) => q.eq('indent_type', 'Store Out').not('planned_6', 'is', null).is('actual_6', null),
+        pageSize: 10,
+    });
 
-    // Pagination state for History tab
-    const [historyPageIndex, setHistoryPageIndex] = useState(0);
-    const [historyPageSize] = useState(10);
-    const [historyTotalCount, setHistoryTotalCount] = useState(0);
-    const [hasMoreHistory, setHasMoreHistory] = useState(true);
+    // History Data Query
+    const {
+        data: historyDataRaw,
+        fetchNextPage: fetchNextHistoryPage,
+        hasNextPage: hasNextHistoryPage,
+        isLoading: historyLoading,
+        isFetchingNextPage: isFetchingNextHistoryPage,
+    } = useInfiniteSupabaseQuery(['storeOutHistory'], {
+        tableName: 'indent',
+        queryBuilder: (q) => q.eq('indent_type', 'Store Out').not('planned_6', 'is', null).not('actual_6', 'is', null),
+        pageSize: 10,
+    });
+
+    const tableData = useMemo(() => {
+        return pendingDataRaw?.pages.flatMap(page => page.data).map((record: any) => ({
+            indentNo: record.indent_number || '',
+            indenter: record.indenter_name || '',
+            department: record.department || '',
+            product: record.product_name || '',
+            date: formatDate(new Date(record.timestamp)),
+            areaOfUse: record.area_of_use || '',
+            quantity: record.quantity || 0,
+            uom: record.uom || '',
+            specifications: record.specifications || 'Not specified',
+            attachment: record.attachment || '',
+            vendorType: record.vendor_type || '',
+        })) || [];
+    }, [pendingDataRaw]);
+
+    const historyData = useMemo(() => {
+        return historyDataRaw?.pages.flatMap(page => page.data).map((record: any) => ({
+            approvalDate: record.actual_6 ? formatDate(new Date(record.actual_6)) : '',
+            indentNo: record.indent_number || '',
+            indenter: record.indenter_name || '',
+            department: record.department || '',
+            product: record.product_name || '',
+            date: formatDate(new Date(record.timestamp)),
+            areaOfUse: record.area_of_use || '',
+            quantity: record.issued_quantity || 0,
+            requestedQuantity: record.quantity || 0,
+            uom: record.uom || '',
+            issuedStatus: record.issue_status || '',
+            vendorType: record.vendor_type || '',
+        })) || [];
+    }, [historyDataRaw]);
 
 
 
@@ -116,7 +163,7 @@ export default () => {
             toast.success(`Updated ${row.indentNo}`);
             setEditingRow(null);
             setEditValues({});
-            setTimeout(() => fetchHistoryData(true), 500);
+            queryClient.invalidateQueries({ queryKey: ['storeOutHistory'] });
         } catch (error) {
             console.error('Update error:', error);
             toast.error("Failed to update row");
@@ -125,127 +172,6 @@ export default () => {
 
 
 
-    // Fetching table data
-    const fetchPendingData = async (isInitial = false) => {
-        setPendingLoading(true);
-        try {
-            const currentPage = isInitial ? 0 : pendingPageIndex;
-            const from = currentPage * pendingPageSize;
-            const to = from + pendingPageSize - 1;
-
-            const { data, count } = await fetchFromSupabaseWithCount(
-                'indent',
-                '*',
-                { from, to },
-                { column: 'timestamp', options: { ascending: false } },
-                (q) => q.eq('indent_type', 'Store Out').not('planned_6', 'is', null).is('actual_6', null)
-            );
-
-            if (data) {
-                const pendingTableBatch = data.map((record: any) => ({
-                    indentNo: record.indent_number || '',
-                    indenter: record.indenter_name || '',
-                    department: record.department || '',
-                    product: record.product_name || '',
-                    date: formatDate(new Date(record.timestamp)),
-                    areaOfUse: record.area_of_use || '',
-                    quantity: record.quantity || 0,
-                    uom: record.uom || '',
-                    specifications: record.specifications || 'Not specified',
-                    attachment: record.attachment || '',
-                    vendorType: record.vendor_type || '',
-                }));
-
-                if (isInitial) {
-                    setTableData(pendingTableBatch);
-                    setPendingPageIndex(1);
-                } else {
-                    setTableData(prev => {
-                        // Prevent duplicates
-                        const existingIds = new Set(prev.map(item => item.indentNo));
-                        const newItems = pendingTableBatch.filter(item => !existingIds.has(item.indentNo));
-                        return [...prev, ...newItems];
-                    });
-                    setPendingPageIndex(prev => prev + 1);
-                }
-
-                const total = count || 0;
-                setPendingTotalCount(total);
-                
-                const newLength = isInitial ? pendingTableBatch.length : tableData.length + pendingTableBatch.length;
-                setHasMorePending(newLength < total);
-            }
-        } catch (error) {
-            console.error('Error fetching pending data:', error);
-            toast.error('Failed to fetch store out pending data');
-        } finally {
-            setPendingLoading(false);
-        }
-    };
-
-    const fetchHistoryData = async (isInitial = false) => {
-        setHistoryLoading(true);
-        try {
-            const currentPage = isInitial ? 0 : historyPageIndex;
-            const from = currentPage * historyPageSize;
-            const to = from + historyPageSize - 1;
-
-            const { data, count } = await fetchFromSupabaseWithCount(
-                'indent',
-                '*',
-                { from, to },
-                { column: 'timestamp', options: { ascending: false } },
-                (q) => q.eq('indent_type', 'Store Out').not('planned_6', 'is', null).not('actual_6', 'is', null)
-            );
-
-            if (data) {
-                const historyTableBatch = data.map((record: any) => ({
-                    approvalDate: record.actual_6 ? formatDate(new Date(record.actual_6)) : '',
-                    indentNo: record.indent_number || '',
-                    indenter: record.indenter_name || '',
-                    department: record.department || '',
-                    product: record.product_name || '',
-                    date: formatDate(new Date(record.timestamp)),
-                    areaOfUse: record.area_of_use || '',
-                    quantity: record.issued_quantity || 0,
-                    requestedQuantity: record.quantity || 0,
-                    uom: record.uom || '',
-                    issuedStatus: record.issue_status || '',
-                    vendorType: record.vendor_type || '',
-                }));
-
-                if (isInitial) {
-                    setHistoryData(historyTableBatch);
-                    setHistoryPageIndex(1);
-                } else {
-                    setHistoryData(prev => {
-                        // Prevent duplicates
-                        const existingIds = new Set(prev.map(item => item.indentNo));
-                        const newItems = historyTableBatch.filter(item => !existingIds.has(item.indentNo));
-                        return [...prev, ...newItems];
-                    });
-                    setHistoryPageIndex(prev => prev + 1);
-                }
-
-                const total = count || 0;
-                setHistoryTotalCount(total);
-                setHasMoreHistory((isInitial ? historyTableBatch.length : historyData.length + historyTableBatch.length) < total);
-            }
-        } catch (error) {
-            console.error('Error fetching history data:', error);
-            toast.error('Failed to fetch store out history data');
-        } finally {
-            setHistoryLoading(false);
-        }
-    };
-
-    useEffect(() => {
-        fetchPendingData(true);
-    }, []);
-
-    useEffect(() => {
-        fetchHistoryData(true);
-    }, []);
 
     // Add this function inside your component, before the return statement
     const onDownloadClick = async () => {
@@ -333,7 +259,8 @@ export default () => {
                                                 `Marked ${indent.indentNo} as Done`
                                             );
                                             updateIndentSheet(); // Update context for sidebars
-                                            setTimeout(() => fetchPendingData(true), 500);
+                                            queryClient.invalidateQueries({ queryKey: ['storeOutPending'] });
+                                            queryClient.invalidateQueries({ queryKey: ['storeOutHistory'] });
                                         } catch (error) {
                                             console.error('Update error:', error);
                                             toast.error('Failed to update status');
@@ -542,14 +469,6 @@ export default () => {
         },
     });
 
-    useEffect(() => {
-        if (selectedIndent) {
-            form.reset({
-                issuedQuantity: selectedIndent.quantity,
-            });
-        }
-        form.reset();
-    }, [selectedIndent]);
 
     async function onSubmit(values: z.infer<typeof schema>) {
         try {
@@ -578,10 +497,8 @@ export default () => {
             updateIndentSheet(); // Update context for sidebars
             setOpenDialog(false);
             form.reset();
-            setTimeout(() => {
-                fetchPendingData(true);
-                fetchHistoryData(true);
-            }, 500);
+            queryClient.invalidateQueries({ queryKey: ['storeOutPending'] });
+            queryClient.invalidateQueries({ queryKey: ['storeOutHistory'] });
         } catch (error) {
             console.error('Update error:', error);
             toast.error('Failed to update status');
@@ -607,9 +524,10 @@ export default () => {
                         columns={columns}
                         searchFields={['vendorType', 'indentNo', 'product', 'department', 'indenter', 'date', 'areaOfUse', 'quantity', 'uom', 'specifications']}
                         dataLoading={pendingLoading}
+                        isFetchingNextPage={isFetchingNextPendingPage}
                         infiniteScroll={true}
-                        onLoadMore={() => fetchPendingData(false)}
-                        hasMore={hasMorePending}
+                        onLoadMore={() => fetchNextPendingPage()}
+                        hasMore={hasNextPendingPage}
                         extraActions={
                             <div className="flex gap-2">
                                 <Button
@@ -662,9 +580,10 @@ export default () => {
                         columns={historyColumns}
                         searchFields={['vendorType', 'indentNo', 'product', 'department', 'indenter', 'date', 'areaOfUse', 'quantity', 'requestedQuantity', 'uom', 'approvalDate', 'issuedStatus']}
                         dataLoading={historyLoading}
+                        isFetchingNextPage={isFetchingNextHistoryPage}
                         infiniteScroll={true}
-                        onLoadMore={() => fetchHistoryData(false)}
-                        hasMore={hasMoreHistory}
+                        onLoadMore={() => fetchNextHistoryPage()}
+                        hasMore={hasNextHistoryPage}
                     />
                 </TabsContent>
             </Tabs>
@@ -841,7 +760,7 @@ export default () => {
                         defaultIndentType="Store Out" 
                         onSuccess={() => {
                             setOpenCreateDialog(false);
-                            fetchPendingData(true);
+                            queryClient.invalidateQueries({ queryKey: ['storeOutPending'] });
                         }} 
                     />
                 </div>

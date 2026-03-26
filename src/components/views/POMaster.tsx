@@ -1,12 +1,12 @@
 import { ListTodo } from 'lucide-react';
 import Heading from '../element/Heading';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo } from 'react';
 import type { ColumnDef } from '@tanstack/react-table';
+import { useInfiniteSupabaseQuery } from '@/hooks/useInfiniteSupabaseQuery';
+import DataTable from '../element/DataTable';
 import { formatDate } from '@/lib/utils';
 import { supabase } from '@/lib/supabaseClient';
-import DataTable from '../element/DataTable';
-import { fetchFromSupabasePaginated, fetchFromSupabaseWithCount } from '@/lib/fetchers';
 
 interface PendingIndentsData {
     timestamp: string;
@@ -64,80 +64,47 @@ const parseGSTPercent = (value: any): number => {
 };
 
 export default () => {
+    // Data Query
+    const {
+        data: poMasterDataRaw,
+        fetchNextPage,
+        hasNextPage,
+        isLoading: loading,
+        isFetchingNextPage,
+    } = useInfiniteSupabaseQuery(['poMaster'], {
+        tableName: 'po_master',
+        queryBuilder: (q) => q.order('timestamp', { ascending: false }),
+        pageSize: 10,
+    });
 
-    const [loading, setLoading] = useState(true);
-    const [tableData, setTableData] = useState<PendingIndentsData[]>([]);
-
-    // Pagination state
-    const [pageIndex, setPageIndex] = useState(0);
-    const [pageSize] = useState(10);
-    const [totalCount, setTotalCount] = useState(0);
-    const [hasMore, setHasMore] = useState(true);
-
-    const fetchPOMaster = async (isInitial = false) => {
-        try {
-            setLoading(true);
-
-            const currentPage = isInitial ? 0 : pageIndex;
-            const from = currentPage * pageSize;
-            const to = (currentPage + 1) * pageSize - 1;
-
-            const { data, count } = await fetchFromSupabaseWithCount(
-                'po_master',
-                '*',
-                { from, to },
-                { column: 'timestamp', options: { ascending: false } }
-            );
-
-            if (data) {
-                const mappedBatch = (data as any[]).map((sheet) => {
-                    let gstValue = sheet.gst_percent || 0;
-                    return {
-                        timestamp: sheet.timestamp ? formatDate(new Date(sheet.timestamp)) : '',
-                        partyName: sheet.party_name || '',
-                        poNumber: sheet.po_number || '',
-                        quotationNumber: sheet.quotation_number || '',
-                        quotationDate: sheet.quotation_date ? formatDate(new Date(sheet.quotation_date)) : '',
-                        enquiryNumber: sheet.enquiry_number || '',
-                        enquiryDate: sheet.enquiry_date ? formatDate(new Date(sheet.enquiry_date)) : '',
-                        internalCode: sheet.internal_code || '',
-                        product: sheet.product || '',
-                        description: sheet.description || '',
-                        quantity: Number(sheet.quantity) || 0,
-                        unit: sheet.unit || '',
-                        rate: Number(sheet.rate) || 0,
-                        gstPercent: parseGSTPercent(gstValue),
-                        discountPercent: Number(sheet.discount_percent) || 0,
-                        amount: Number(sheet.amount) || 0,
-                        totalPoAmount: Number(sheet.total_po_amount) || 0,
-                        preparedBy: sheet.prepared_by || '',
-                        approvedBy: sheet.approved_by || '',
-                        pdf: sheet.pdf_link || sheet.pdf_url || '',
-                    };
-                });
-
-                if (isInitial) {
-                    setTableData(mappedBatch);
-                    setPageIndex(1);
-                } else {
-                    setTableData(prev => [...prev, ...mappedBatch]);
-                    setPageIndex(prev => prev + 1);
-                }
-
-                const total = count || 0;
-                setTotalCount(total);
-                setHasMore((isInitial ? mappedBatch.length : tableData.length + mappedBatch.length) < total);
-            }
-        } catch (error) {
-            console.error('Error fetching PO master:', error);
-        } finally {
-            setLoading(false);
-        }
-    };
-
-    useEffect(() => {
-        fetchPOMaster(true);
-    }, []);
+    const tableData = useMemo(() => {
+        if (!poMasterDataRaw) return [];
+        return poMasterDataRaw.pages.flatMap(page => page.data).map((sheet: any) => {
+            let gstValue = sheet.gst_percent || 0;
+            return {
+                timestamp: sheet.timestamp ? formatDate(new Date(sheet.timestamp)) : '',
+                partyName: sheet.party_name || '',
+                poNumber: sheet.po_number || '',
+                quotationNumber: sheet.quotation_number || '',
+                quotationDate: sheet.quotation_date ? formatDate(new Date(sheet.quotation_date)) : '',
+                enquiryNumber: sheet.enquiry_number || '',
+                enquiryDate: sheet.enquiry_date ? formatDate(new Date(sheet.enquiry_date)) : '',
+                internalCode: sheet.internal_code || '',
+                product: sheet.product || '',
+                description: sheet.description || '',
+                quantity: Number(sheet.quantity) || 0,
+                unit: sheet.unit || '',
+                rate: Number(sheet.rate) || 0,
+                gstPercent: parseGSTPercent(gstValue),
+                discountPercent: Number(sheet.discount_percent) || 0,
+                amount: Number(sheet.amount) || 0,
+                totalPoAmount: Number(sheet.total_po_amount) || 0,
+                preparedBy: sheet.prepared_by || '',
+                approvedBy: sheet.approved_by || '',
+                pdf: sheet.pdf_link || sheet.pdf_url || '',
+            };
+        });
+    }, [poMasterDataRaw]);
 
     // Creating table columns based on PO MASTER sheet structure (Columns A-T)
     const columns: ColumnDef<PendingIndentsData>[] = [
@@ -218,20 +185,13 @@ export default () => {
             <DataTable
                 data={tableData}
                 columns={columns}
-                searchFields={[
-                    'partyName',
-                    'poNumber',
-                    'product',
-                    'description',
-                    'quotationNumber',
-                    'enquiryNumber',
-                    'preparedBy',
-                    'approvedBy'
-                ]}
+                searchFields={['poNumber', 'partyName', 'product', 'internalCode']}
                 dataLoading={loading}
+                isFetchingNextPage={isFetchingNextPage}
                 infiniteScroll={true}
-                onLoadMore={() => fetchPOMaster(false)}
-                hasMore={hasMore}
+                onLoadMore={fetchNextPage}
+                hasMore={hasNextPage}
+                extraActions={<></>}
                 className="h-[80dvh]"
             />
         </div>

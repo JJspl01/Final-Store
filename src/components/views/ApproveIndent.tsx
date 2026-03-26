@@ -5,7 +5,7 @@ import { useEffect, useState, useMemo, useCallback } from 'react';
 import { DownloadOutlined } from "@ant-design/icons";
 import { Button } from '../ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select';
-import { fetchIndentMasterData, fetchFromSupabaseWithCount } from '@/lib/fetchers';
+import { fetchIndentMasterData } from '@/lib/fetchers';
 import { toast } from 'sonner';
 import { PuffLoader as Loader } from 'react-spinners';
 import { Tabs, TabsContent } from '../ui/tabs';
@@ -17,6 +17,8 @@ import Heading from '../element/Heading';
 import { Pill } from '../ui/pill';
 import { Input } from '../ui/input';
 import { supabase } from '@/lib/supabaseClient';
+import { useQueryClient } from '@tanstack/react-query';
+import { useInfiniteSupabaseQuery } from '@/hooks/useInfiniteSupabaseQuery';
 
 const statuses = ['Reject', 'Three Party', 'Regular'];
 
@@ -38,7 +40,7 @@ interface HistoryData {
     indenter: string;
     department: string;
     product: string;
-    groupHead: string; // Added groupHead
+    groupHead: string;
     uom: string;
     approvedQuantity: number;
     vendorType: 'Reject' | 'Three Party' | 'Regular';
@@ -51,153 +53,87 @@ interface HistoryData {
 export default () => {
     const { user } = useAuth();
     const { updateIndentSheet } = useSheets();
+    const queryClient = useQueryClient();
 
-    const [tableData, setTableData] = useState<ApproveTableData[]>([]);
-    const [historyData, setHistoryData] = useState<HistoryData[]>([]);
     const [editingRow, setEditingRow] = useState<string | null>(null);
     const [editValues, setEditValues] = useState<Partial<HistoryData>>({});
-    const [loading, setLoading] = useState(false);
     const [selectedRows, setSelectedRows] = useState<Set<string>>(new Set());
     const [bulkUpdates, setBulkUpdates] = useState<Map<string, { vendorType?: string; quantity?: number; product?: string }>>(new Map());
     const [submitting, setSubmitting] = useState(false);
-    const [dataLoading, setDataLoading] = useState(true);
     const [master, setMaster] = useState<any>(null);
-    const [searchTermProductHistory, setSearchTermProductHistory] = useState(''); // Added search for history products
-
-    // Pagination state - Pending
-    const [pendingPageIndex, setPendingPageIndex] = useState(0);
-    const [pendingPageSize] = useState(10);
-    const [pendingTotal, setPendingTotal] = useState(0);
-    const [hasMorePending, setHasMorePending] = useState(true);
-
-    // Pagination state - History
-    const [historyPageIndex, setHistoryPageIndex] = useState(0);
-    const [historyPageSize] = useState(10);
-    const [historyTotal, setHistoryTotal] = useState(0);
-    const [hasMoreHistory, setHasMoreHistory] = useState(true);
+    const [searchTermProductHistory, setSearchTermProductHistory] = useState('');
 
     const PENDING_COLUMNS = "indent_number, indenter_name, department, product_name, quantity, uom, attachment, specifications, vendor_type, created_at";
     const HISTORY_COLUMNS = "indent_number, indenter_name, department, product_name, group_head, approved_quantity, quantity, vendor_type, uom, specifications, created_at, actual_1";
 
-    const fetchPendingData = async (reset = false) => {
-        setDataLoading(true);
-        try {
-            const currentPage = reset ? 0 : pendingPageIndex;
-            const from = currentPage * pendingPageSize;
-            const to = from + pendingPageSize - 1;
+    // ─── Queries ───
 
-            const { data, count } = await fetchFromSupabaseWithCount(
-                'indent',
-                PENDING_COLUMNS,
-                { from, to },
-                { column: 'created_at', options: { ascending: false } },
-                (q) => q.not('planned_1', 'is', null).is('actual_1', null).eq('indent_type', 'Purchase')
-            );
+    const {
+        data: pendingDataRaw,
+        fetchNextPage: fetchNextPagePending,
+        hasNextPage: hasNextPagePending,
+        isLoading: pendingLoading,
+        isFetchingNextPage: isFetchingNextPendingPage,
+    } = useInfiniteSupabaseQuery(['approvePending'], {
+        tableName: 'indent',
+        queryBuilder: (q) => q.select(PENDING_COLUMNS).not('planned_1', 'is', null).is('actual_1', null).eq('indent_type', 'Purchase').order('created_at', { ascending: false }),
+        pageSize: 10,
+    });
 
-            if (data) {
-                const pendingBatch = data.map((record: any) => ({
-                    indentNo: record.indent_number || '',
-                    indenter: record.indenter_name || '',
-                    department: record.department || '',
-                    product: record.product_name || '',
-                    quantity: record.quantity || 0,
-                    uom: record.uom || '',
-                    attachment: record.attachment || '',
-                    specifications: record.specifications || '',
-                    vendorType: (statuses.includes(record.vendor_type) ? record.vendor_type : '') as "Reject" | "Three Party" | "Regular",
-                    date: formatDate(new Date(record.created_at)),
-                }));
+    const {
+        data: historyDataRaw,
+        fetchNextPage: fetchNextPageHistory,
+        hasNextPage: hasNextPageHistory,
+        isLoading: historyLoading,
+        isFetchingNextPage: isFetchingNextHistoryPage,
+    } = useInfiniteSupabaseQuery(['approveHistory'], {
+        tableName: 'indent',
+        queryBuilder: (q) => q.select(HISTORY_COLUMNS).not('planned_1', 'is', null).not('actual_1', 'is', null).eq('indent_type', 'Purchase').order('created_at', { ascending: false }),
+        pageSize: 10,
+    });
 
-                if (reset) {
-                    setTableData(pendingBatch);
-                    setPendingPageIndex(1);
-                    setHasMorePending(pendingBatch.length < (count || 0));
-                } else {
-                    setTableData(prev => [...prev, ...pendingBatch]);
-                    setPendingPageIndex(prev => prev + 1);
-                    setHasMorePending((tableData.length + pendingBatch.length) < (count || 0));
-                }
-                setPendingTotal(count || 0);
-            }
-        } catch (error: any) {
-            console.error('Error fetching pending data:', error);
-            toast.error('Failed to fetch pending data');
-        } finally {
-            setDataLoading(false);
-        }
-    };
-
-    const fetchHistoryData = async (reset = false) => {
-        setLoading(true);
-        try {
-            const currentPage = reset ? 0 : historyPageIndex;
-            const from = currentPage * historyPageSize;
-            const to = from + historyPageSize - 1;
-
-            const { data, count } = await fetchFromSupabaseWithCount(
-                'indent',
-                HISTORY_COLUMNS,
-                { from, to },
-                { column: 'created_at', options: { ascending: false } },
-                (q) => q.not('planned_1', 'is', null).not('actual_1', 'is', null).eq('indent_type', 'Purchase')
-            );
-
-            if (data) {
-                const historyBatch = data.map((record: any) => ({
-                    indentNo: record.indent_number || '',
-                    indenter: record.indenter_name || '',
-                    department: record.department || '',
-                    product: record.product_name || '',
-                    groupHead: record.group_head || '',
-                    approvedQuantity: record.approved_quantity || record.quantity || 0,
-                    vendorType: record.vendor_type as HistoryData['vendorType'],
-                    uom: record.uom || '',
-                    specifications: record.specifications || '',
-                    date: formatDate(new Date(record.created_at)),
-                    approvedDate: formatDate(new Date(record.actual_1)),
-                }));
-
-                if (reset) {
-                    setHistoryData(historyBatch);
-                    setHistoryPageIndex(1);
-                    setHasMoreHistory(historyBatch.length < (count || 0));
-                } else {
-                    setHistoryData(prev => [...prev, ...historyBatch]);
-                    setHistoryPageIndex(prev => prev + 1);
-                    setHasMoreHistory((historyData.length + historyBatch.length) < (count || 0));
-                }
-                setHistoryTotal(count || 0);
-            }
-        } catch (error: any) {
-            console.error('Error fetching history data:', error);
-            toast.error('Failed to fetch history data');
-        } finally {
-            setLoading(false);
-        }
-    };
-
-    useEffect(() => {
-        fetchPendingData(true);
-    }, []);
-
-    useEffect(() => {
-        fetchHistoryData(true);
-    }, []);
+    // ─── Effects ───
 
     useEffect(() => {
         fetchIndentMasterData().then(setMaster);
     }, []);
 
-    const getCurrentFormattedDate = () => {
-        const now = new Date();
-        const day = String(now.getDate()).padStart(2, '0');
-        const month = String(now.getMonth() + 1).padStart(2, '0');
-        const year = now.getFullYear();
-        const hours = String(now.getHours()).padStart(2, '0');
-        const minutes = String(now.getMinutes()).padStart(2, '0');
-        const seconds = String(now.getSeconds()).padStart(2, '0');
-        return `${day}/${month}/${year} ${hours}:${minutes}:${seconds}`;
-    };
+    // ─── Mappings ───
+
+    const tableData = useMemo(() => {
+        if (!pendingDataRaw) return [];
+        return pendingDataRaw.pages.flatMap(p => p.data).map((record: any) => ({
+            indentNo: record.indent_number || '',
+            indenter: record.indenter_name || '',
+            department: record.department || '',
+            product: record.product_name || '',
+            quantity: record.quantity || 0,
+            uom: record.uom || '',
+            attachment: record.attachment || '',
+            specifications: record.specifications || '',
+            vendorType: (statuses.includes(record.vendor_type) ? record.vendor_type : '') as "Reject" | "Three Party" | "Regular",
+            date: formatDate(new Date(record.created_at)),
+        }));
+    }, [pendingDataRaw]);
+
+    const historyData = useMemo(() => {
+        if (!historyDataRaw) return [];
+        return historyDataRaw.pages.flatMap(p => p.data).map((record: any) => ({
+            indentNo: record.indent_number || '',
+            indenter: record.indenter_name || '',
+            department: record.department || '',
+            product: record.product_name || '',
+            groupHead: record.group_head || '',
+            approvedQuantity: record.approved_quantity || record.quantity || 0,
+            vendorType: record.vendor_type as HistoryData['vendorType'],
+            uom: record.uom || '',
+            specifications: record.specifications || '',
+            date: formatDate(new Date(record.created_at)),
+            approvedDate: formatDate(new Date(record.actual_1)),
+        }));
+    }, [historyDataRaw]);
+
+    // ─── Handlers ───
 
     const handleRowSelect = useCallback((indentNo: string, checked: boolean) => {
         setSelectedRows(prev => {
@@ -264,18 +200,17 @@ export default () => {
                     });
                 });
             } else {
-                const qtyValue = value as number;
+                const updateVal = value;
                 const currentUpdate = newUpdates.get(indentNo) || {};
                 newUpdates.set(indentNo, {
                     ...currentUpdate,
-                    quantity: qtyValue,
+                    [field]: updateVal,
                 });
             }
 
             return newUpdates;
         });
     }, [selectedRows]);
-
 
     const handleSubmitBulkUpdates = async () => {
         if (selectedRows.size === 0) {
@@ -285,15 +220,7 @@ export default () => {
 
         setSubmitting(true);
         try {
-            // Format date as YYYY-MM-DD HH:MM:SS for PostgreSQL compatibility
-            const now = new Date();
-            const year = now.getFullYear();
-            const month = String(now.getMonth() + 1).padStart(2, '0');
-            const day = String(now.getDate()).padStart(2, '0');
-            const hours = String(now.getHours()).padStart(2, '0');
-            const minutes = String(now.getMinutes()).padStart(2, '0');
-            const seconds = String(now.getSeconds()).padStart(2, '0');
-            const formattedDate = `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
+            const formattedDate = new Date().toISOString().replace('T', ' ').split('.')[0];
 
             const updatesToProcess = Array.from(selectedRows).map(indentNo => {
                 const update = bulkUpdates.get(indentNo);
@@ -301,11 +228,9 @@ export default () => {
 
                 if (!originalRecord || !update) return null;
 
-                // Prepare update object with only changed fields
                 const updatePayload: any = {
                     vendor_type: update.vendorType || originalRecord.vendorType,
                     approved_quantity: update.quantity !== undefined ? update.quantity : originalRecord.quantity,
-                    // H column (quantity) bhi approved ke equal
                     quantity: update.quantity !== undefined ? update.quantity : originalRecord.quantity,
                     product_name: update.product || originalRecord.product,
                     actual_1: formattedDate,
@@ -317,12 +242,6 @@ export default () => {
                 };
             }).filter((item): item is NonNullable<typeof item> => item !== null);
 
-            // Batch process using Promise.all or an specialized batch update if available
-            // Supabase doesn't easily support distinct updates per row in one call unless we use a function or upsert.
-            // However, we can group them if they have identical updates, but here they might vary.
-            // For performance, we'll still use Promise.all to fire them in parallel, which is faster than a loop.
-            // Better: If many rows have the SAME vendor_type, we can batch those.
-
             await Promise.all(updatesToProcess.map(async (updateItem) => {
                 const { error } = await supabase
                     .from('indent')
@@ -333,11 +252,10 @@ export default () => {
             }));
 
             toast.success(`Updated ${updatesToProcess.length} indents successfully`);
-            updateIndentSheet(); // Update context to sync sidebar counts
+            updateIndentSheet();
 
-            // Refresh the current page
-            fetchPendingData();
-            fetchHistoryData();
+            queryClient.invalidateQueries({ queryKey: ['approvePending'] });
+            queryClient.invalidateQueries({ queryKey: ['approveHistory'] });
 
             setSelectedRows(new Set());
             setBulkUpdates(new Map());
@@ -375,12 +293,7 @@ export default () => {
     };
 
     const onDownloadClick = async () => {
-        setLoading(true);
-        try {
-            await handleDownload(tableData);
-        } finally {
-            setLoading(false);
-        }
+        handleDownload(tableData);
     };
 
     const handleEditClick = (row: HistoryData) => {
@@ -405,36 +318,21 @@ export default () => {
             const oldProductName = currentRow?.product;
             const newProductName = editValues.product;
 
-            // Check if product name changed
             if (oldProductName && newProductName && oldProductName !== newProductName) {
-                // Update all rows with the same old product name
                 const { error: updateError } = await supabase
                     .from('indent')
                     .update({ product_name: newProductName })
                     .eq('product_name', oldProductName);
 
                 if (updateError) throw updateError;
-
                 toast.success(`Updated product name from "${oldProductName}" to "${newProductName}"`);
             } else {
-                // Update only the current row for other fields
                 const updatePayload: any = {};
-
-                if (editValues.approvedQuantity !== undefined) {
-                    updatePayload.approved_quantity = editValues.approvedQuantity;
-                }
-                if (editValues.uom) {
-                    updatePayload.uom = editValues.uom;
-                }
-                if (editValues.vendorType) {
-                    updatePayload.vendor_type = editValues.vendorType;
-                }
-                if (editValues.product) {
-                    updatePayload.product_name = editValues.product;
-                }
-                if (editValues.specifications !== undefined) {
-                    updatePayload.specifications = editValues.specifications;
-                }
+                if (editValues.approvedQuantity !== undefined) updatePayload.approved_quantity = editValues.approvedQuantity;
+                if (editValues.uom) updatePayload.uom = editValues.uom;
+                if (editValues.vendorType) updatePayload.vendor_type = editValues.vendorType;
+                if (editValues.product) updatePayload.product_name = editValues.product;
+                if (editValues.specifications !== undefined) updatePayload.specifications = editValues.specifications;
 
                 const { error } = await supabase
                     .from('indent')
@@ -442,13 +340,10 @@ export default () => {
                     .eq('indent_number', indentNo);
 
                 if (error) throw error;
-
                 toast.success(`Updated indent ${indentNo}`);
             }
 
-            // Refresh the current history page
-            fetchHistoryData();
-
+            queryClient.invalidateQueries({ queryKey: ['approveHistory'] });
             setEditingRow(null);
             setEditValues({});
         } catch (error: any) {
@@ -461,7 +356,8 @@ export default () => {
         setEditValues(prev => ({ ...prev, [field]: value }));
     };
 
-    // Wrap columns in useMemo
+    // ─── Columns ───
+
     const columns = useMemo<ColumnDef<ApproveTableData>[]>(() => [
         {
             id: 'select',
@@ -498,15 +394,14 @@ export default () => {
                     cell: ({ row }: { row: Row<ApproveTableData> }) => {
                         const indent = row.original;
                         const isSelected = selectedRows.has(indent.indentNo);
-                        const currentValue =
-                            bulkUpdates.get(indent.indentNo)?.vendorType || indent.vendorType;
+                        const currentValue = bulkUpdates.get(indent.indentNo)?.vendorType || indent.vendorType;
 
                         const handleChange = (value: string) => {
                             if (value === '') {
                                 toast.warning('You cannot select Pending as a Vendor Type');
                                 return;
                             }
-                            handleBulkUpdate(indent.indentNo, 'vendorType', value);
+                            handleBulkUpdate(indent.indentNo, 'vendorType', value as any);
                         };
 
                         return (
@@ -516,8 +411,7 @@ export default () => {
                                 disabled={!isSelected}
                             >
                                 <SelectTrigger
-                                    className={`w-full min-w-[120px] max-w-[150px] text-xs ${!isSelected ? 'opacity-50' : ''
-                                        }`}
+                                    className={`w-full min-w-[120px] max-w-[150px] text-xs ${!isSelected ? 'opacity-50' : ''}`}
                                 >
                                     <SelectValue placeholder="Select Vendor Type" />
                                 </SelectTrigger>
@@ -531,16 +425,13 @@ export default () => {
                     },
                     size: 150,
                 },
-
             ]
             : []),
         {
             accessorKey: 'indentNo',
             header: 'Indent No.',
             cell: ({ getValue }) => (
-                <div className="font-medium text-xs sm:text-sm">
-                    {getValue() as string}
-                </div>
+                <div className="font-medium text-xs sm:text-sm">{getValue() as string}</div>
             ),
             size: 100,
         },
@@ -548,9 +439,7 @@ export default () => {
             accessorKey: 'indenter',
             header: 'Indenter',
             cell: ({ getValue }) => (
-                <div className="text-xs sm:text-sm truncate max-w-[100px]">
-                    {getValue() as string}
-                </div>
+                <div className="text-xs sm:text-sm truncate max-w-[100px]">{getValue() as string}</div>
             ),
             size: 120,
         },
@@ -558,9 +447,7 @@ export default () => {
             accessorKey: 'department',
             header: 'Department',
             cell: ({ getValue }) => (
-                <div className="text-xs sm:text-sm truncate max-w-[100px]">
-                    {getValue() as string}
-                </div>
+                <div className="text-xs sm:text-sm truncate max-w-[100px]">{getValue() as string}</div>
             ),
             size: 120,
         },
@@ -591,7 +478,6 @@ export default () => {
                 const isSelected = selectedRows.has(indent.indentNo);
                 const currentValue = bulkUpdates.get(indent.indentNo)?.quantity || indent.quantity;
 
-                // local state remains fine as long as we keep it simple or memoize row
                 return (
                     <Input
                         type="number"
@@ -611,14 +497,11 @@ export default () => {
             },
             size: 80,
         },
-
         {
             accessorKey: 'uom',
             header: 'UOM',
             cell: ({ getValue }) => (
-                <div className="text-xs sm:text-sm">
-                    {getValue() as string}
-                </div>
+                <div className="text-xs sm:text-sm">{getValue() as string}</div>
             ),
             size: 60,
         },
@@ -637,10 +520,8 @@ export default () => {
                             .from('indent')
                             .update({ specifications: value })
                             .eq('indent_number', indentNo);
-
                         if (error) throw error;
                         toast.success(`Updated specifications for ${indentNo}`);
-                        // No full refresh needed, just local update or wait for next fetch
                     } catch (error: any) {
                         console.error('Error updating specifications:', error);
                         toast.error('Failed to update specifications');
@@ -666,14 +547,7 @@ export default () => {
             cell: ({ row }: { row: Row<ApproveTableData> }) => {
                 const attachment = row.original.attachment;
                 return attachment ? (
-                    <a
-                        href={attachment}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-blue-600 hover:text-blue-800 text-xs sm:text-sm underline"
-                    >
-                        View
-                    </a>
+                    <a href={attachment} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:text-blue-800 text-xs sm:text-sm underline">View</a>
                 ) : (
                     <span className="text-gray-400 text-xs sm:text-sm">-</span>
                 );
@@ -684,23 +558,18 @@ export default () => {
             accessorKey: 'date',
             header: 'Date',
             cell: ({ getValue }) => (
-                <div className="text-xs sm:text-sm whitespace-nowrap">
-                    {getValue() as string}
-                </div>
+                <div className="text-xs sm:text-sm whitespace-nowrap">{getValue() as string}</div>
             ),
             size: 100,
         },
-    ], [selectedRows, bulkUpdates, master, handleRowSelect, handleSelectAll, handleBulkUpdate, user.indentApprovalAction]);
+    ], [selectedRows, bulkUpdates, handleRowSelect, handleSelectAll, handleBulkUpdate, user.indentApprovalAction, tableData]);
 
-    // History columns with mobile responsiveness
     const historyColumns = useMemo<ColumnDef<HistoryData>[]>(() => [
         {
             accessorKey: 'indentNo',
             header: 'Indent No.',
             cell: ({ getValue }) => (
-                <div className="font-medium text-xs sm:text-sm">
-                    {getValue() as string}
-                </div>
+                <div className="font-medium text-xs sm:text-sm">{getValue() as string}</div>
             ),
             size: 100,
         },
@@ -708,9 +577,7 @@ export default () => {
             accessorKey: 'indenter',
             header: 'Indenter',
             cell: ({ getValue }) => (
-                <div className="text-xs sm:text-sm truncate max-w-[100px]">
-                    {getValue() as string}
-                </div>
+                <div className="text-xs sm:text-sm truncate max-w-[100px]">{getValue() as string}</div>
             ),
             size: 120,
         },
@@ -718,9 +585,7 @@ export default () => {
             accessorKey: 'department',
             header: 'Department',
             cell: ({ getValue }) => (
-                <div className="text-xs sm:text-sm truncate max-w-[100px]">
-                    {getValue() as string}
-                </div>
+                <div className="text-xs sm:text-sm truncate max-w-[100px]">{getValue() as string}</div>
             ),
             size: 120,
         },
@@ -731,15 +596,10 @@ export default () => {
                 const isEditing = editingRow === row.original.indentNo;
                 const currentValue = editValues.product ?? row.original.product;
                 const groupHead = row.original.groupHead;
-
-                // Get products for this group head from master data
                 const productOptions = (master?.groupHeadItems?.[groupHead] || []) as string[];
 
                 return isEditing ? (
-                    <Select
-                        value={currentValue}
-                        onValueChange={(value) => handleInputChange('product', value)}
-                    >
+                    <Select value={currentValue} onValueChange={(value) => handleInputChange('product', value)}>
                         <SelectTrigger className="w-[150px] sm:w-[200px] text-xs sm:text-sm">
                             <SelectValue placeholder="Select product" />
                         </SelectTrigger>
@@ -755,19 +615,11 @@ export default () => {
                                 />
                             </div>
                             <div className="max-h-[300px] overflow-y-auto">
-                                {productOptions
-                                    ?.filter((p) =>
-                                        p.toLowerCase().includes(searchTermProductHistory.toLowerCase())
-                                    )
-                                    .map((p, i) => (
-                                        <SelectItem key={i} value={p}>
-                                            {p}
-                                        </SelectItem>
-                                    ))}
+                                {productOptions?.filter((p) => p.toLowerCase().includes(searchTermProductHistory.toLowerCase())).map((p, i) => (
+                                    <SelectItem key={i} value={p}>{p}</SelectItem>
+                                ))}
                                 {productOptions.length === 0 && (
-                                    <div className="p-2 text-xs text-muted-foreground text-center">
-                                        No products found for this group head
-                                    </div>
+                                    <div className="p-2 text-xs text-muted-foreground text-center">No products found</div>
                                 )}
                             </div>
                         </SelectContent>
@@ -776,16 +628,8 @@ export default () => {
                     <div className="flex items-center gap-1 sm:gap-2 max-w-[120px] sm:max-w-[150px] break-words whitespace-normal">
                         <span className="text-xs sm:text-sm">{row.original.product}</span>
                         {user.indentApprovalAction && (
-                            <Button
-                                variant="ghost"
-                                size="icon"
-                                className="h-6 w-6 sm:h-8 sm:w-8"
-                                onClick={() => {
-                                    handleEditClick(row.original);
-                                    setSearchTermProductHistory(''); // Reset search when starting edit
-                                }}
-                            >
-                                <PenSquare className="h-2 w-2 sm:h-3 sm:w-3" />
+                            <Button variant="ghost" size="icon" className="h-6 w-6 sm:h-8 sm:w-8" onClick={() => { handleEditClick(row.original); setSearchTermProductHistory(''); }}>
+                                <PenSquare className="h-3 w-3" />
                             </Button>
                         )}
                     </div>
@@ -799,27 +643,8 @@ export default () => {
             cell: ({ row }) => {
                 const isEditing = editingRow === row.original.indentNo;
                 return isEditing ? (
-                    <Input
-                        type="number"
-                        defaultValue={editValues.approvedQuantity ?? row.original.approvedQuantity}
-                        onBlur={(e) => handleInputChange('approvedQuantity', Number(e.target.value))}
-                        className="w-16 sm:w-20 text-xs sm:text-sm"
-                    />
-                ) : (
-                    <div className="flex items-center gap-1 sm:gap-2">
-                        <span className="text-xs sm:text-sm">{row.original.approvedQuantity}</span>
-                        {user.indentApprovalAction && editingRow !== row.original.indentNo && (
-                            <Button
-                                variant="ghost"
-                                size="icon"
-                                className="h-6 w-6 sm:h-8 sm:w-8"
-                                onClick={() => handleEditClick(row.original)}
-                            >
-                                <PenSquare className="h-2 w-2 sm:h-3 sm:w-3" />
-                            </Button>
-                        )}
-                    </div>
-                );
+                    <Input type="number" defaultValue={editValues.approvedQuantity ?? row.original.approvedQuantity} onBlur={(e) => handleInputChange('approvedQuantity', Number(e.target.value))} className="w-16 sm:w-20 text-xs sm:text-sm" />
+                ) : (row.original.approvedQuantity);
             },
             size: 100,
         },
@@ -829,26 +654,8 @@ export default () => {
             cell: ({ row }) => {
                 const isEditing = editingRow === row.original.indentNo;
                 return isEditing ? (
-                    <Input
-                        defaultValue={editValues.uom ?? row.original.uom}
-                        onBlur={(e) => handleInputChange('uom', e.target.value)}
-                        className="w-16 sm:w-20 text-xs sm:text-sm"
-                    />
-                ) : (
-                    <div className="flex items-center gap-1 sm:gap-2">
-                        <span className="text-xs sm:text-sm">{row.original.uom}</span>
-                        {user.indentApprovalAction && editingRow !== row.original.indentNo && (
-                            <Button
-                                variant="ghost"
-                                size="icon"
-                                className="h-6 w-6 sm:h-8 sm:w-8"
-                                onClick={() => handleEditClick(row.original)}
-                            >
-                                <PenSquare className="h-2 w-2 sm:h-3 sm:w-3" />
-                            </Button>
-                        )}
-                    </div>
-                );
+                    <Input defaultValue={editValues.uom ?? row.original.uom} onBlur={(e) => handleInputChange('uom', e.target.value)} className="w-16 sm:w-20 text-xs sm:text-sm" />
+                ) : (row.original.uom);
             },
             size: 80,
         },
@@ -858,26 +665,8 @@ export default () => {
             cell: ({ row }) => {
                 const isEditing = editingRow === row.original.indentNo;
                 return isEditing ? (
-                    <Input
-                        defaultValue={editValues.specifications ?? row.original.specifications}
-                        onBlur={(e) => handleInputChange('specifications', e.target.value)}
-                        className="max-w-[120px] sm:max-w-[150px] text-xs sm:text-sm"
-                    />
-                ) : (
-                    <div className="flex items-center gap-1 sm:gap-2 max-w-[120px] sm:max-w-[150px] break-words whitespace-normal">
-                        <span className="text-xs sm:text-sm">{row.original.specifications}</span>
-                        {user.indentApprovalAction && (
-                            <Button
-                                variant="ghost"
-                                size="icon"
-                                className="h-6 w-6 sm:h-8 sm:w-8"
-                                onClick={() => handleEditClick(row.original)}
-                            >
-                                <PenSquare className="h-2 w-2 sm:h-3 sm:w-3" />
-                            </Button>
-                        )}
-                    </div>
-                );
+                    <Input defaultValue={editValues.specifications ?? row.original.specifications} onBlur={(e) => handleInputChange('specifications', e.target.value)} className="max-w-[120px] sm:max-w-[150px] text-xs sm:text-sm" />
+                ) : (row.original.specifications);
             },
             size: 150,
         },
@@ -887,10 +676,7 @@ export default () => {
             cell: ({ row }) => {
                 const isEditing = editingRow === row.original.indentNo;
                 return isEditing ? (
-                    <Select
-                        value={editValues.vendorType ?? row.original.vendorType}
-                        onValueChange={(value) => handleInputChange('vendorType', value)}
-                    >
+                    <Select value={editValues.vendorType ?? row.original.vendorType} onValueChange={(value) => handleInputChange('vendorType', value)}>
                         <SelectTrigger className="w-[120px] sm:w-[150px] text-xs sm:text-sm">
                             <SelectValue placeholder="Select type" />
                         </SelectTrigger>
@@ -901,29 +687,9 @@ export default () => {
                         </SelectContent>
                     </Select>
                 ) : (
-                    <div className="flex items-center gap-1 sm:gap-2">
-                        <Pill
-                            variant={
-                                row.original.vendorType === 'Reject'
-                                    ? 'reject'
-                                    : row.original.vendorType === 'Regular'
-                                        ? 'primary'
-                                        : 'secondary'
-                            }
-                        >
-                            <span className="text-xs sm:text-sm">{row.original.vendorType}</span>
-                        </Pill>
-                        {user.indentApprovalAction && editingRow !== row.original.indentNo && (
-                            <Button
-                                variant="ghost"
-                                size="icon"
-                                className="h-6 w-6 sm:h-8 sm:w-8"
-                                onClick={() => handleEditClick(row.original)}
-                            >
-                                <PenSquare className="h-2 w-2 sm:h-3 sm:w-3" />
-                            </Button>
-                        )}
-                    </div>
+                    <Pill variant={row.original.vendorType === 'Reject' ? 'reject' : row.original.vendorType === 'Regular' ? 'primary' : 'secondary'}>
+                        {row.original.vendorType}
+                    </Pill>
                 );
             },
             size: 150,
@@ -932,9 +698,7 @@ export default () => {
             accessorKey: 'date',
             header: 'Request Date',
             cell: ({ getValue }) => (
-                <div className="text-xs sm:text-sm whitespace-nowrap">
-                    {getValue() as string}
-                </div>
+                <div className="text-xs sm:text-sm whitespace-nowrap">{getValue() as string}</div>
             ),
             size: 100,
         },
@@ -942,9 +706,7 @@ export default () => {
             accessorKey: 'approvedDate',
             header: 'Approval Date',
             cell: ({ getValue }) => (
-                <div className="text-xs sm:text-sm whitespace-nowrap">
-                    {getValue() as string}
-                </div>
+                <div className="text-xs sm:text-sm whitespace-nowrap">{getValue() as string}</div>
             ),
             size: 100,
         },
@@ -957,21 +719,8 @@ export default () => {
                         const isEditing = editingRow === row.original.indentNo;
                         return isEditing ? (
                             <div className="flex gap-1 sm:gap-2">
-                                <Button
-                                    size="sm"
-                                    onClick={() => handleSaveEdit(row.original.indentNo)}
-                                    className="text-xs sm:text-sm px-2 py-1"
-                                >
-                                    Save
-                                </Button>
-                                <Button
-                                    size="sm"
-                                    variant="outline"
-                                    onClick={handleCancelEdit}
-                                    className="text-xs sm:text-sm px-2 py-1"
-                                >
-                                    Cancel
-                                </Button>
+                                <Button size="sm" onClick={() => handleSaveEdit(row.original.indentNo)} className="text-xs sm:text-sm px-2 py-1">Save</Button>
+                                <Button size="sm" variant="outline" onClick={handleCancelEdit} className="text-xs sm:text-sm px-2 py-1">Cancel</Button>
                             </div>
                         ) : null;
                     },
@@ -979,37 +728,21 @@ export default () => {
                 },
             ]
             : []),
-    ], [editingRow, editValues, master, user.indentApprovalAction, handleSaveEdit, handleCancelEdit, handleEditClick, handleInputChange, searchTermProductHistory]);
+    ], [editingRow, editValues, master, user.indentApprovalAction, handleSaveEdit, handleCancelEdit, searchTermProductHistory]);
 
     return (
         <div className="w-full">
             <Tabs defaultValue="pending" className="w-full">
                 <div className="sticky top-0 z-20 bg-background -mx-5 -mt-5 p-5 pb-2 shadow-sm">
-                    <Heading
-                        heading="Approve Indent"
-                        subtext="Update Indent status to Approve or Reject them"
-                        tabs
-                    >
+                    <Heading heading="Approve Indent" subtext="Update Indent status to Approve or Reject them" tabs>
                         <ClipboardCheck size={50} className="text-primary" />
                     </Heading>
 
                     {selectedRows.size > 0 && (
                         <div className="mt-4 flex flex-col sm:flex-row justify-between items-start sm:items-center p-3 sm:p-4 bg-blue-50 rounded-lg gap-2 sm:gap-0 border border-blue-100">
-                            <span className="text-sm font-medium">
-                                {selectedRows.size} row(s) selected for update
-                            </span>
-                            <Button
-                                onClick={handleSubmitBulkUpdates}
-                                disabled={submitting}
-                                className="flex items-center gap-2 w-full sm:w-auto"
-                            >
-                                {submitting && (
-                                    <Loader
-                                        size={16}
-                                        color="white"
-                                        aria-label="Loading Spinner"
-                                    />
-                                )}
+                            <span className="text-sm font-medium">{selectedRows.size} row(s) selected for update</span>
+                            <Button onClick={handleSubmitBulkUpdates} disabled={submitting} className="flex items-center gap-2 w-full sm:w-auto">
+                                {submitting && <Loader size={16} color="white" />}
                                 Submit Updates
                             </Button>
                         </div>
@@ -1019,14 +752,16 @@ export default () => {
                 <div className="p-5 pt-2">
                     <TabsContent value="pending" className="w-full mt-0">
                         <div className="space-y-4 h-[calc(100vh-210px)] flex flex-col">
-                            <div className="w-full flex-1 overflow-hidden min-h-0">                                <DataTable
+                            <div className="w-full flex-1 overflow-hidden min-h-0">
+                                <DataTable
                                     data={tableData}
                                     columns={columns}
-                                    searchFields={['indentNo', 'product', 'department', 'indenter', 'vendorType', 'date', 'specifications', 'quantity', 'uom']}
-                                    dataLoading={dataLoading}
+                                    searchFields={['indentNo', 'product', 'department', 'indenter']}
+                                    dataLoading={pendingLoading}
+                                    isFetchingNextPage={isFetchingNextPendingPage}
                                     infiniteScroll={true}
-                                    onLoadMore={() => fetchPendingData(false)}
-                                    hasMore={hasMorePending}
+                                    onLoadMore={fetchNextPagePending}
+                                    hasMore={hasNextPagePending}
                                     extraActions={
                                         <Button
                                             variant="default"
@@ -1042,8 +777,8 @@ export default () => {
                                             }}
                                         >
                                             <DownloadOutlined />
-                                            <span className="hidden sm:inline">{loading ? "Downloading..." : "Download"}</span>
-                                            <span className="sm:hidden">{loading ? "..." : "CSV"}</span>
+                                            <span className="hidden sm:inline">Download</span>
+                                            <span className="sm:hidden">CSV</span>
                                         </Button>
                                     }
                                 />
@@ -1051,14 +786,16 @@ export default () => {
                         </div>
                     </TabsContent>
                     <TabsContent value="history" className="w-full mt-0">
-                        <div className="w-full h-[calc(100vh-210px)] overflow-hidden flex flex-col">                            <DataTable
+                        <div className="w-full h-[calc(100vh-210px)] overflow-hidden flex flex-col">
+                            <DataTable
                                 data={historyData}
                                 columns={historyColumns}
-                                searchFields={['indentNo', 'product', 'department', 'indenter', 'vendorType', 'date', 'approvedDate', 'specifications', 'approvedQuantity', 'uom']}
-                                dataLoading={loading}
+                                searchFields={['indentNo', 'product', 'department', 'indenter']}
+                                dataLoading={historyLoading}
+                                isFetchingNextPage={isFetchingNextHistoryPage}
                                 infiniteScroll={true}
-                                onLoadMore={() => fetchHistoryData(false)}
-                                hasMore={hasMoreHistory}
+                                onLoadMore={fetchNextPageHistory}
+                                hasMore={hasNextPageHistory}
                             />
                         </div>
                     </TabsContent>

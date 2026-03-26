@@ -4,6 +4,8 @@ import React, { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { AuthProvider, useAuth } from '@/context/AuthContext.tsx';
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { ReactQueryDevtools } from '@tanstack/react-query-devtools';
 
 import Login from './components/views/Login';
 import CreateIndent from './components/views/CreateIndent';
@@ -310,44 +312,56 @@ const routes: RouteAttributes[] = [
     },
 ];
 
+const queryClient = new QueryClient({
+    defaultOptions: {
+        queries: {
+            staleTime: 1000 * 60 * 5, // 5 minutes
+            refetchOnWindowFocus: false,
+        },
+    },
+});
+
 createRoot(document.getElementById('root')!).render(
     <StrictMode>
-        <AuthProvider>
-            <BrowserRouter>
-                <Routes>
-                    <Route path="/login" element={<Login />} />
-                    <Route 
-                        path="/public-store-out" 
-                        element={
-                            <SidebarProvider>
-                                <SheetsProvider>
-                                    <PublicStoreOut />
-                                </SheetsProvider>
-                            </SidebarProvider>
-                        } 
-                    />
-                    <Route
-                        path="/"
-                        element={
-                            <ProtectedRoute>
-                                <SheetsProvider>
-                                    <App routes={routes} />
-                                </SheetsProvider>
-                            </ProtectedRoute>
-                        }
-                    >
-                        <Route index element={<DefaultRoute routes={routes} />} />
-                        {routes.map(({ path, element, gateKey }, index) => {
-                            return <Route
-                                key={`${path}-${index}`}
-                                path={path}
-                                element={<GatedRoute identifier={gateKey}>{element}</GatedRoute>}
-                            />
-                        })}
-                        <Route path="*" element={<Navigate to="/" replace />} />
-                    </Route>
-                </Routes>
-            </BrowserRouter>
-        </AuthProvider>
+        <QueryClientProvider client={queryClient}>
+            <AuthProvider>
+                <BrowserRouter>
+                    <Routes>
+                        <Route path="/login" element={<Login />} />
+                        <Route 
+                            path="/public-store-out" 
+                            element={
+                                <SidebarProvider>
+                                    <SheetsProvider>
+                                        <PublicStoreOut />
+                                    </SheetsProvider>
+                                </SidebarProvider>
+                            } 
+                        />
+                        <Route
+                            path="/"
+                            element={
+                                <ProtectedRoute>
+                                    <SheetsProvider>
+                                        <App routes={routes} />
+                                    </SheetsProvider>
+                                </ProtectedRoute>
+                            }
+                        >
+                            <Route index element={<DefaultRoute routes={routes} />} />
+                            {routes.map(({ path, element, gateKey }, index) => {
+                                return <Route
+                                    key={`${path}-${index}`}
+                                    path={path}
+                                    element={<GatedRoute identifier={gateKey}>{element}</GatedRoute>}
+                                />
+                            })}
+                            <Route path="*" element={<Navigate to="/" replace />} />
+                        </Route>
+                    </Routes>
+                </BrowserRouter>
+            </AuthProvider>
+            <ReactQueryDevtools initialIsOpen={false} />
+        </QueryClientProvider>
     </StrictMode>
 );

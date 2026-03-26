@@ -217,6 +217,10 @@ export async function fetchFromSupabasePaginated(
 
         if (orderBy.column) {
             query = query.order(orderBy.column, orderBy.options || { ascending: false });
+            // Always add a secondary unique order for stability during pagination
+            if (orderBy.column !== 'id') {
+                query = query.order('id', { ascending: false });
+            }
         }
 
         const { data, error } = await query;
@@ -246,6 +250,9 @@ export async function fetchFromSupabasePaginated(
 
         if (orderBy.column) {
             query = query.order(orderBy.column, orderBy.options || { ascending: false });
+            if (orderBy.column !== 'id') {
+                query = query.order('id', { ascending: false });
+            }
         }
 
         const { data, error } = await query;
@@ -285,6 +292,9 @@ export async function fetchFromSupabaseWithCount(
 
     if (orderBy.column) {
         query = query.order(orderBy.column, orderBy.options || { ascending: false });
+        if (orderBy.column !== 'id') {
+            query = query.order('id', { ascending: false });
+        }
     }
 
     const { data, error, count } = await query;

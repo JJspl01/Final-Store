@@ -1,5 +1,7 @@
 import type { ColumnDef, Row } from '@tanstack/react-table';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
+import { useInfiniteSupabaseQuery } from '@/hooks/useInfiniteSupabaseQuery';
 import DataTable from '../element/DataTable';
 import { Button } from '../ui/button';
 import {
@@ -131,35 +133,93 @@ export default () => {
 
     const [selectedIndent, setSelectedIndent] = useState<VendorUpdateData | null>(null);
     const [selectedHistory, setSelectedHistory] = useState<HistoryData | null>(null);
-    const [historyData, setHistoryData] = useState<HistoryData[]>([]);
-    const [tableData, setTableData] = useState<VendorUpdateData[]>([]);
+    const [vendorTypeFilter, setVendorTypeFilter] = useState<'All' | 'Regular' | 'Three Party'>('All');
+    const [departmentFilter, setDepartmentFilter] = useState<string>('All');
     const [openDialog, setOpenDialog] = useState(false);
     const [editingRow, setEditingRow] = useState<string | null>(null);
     const [editValues, setEditValues] = useState<Partial<HistoryData>>({});
     const [vendorSearch, setVendorSearch] = useState('');
     const [vendors, setVendors] = useState<any[]>([]);
     const [vendorsLoading, setVendorsLoading] = useState(true);
-    const [dataLoading, setDataLoading] = useState(true);
     const [paymentTerms, setPaymentTerms] = useState<string[]>([]);
     const [paymentTermsLoading, setPaymentTermsLoading] = useState(true);
     const [newPaymentTerm, setNewPaymentTerm] = useState('');
     const [products, setProducts] = useState<string[]>([]);
     const [productsLoading, setProductsLoading] = useState(true);
     const [productSearch, setProductSearch] = useState('');
-    const [vendorTypeFilter, setVendorTypeFilter] = useState<'All' | 'Regular' | 'Three Party'>('All');
-    const [departmentFilter, setDepartmentFilter] = useState<string>('All');
+    const queryClient = useQueryClient();
 
-    // Pagination state - Pending
-    const [pendingPageIndex, setPendingPageIndex] = useState(0);
-    const [pendingPageSize] = useState(10);
-    const [pendingTotalCount, setPendingTotalCount] = useState(0);
-    const [hasMorePending, setHasMorePending] = useState(true);
+    // Pending Data Query
+    const {
+        data: pendingDataRaw,
+        fetchNextPage: fetchNextPendingPage,
+        hasNextPage: hasNextPendingPage,
+        isLoading: pendingLoading,
+        isFetchingNextPage: isFetchingNextPendingPage,
+    } = useInfiniteSupabaseQuery(['vendorUpdatePending', vendorTypeFilter, departmentFilter], {
+        tableName: 'indent',
+        queryBuilder: (q) => {
+            let query = q.not('planned_2', 'is', null).is('actual_2', null);
+            if (vendorTypeFilter !== 'All') {
+                query = query.eq('vendor_type', vendorTypeFilter);
+            }
+            if (departmentFilter !== 'All') {
+                query = query.eq('department', departmentFilter);
+            }
+            return query;
+        },
+        pageSize: 10,
+    });
 
-    // Pagination state - History
-    const [historyPageIndex, setHistoryPageIndex] = useState(0);
-    const [historyPageSize] = useState(10);
-    const [historyTotalCount, setHistoryTotalCount] = useState(0);
-    const [hasMoreHistory, setHasMoreHistory] = useState(true);
+    // History Data Query
+    const {
+        data: historyDataRaw,
+        fetchNextPage: fetchNextHistoryPage,
+        hasNextPage: hasNextHistoryPage,
+        isLoading: historyLoading,
+        isFetchingNextPage: isFetchingNextHistoryPage,
+    } = useInfiniteSupabaseQuery(['vendorUpdateHistory', vendorTypeFilter, departmentFilter], {
+        tableName: 'indent',
+        queryBuilder: (q) => {
+            let query = q.not('planned_2', 'is', null).not('actual_2', 'is', null);
+            if (vendorTypeFilter !== 'All') {
+                query = query.eq('vendor_type', vendorTypeFilter);
+            }
+            if (departmentFilter !== 'All') {
+                query = query.eq('department', departmentFilter);
+            }
+            return query;
+        },
+        pageSize: 10,
+    });
+
+    const tableData = useMemo(() => {
+        return pendingDataRaw?.pages.flatMap(page => page.data).map((record: any) => ({
+            indentNo: record.indent_number || '',
+            indenter: record.indenter_name || '',
+            department: record.department || '',
+            product: record.product_name || '',
+            quantity: record.approved_quantity || 0,
+            uom: record.uom || '',
+            vendorType: record.vendor_type as VendorUpdateData['vendorType'],
+            vendorName: record.approved_vendor_name || record.vendor_name_1 || '',
+        })) || [];
+    }, [pendingDataRaw]);
+
+    const historyData = useMemo(() => {
+        return historyDataRaw?.pages.flatMap(page => page.data).map((record: any) => ({
+            date: record.actual_2 ? formatDate(new Date(record.actual_2)) : '',
+            indentNo: record.indent_number || '',
+            indenter: record.indenter_name || '',
+            department: record.department || '',
+            product: record.product_name || '',
+            quantity: record.quantity || 0,
+            uom: record.uom || '',
+            rate: record.approved_rate || 0,
+            vendorType: record.vendor_type as HistoryData['vendorType'],
+            vendorName: record.approved_vendor_name || record.vendor_name_1 || '',
+        })) || [];
+    }, [historyDataRaw]);
 
     const refreshVendors = async () => {
         const vendorsList = await fetchVendors();
@@ -245,129 +305,6 @@ export default () => {
         }
     };
 
-    // Fetching table data
-    const fetchPendingData = async (isInitial = true) => {
-        setDataLoading(true);
-        try {
-            const currentPage = isInitial ? 0 : pendingPageIndex;
-            const from = currentPage * pendingPageSize;
-            const to = from + pendingPageSize - 1;
-
-            const { data, count } = await fetchFromSupabaseWithCount(
-                'indent',
-                '*',
-                { from, to },
-                { column: 'created_at', options: { ascending: false } },
-                (q) => {
-                    let query = q.not('planned_2', 'is', null).is('actual_2', null);
-                    if (vendorTypeFilter !== 'All') {
-                        query = query.eq('vendor_type', vendorTypeFilter);
-                    }
-                    if (departmentFilter !== 'All') {
-                        query = query.eq('department', departmentFilter);
-                    }
-                    return query;
-                }
-            );
-
-            if (data) {
-                const pendingTableData = data.map((record: any) => ({
-                    indentNo: record.indent_number || '',
-                    indenter: record.indenter_name || '',
-                    department: record.department || '',
-                    product: record.product_name || '',
-                    quantity: record.approved_quantity || 0,
-                    uom: record.uom || '',
-                    vendorType: record.vendor_type as VendorUpdateData['vendorType'],
-                    vendorName: record.approved_vendor_name || record.vendor_name_1 || '',
-                }));
-                
-                if (isInitial) {
-                    setTableData(pendingTableData);
-                    setPendingPageIndex(1);
-                } else {
-                    setTableData(prev => [...prev, ...pendingTableData]);
-                    setPendingPageIndex(prev => prev + 1);
-                }
-                
-                setPendingTotalCount(count || 0);
-                setHasMorePending(data.length === pendingPageSize);
-            }
-        } catch (error: any) {
-            console.error('Error fetching data from Supabase:', error);
-            toast.error('Failed to fetch data: ' + error.message);
-        } finally {
-            setDataLoading(false);
-        }
-    };
-
-    const fetchHistoryData = async (isInitial = true) => {
-        setDataLoading(true);
-        try {
-            const currentPage = isInitial ? 0 : historyPageIndex;
-            const from = currentPage * historyPageSize;
-            const to = from + historyPageSize - 1;
-
-            const { data, count } = await fetchFromSupabaseWithCount(
-                'indent',
-                '*',
-                { from, to },
-                { column: 'created_at', options: { ascending: false } },
-                (q) => {
-                    let query = q.not('planned_2', 'is', null).not('actual_2', 'is', null);
-                    if (vendorTypeFilter !== 'All') {
-                        query = query.eq('vendor_type', vendorTypeFilter);
-                    }
-                    if (departmentFilter !== 'All') {
-                        query = query.eq('department', departmentFilter);
-                    }
-                    return query;
-                }
-            );
-
-            if (data) {
-                const historyTableData = data.map((record: any) => ({
-                    date: record.actual_2 ? formatDate(new Date(record.actual_2)) : '',
-                    indentNo: record.indent_number || '',
-                    indenter: record.indenter_name || '',
-                    department: record.department || '',
-                    product: record.product_name || '',
-                    quantity: record.quantity || 0,
-                    uom: record.uom || '',
-                    rate: record.approved_rate || 0,
-                    vendorType: record.vendor_type as HistoryData['vendorType'],
-                    vendorName: record.approved_vendor_name || record.vendor_name_1 || '',
-                }));
-
-                if (isInitial) {
-                    setHistoryData(historyTableData);
-                    setHistoryPageIndex(1);
-                } else {
-                    setHistoryData(prev => [...prev, ...historyTableData]);
-                    setHistoryPageIndex(prev => prev + 1);
-                }
-
-                setHistoryTotalCount(count || 0);
-                setHasMoreHistory(data.length === historyPageSize);
-            }
-        } catch (error: any) {
-            console.error('Error fetching data from Supabase:', error);
-            toast.error('Failed to fetch data: ' + error.message);
-        } finally {
-            setDataLoading(false);
-        }
-    };
-
-
-    useEffect(() => {
-        setPendingPageIndex(0);
-        fetchPendingData(true);
-    }, [vendorTypeFilter, departmentFilter]);
-
-    useEffect(() => {
-        setHistoryPageIndex(0);
-        fetchHistoryData(true);
-    }, [vendorTypeFilter, departmentFilter]);
 
 
     const handleEditClick = (row: HistoryData) => {
@@ -424,7 +361,7 @@ export default () => {
             updateIndentSheet(); // Update context to sync sidebar counts
 
             // Refresh the data after update
-            fetchHistoryData(true);
+            queryClient.invalidateQueries({ queryKey: ['vendorUpdateHistory'] });
 
             setEditingRow(null);
             setEditValues({});
@@ -904,8 +841,8 @@ export default () => {
             regularForm.reset();
 
             // Refresh the data after update
-            fetchPendingData();
-            fetchHistoryData();
+            queryClient.invalidateQueries({ queryKey: ['vendorUpdatePending'] });
+            queryClient.invalidateQueries({ queryKey: ['vendorUpdateHistory'] });
         } catch (error: any) {
             console.error('Error updating vendor:', error);
             toast.error('Failed to update vendor: ' + error.message);
@@ -988,28 +925,8 @@ export default () => {
             threePartyForm.reset();
 
             // Refresh the data after update
-            const { data: pendingData, error: pendingError } = await supabase
-                .from('indent')
-                .select('*')
-                .not('planned_2', 'is', null)
-                .is('actual_2', null)
-                .order('created_at', { ascending: false });
-
-            if (pendingError) throw pendingError;
-
-            if (pendingData) {
-                const pendingTableData = pendingData.map((record: any) => ({
-                    indentNo: record.indent_number || '',
-                    indenter: record.indenter_name || '',
-                    department: record.department || '',
-                    product: record.product_name || '',
-                    quantity: record.approved_quantity || 0,
-                    uom: record.uom || '',
-                    vendorType: record.vendor_type as VendorUpdateData['vendorType'],
-                    vendorName: record.approved_vendor_name || record.vendor_name_1 || '',
-                }));
-                setTableData(pendingTableData);
-            }
+            queryClient.invalidateQueries({ queryKey: ['vendorUpdatePending'] });
+            queryClient.invalidateQueries({ queryKey: ['vendorUpdateHistory'] });
         } catch (error: any) {
             console.error('Error updating vendor:', error);
             toast.error('Failed to update vendor: ' + error.message);
@@ -1054,7 +971,7 @@ export default () => {
             historyUpdateForm.reset({ rate: undefined });
 
             // Refresh the data after update
-            fetchHistoryData();
+            queryClient.invalidateQueries({ queryKey: ['vendorUpdateHistory'] });
         } catch (error: any) {
             console.error('Error updating vendor:', error);
             toast.error('Failed to update vendor: ' + error.message);
@@ -1087,10 +1004,11 @@ export default () => {
                                         data={tableData}
                                         columns={columns}
                                         searchFields={['indentNo', 'product', 'department', 'indenter', 'vendorType', 'vendorName', 'date']}
-                                        dataLoading={dataLoading}
+                                        dataLoading={pendingLoading}
+                                        isFetchingNextPage={isFetchingNextPendingPage}
+                                        onLoadMore={() => fetchNextPendingPage()}
+                                        hasMore={hasNextPendingPage}
                                         infiniteScroll={true}
-                                        onLoadMore={() => fetchPendingData(false)}
-                                        hasMore={hasMorePending}
                                         searchExtra={
                                             <div className="flex gap-2">
                                                 <Select value={vendorTypeFilter} onValueChange={(v) => setVendorTypeFilter(v as typeof vendorTypeFilter)}>
@@ -1128,10 +1046,11 @@ export default () => {
                                         data={historyData}
                                         columns={historyColumns}
                                         searchFields={['indentNo', 'product', 'department', 'indenter', 'vendorType', 'vendorName', 'date']}
-                                        dataLoading={dataLoading}
+                                        dataLoading={historyLoading}
+                                        isFetchingNextPage={isFetchingNextHistoryPage}
+                                        onLoadMore={() => fetchNextHistoryPage()}
+                                        hasMore={hasNextHistoryPage}
                                         infiniteScroll={true}
-                                        onLoadMore={() => fetchHistoryData(false)}
-                                        hasMore={hasMoreHistory}
                                         searchExtra={
                                             <div className="flex gap-2">
                                                 <Select value={vendorTypeFilter} onValueChange={(v) => setVendorTypeFilter(v as typeof vendorTypeFilter)}>

@@ -1,8 +1,10 @@
 import { Database, Plus, Edit, Search, UserPlus, PackagePlus } from 'lucide-react';
 import Heading from '../element/Heading';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
+import { useInfiniteSupabaseQuery } from '@/hooks/useInfiniteSupabaseQuery';
 import { supabase } from '@/lib/supabaseClient';
-import { fetchFromSupabaseWithCount, fetchIndentMasterData } from '@/lib/fetchers';
+import { fetchIndentMasterData } from '@/lib/fetchers';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Label } from '../ui/label';
@@ -126,8 +128,7 @@ function TruncCell({ value, width = 140 }: { value: string | null; width?: numbe
 
 /* ───── main component ───── */
 export default function MasterData() {
-    const [tableData, setTableData] = useState<MasterRow[]>([]);
-    const [dataLoading, setDataLoading] = useState(true);
+    const queryClient = useQueryClient();
     const [viewMode, setViewMode] = useState<'Vendors' | 'Items'>('Vendors');
     const [dialogOpen, setDialogOpen] = useState(false);
     const [form, setForm] = useState<MasterForm>(emptyForm);
@@ -136,10 +137,6 @@ export default function MasterData() {
     const [deptFilter, setDeptFilter] = useState('All');
     const [groupHeadFilter, setGroupHeadFilter] = useState('All');
     const [editingId, setEditingId] = useState<number | null>(null);
-    const [pageIndex, setPageIndex] = useState(0);
-    const [pageSize] = useState(10);
-    const [totalCount, setTotalCount] = useState(0);
-    const [hasMore, setHasMore] = useState(true);
     const [allVendorNames, setAllVendorNames] = useState<string[]>([]);
     const [formMode, setFormMode] = useState<'Add Vendor' | 'Add Item'>('Add Vendor');
     const [master, setMaster] = useState<any>(null);
@@ -242,55 +239,37 @@ export default function MasterData() {
     };
 
     /* fetch */
-    async function fetchData(isInitial = false) {
-        setDataLoading(true);
-        try {
-            const currentPage = isInitial ? 0 : pageIndex;
-            const from = currentPage * pageSize;
-            const to = from + pageSize - 1;
-
-            const { data, count } = (await fetchFromSupabaseWithCount(
-                'master_data',
-                '*',
-                { from, to },
-                { column: 'id', options: { ascending: false } },
-                (q) => {
-                    let query = q;
-                    if (viewMode === 'Vendors') {
-                        if (vendorFilter !== 'All') {
-                            query = query.eq('vendor_name', vendorFilter);
-                        } else {
-                            query = query.not('vendor_name', 'is', null).neq('vendor_name', '').neq('vendor_name', '-');
-                        }
-                    } else {
-                        if (deptFilter !== 'All') query = query.eq('department', deptFilter);
-                        if (groupHeadFilter !== 'All') query = query.eq('group_head', groupHeadFilter);
-                        query = query.not('item_name', 'is', null).neq('item_name', '');
-                    }
-                    return query;
-                }
-            )) as unknown as { data: MasterRow[], count: number };
-
-            if (data) {
-                if (isInitial) {
-                    setTableData(data);
-                    setPageIndex(1);
+    // Data Query
+    const {
+        data: masterDataRaw,
+        fetchNextPage,
+        hasNextPage,
+        isLoading: dataLoading,
+        isFetchingNextPage,
+    } = useInfiniteSupabaseQuery(['masterData', viewMode, vendorFilter, deptFilter, groupHeadFilter], {
+        tableName: 'master_data',
+        queryBuilder: (q) => {
+            let query = q;
+            if (viewMode === 'Vendors') {
+                if (vendorFilter !== 'All') {
+                    query = query.eq('vendor_name', vendorFilter);
                 } else {
-                    setTableData(prev => [...prev, ...data]);
-                    setPageIndex(prev => prev + 1);
+                    query = query.not('vendor_name', 'is', null).neq('vendor_name', '').neq('vendor_name', '-');
                 }
-
-                const total = count || 0;
-                setTotalCount(total);
-                setHasMore((isInitial ? data.length : tableData.length + data.length) < total);
+            } else {
+                if (deptFilter !== 'All') query = query.eq('department', deptFilter);
+                if (groupHeadFilter !== 'All') query = query.eq('group_head', groupHeadFilter);
+                query = query.not('item_name', 'is', null).neq('item_name', '');
             }
-        } catch (err: any) {
-            console.error('Master data fetch exception:', err);
-            toast.error('An unexpected error occurred while fetching data');
-        } finally {
-            setDataLoading(false);
-        }
-    }
+            return query.order('id', { ascending: false });
+        },
+        pageSize: 10,
+    });
+
+    const tableData = useMemo(() => {
+        if (!masterDataRaw) return [];
+        return masterDataRaw.pages.flatMap(page => page.data) as unknown as MasterRow[];
+    }, [masterDataRaw]);
 
 
     const fetchMasterData = async () => {
@@ -303,9 +282,6 @@ export default function MasterData() {
         fetchMasterData();
     }, []);
 
-    useEffect(() => {
-        fetchData(true);
-    }, [vendorFilter, deptFilter, groupHeadFilter, viewMode]);
 
     // Reset filters when switching tabs to ensure a fresh view
     useEffect(() => {
@@ -362,9 +338,10 @@ export default function MasterData() {
                 const { error } = await supabase.from('master_data').insert([payload]);
                 if (error) throw error;
                 toast.success('Master data saved successfully!');
-            }
-            setDialogOpen(false);
-            fetchData(true);
+             }
+             setDialogOpen(false);
+             queryClient.invalidateQueries({ queryKey: ['masterData'] });
+             fetchVendorsList(); // Update vendor list dropdown
         } catch (err: any) {
             toast.error(err?.message ?? 'Failed to save master data');
         } finally {
@@ -407,10 +384,10 @@ export default function MasterData() {
                                 ? ['vendor_name', 'vendor_gstin', 'vendor_email', 'payment_term']
                                 : ['department', 'group_head', 'item_name', 'uom']
                             }
-                            dataLoading={dataLoading}
-                            infiniteScroll={true}
-                            onLoadMore={() => fetchData(false)}
-                            hasMore={hasMore}
+                             dataLoading={dataLoading}
+                             infiniteScroll={true}
+                             onLoadMore={fetchNextPage}
+                             hasMore={hasNextPage}
                             extraActions={
                                 <div className="flex items-center gap-2">
                                     {viewMode === 'Vendors' ? (
