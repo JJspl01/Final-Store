@@ -125,6 +125,7 @@ export default function DataTable<TData, TValue>({
         onGlobalFilterChange: setGlobalFilter,
     });
 
+    console.log(table.getRowModel().rows, "tabledata");
     return (
         <div className="p-5 flex flex-col gap-4 h-full w-full overflow-hidden min-h-0">
             <div className="flex justify-between items-center w-full gap-3 shrink-0">

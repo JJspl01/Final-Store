@@ -46,6 +46,7 @@ interface StoreOutTableData {
     uom: string;
     specifications: string;
     attachment: string;
+    vendorType: string;
 }
 interface HistoryData {
     approvalDate: string;
@@ -59,6 +60,7 @@ interface HistoryData {
     uom: string;
     issuedStatus: string;
     requestedQuantity: number;
+    vendorType: string;
 }
 
 export default () => {
@@ -72,7 +74,8 @@ export default () => {
     const [selectedIndent, setSelectedIndent] = useState<StoreOutTableData | null>(null);
     const [rejecting, setRejecting] = useState(false);
     const [loading, setLoading] = useState(false);
-    const [dataLoading, setDataLoading] = useState(true);
+    const [pendingLoading, setPendingLoading] = useState(true);
+    const [historyLoading, setHistoryLoading] = useState(true);
     const [editingRow, setEditingRow] = useState<string | null>(null);
     const [editValues, setEditValues] = useState<{
         quantity?: number;
@@ -124,7 +127,7 @@ export default () => {
 
     // Fetching table data
     const fetchPendingData = async (isInitial = false) => {
-        setDataLoading(true);
+        setPendingLoading(true);
         try {
             const currentPage = isInitial ? 0 : pendingPageIndex;
             const from = currentPage * pendingPageSize;
@@ -150,30 +153,38 @@ export default () => {
                     uom: record.uom || '',
                     specifications: record.specifications || 'Not specified',
                     attachment: record.attachment || '',
+                    vendorType: record.vendor_type || '',
                 }));
 
                 if (isInitial) {
                     setTableData(pendingTableBatch);
                     setPendingPageIndex(1);
                 } else {
-                    setTableData(prev => [...prev, ...pendingTableBatch]);
+                    setTableData(prev => {
+                        // Prevent duplicates
+                        const existingIds = new Set(prev.map(item => item.indentNo));
+                        const newItems = pendingTableBatch.filter(item => !existingIds.has(item.indentNo));
+                        return [...prev, ...newItems];
+                    });
                     setPendingPageIndex(prev => prev + 1);
                 }
 
                 const total = count || 0;
                 setPendingTotalCount(total);
-                setHasMorePending((isInitial ? pendingTableBatch.length : tableData.length + pendingTableBatch.length) < total);
+                
+                const newLength = isInitial ? pendingTableBatch.length : tableData.length + pendingTableBatch.length;
+                setHasMorePending(newLength < total);
             }
         } catch (error) {
             console.error('Error fetching pending data:', error);
             toast.error('Failed to fetch store out pending data');
         } finally {
-            setDataLoading(false);
+            setPendingLoading(false);
         }
     };
 
     const fetchHistoryData = async (isInitial = false) => {
-        setDataLoading(true);
+        setHistoryLoading(true);
         try {
             const currentPage = isInitial ? 0 : historyPageIndex;
             const from = currentPage * historyPageSize;
@@ -200,13 +211,19 @@ export default () => {
                     requestedQuantity: record.quantity || 0,
                     uom: record.uom || '',
                     issuedStatus: record.issue_status || '',
+                    vendorType: record.vendor_type || '',
                 }));
 
                 if (isInitial) {
                     setHistoryData(historyTableBatch);
                     setHistoryPageIndex(1);
                 } else {
-                    setHistoryData(prev => [...prev, ...historyTableBatch]);
+                    setHistoryData(prev => {
+                        // Prevent duplicates
+                        const existingIds = new Set(prev.map(item => item.indentNo));
+                        const newItems = historyTableBatch.filter(item => !existingIds.has(item.indentNo));
+                        return [...prev, ...newItems];
+                    });
                     setHistoryPageIndex(prev => prev + 1);
                 }
 
@@ -218,7 +235,7 @@ export default () => {
             console.error('Error fetching history data:', error);
             toast.error('Failed to fetch store out history data');
         } finally {
-            setDataLoading(false);
+            setHistoryLoading(false);
         }
     };
 
@@ -239,10 +256,11 @@ export default () => {
 
             // Convert table data to worksheet format
             const worksheetData = tableData.map(item => ({
+                'Vendor Type': item.vendorType,
                 'Indent No.': item.indentNo,
                 'Indenter': item.indenter,
                 'Department': item.department,
-                'Item': item.product,
+                'Product': item.product,
                 'Date': item.date,
                 'Area of Use': item.areaOfUse,
                 'Quantity': item.quantity,
@@ -315,7 +333,7 @@ export default () => {
                                                 `Marked ${indent.indentNo} as Done`
                                             );
                                             updateIndentSheet(); // Update context for sidebars
-                                            setTimeout(() => fetchPendingData(), 500);
+                                            setTimeout(() => fetchPendingData(true), 500);
                                         } catch (error) {
                                             console.error('Update error:', error);
                                             toast.error('Failed to update status');
@@ -339,11 +357,25 @@ export default () => {
                 },
             ]
             : []),
+        {
+            accessorKey: 'vendorType',
+            header: 'Vendor Type',
+            cell: ({ getValue }) => {
+                const value = getValue() as string;
+                const displayValue = (!value || value === 'Pending') ? '-' : value;
+                return (
+                    <div className={`text-xs sm:text-sm ${displayValue === '-' ? 'text-gray-400' : 'font-medium'}`}>
+                        {displayValue}
+                    </div>
+                );
+            },
+        },
         { accessorKey: 'indentNo', header: 'Indent No.' },
         { accessorKey: 'indenter', header: 'Indenter' },
         { accessorKey: 'department', header: 'Department' },
-        { accessorKey: 'product', header: 'Item' },
-        { accessorKey: 'date', header: 'Date' },
+        { accessorKey: 'product', header: 'Product' },
+        { accessorKey: 'quantity', header: 'Quantity' },
+        { accessorKey: 'uom', header: 'UOM' },
         { accessorKey: 'specifications', header: 'Specifications' },
         {
             accessorKey: 'attachment',
@@ -351,14 +383,15 @@ export default () => {
             cell: ({ row }) => {
                 const attachment = row.original.attachment;
                 return attachment ? (
-                    <a href={attachment} target="_blank">
+                    <a href={attachment} target="_blank" className="text-blue-600 hover:text-blue-800 underline">
                         Attachment
                     </a>
                 ) : (
-                    <></>
+                    <span className="text-gray-400">-</span>
                 );
             },
         },
+        { accessorKey: 'date', header: 'Date' },
     ];
 
 
@@ -411,17 +444,23 @@ export default () => {
                 );
             },
         },
-
+        {
+            accessorKey: 'vendorType',
+            header: 'Vendor Type',
+            cell: ({ getValue }) => {
+                const value = getValue() as string;
+                const displayValue = (!value || value === 'Pending') ? '-' : value;
+                return (
+                    <div className={`text-xs sm:text-sm ${displayValue === '-' ? 'text-gray-400' : 'font-medium'}`}>
+                        {displayValue}
+                    </div>
+                );
+            },
+        },
         { accessorKey: "indentNo", header: "Indent No." },
         { accessorKey: "indenter", header: "Indenter" },
         { accessorKey: "department", header: "Department" },
-        { accessorKey: "product", header: "Item" },
-        { accessorKey: "uom", header: "UOM" },
-
-        // 👇 Issued Quantity editable banaya
-
-
-        // 2. Update the input cells to use a more stable approach:
+        { accessorKey: "product", header: "Product" },
         {
             accessorKey: "quantity",
             header: "Issued Quantity",
@@ -470,8 +509,7 @@ export default () => {
                 return row.original.requestedQuantity;
             },
         },
-
-
+        { accessorKey: "uom", header: "UOM" },
         { accessorKey: "date", header: "Request Date" },
         { accessorKey: "approvalDate", header: "Approval Date" },
         {
@@ -541,8 +579,8 @@ export default () => {
             setOpenDialog(false);
             form.reset();
             setTimeout(() => {
-                fetchPendingData();
-                fetchHistoryData();
+                fetchPendingData(true);
+                fetchHistoryData(true);
             }, 500);
         } catch (error) {
             console.error('Update error:', error);
@@ -567,8 +605,8 @@ export default () => {
                     <DataTable
                         data={tableData}
                         columns={columns}
-                        searchFields={['indentNo', 'product', 'department', 'indenter', 'date', 'areaOfUse', 'quantity', 'uom', 'specifications']}
-                        dataLoading={dataLoading}
+                        searchFields={['vendorType', 'indentNo', 'product', 'department', 'indenter', 'date', 'areaOfUse', 'quantity', 'uom', 'specifications']}
+                        dataLoading={pendingLoading}
                         infiniteScroll={true}
                         onLoadMore={() => fetchPendingData(false)}
                         hasMore={hasMorePending}
@@ -622,8 +660,8 @@ export default () => {
                     <DataTable
                         data={historyData}
                         columns={historyColumns}
-                        searchFields={['indentNo', 'product', 'department', 'indenter', 'date', 'areaOfUse', 'quantity', 'requestedQuantity', 'uom', 'approvalDate', 'issuedStatus']}
-                        dataLoading={dataLoading}
+                        searchFields={['vendorType', 'indentNo', 'product', 'department', 'indenter', 'date', 'areaOfUse', 'quantity', 'requestedQuantity', 'uom', 'approvalDate', 'issuedStatus']}
+                        dataLoading={historyLoading}
                         infiniteScroll={true}
                         onLoadMore={() => fetchHistoryData(false)}
                         hasMore={hasMoreHistory}
@@ -803,7 +841,7 @@ export default () => {
                         defaultIndentType="Store Out" 
                         onSuccess={() => {
                             setOpenCreateDialog(false);
-                            fetchPendingData();
+                            fetchPendingData(true);
                         }} 
                     />
                 </div>
