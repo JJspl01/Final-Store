@@ -165,10 +165,10 @@ export default function MasterData() {
             header: 'Vendor Name',
             cell: ({ row }) => (
                 <div className="flex items-center gap-2 group">
-                    <TruncCell value={row.original.vendor_name} width={200} />
                     <Button variant="outline" size="icon" className="h-6 w-6 shrink-0 opacity-100" onClick={() => handleEdit(row.original)}>
                         <Edit className="h-3 w-3" />
                     </Button>
+                    <TruncCell value={row.original.vendor_name} width={200} />
                 </div>
             ),
         },
@@ -200,12 +200,12 @@ export default function MasterData() {
             header: 'Product Name',
             cell: ({ row }) => (
                 <div className="flex items-center gap-2 group">
-                    <div className="whitespace-normal break-words min-w-[150px] max-w-[300px] text-sm font-medium">
-                        {row.original.item_name}
-                    </div>
                     <Button variant="outline" size="icon" className="h-6 w-6 shrink-0 opacity-100" onClick={() => handleEdit(row.original)}>
                         <Edit className="h-3 w-3" />
                     </Button>
+                    <div className="whitespace-normal break-words min-w-[150px] max-w-[300px] text-sm font-medium">
+                        {row.original.item_name}
+                    </div>
                 </div>
             ),
         },

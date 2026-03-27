@@ -31,14 +31,14 @@ import { Pill } from '../ui/pill';
 import { formatDate } from '@/lib/utils';
 import { supabase } from '@/lib/supabaseClient';
 
-const AddVendorSection = ({ 
-    onVendorAdded, 
-    searchValue, 
-    onSearchChange 
-}: { 
-    onVendorAdded: () => Promise<void>,
-    searchValue: string,
-    onSearchChange: (val: string) => void
+const AddVendorSection = ({
+    onVendorAdded,
+    searchValue,
+    onSearchChange,
+}: {
+    onVendorAdded: () => Promise<void>;
+    searchValue: string;
+    onSearchChange: (val: string) => void;
 }) => {
     const [isAdding, setIsAdding] = useState(false);
 
@@ -95,7 +95,11 @@ const AddVendorSection = ({
                 }}
                 className="h-8 w-8"
             >
-                {isAdding ? <Loader size={12} color="currentColor" /> : <Plus className="h-4 w-4" />}
+                {isAdding ? (
+                    <Loader size={12} color="currentColor" />
+                ) : (
+                    <Plus className="h-4 w-4" />
+                )}
             </Button>
         </div>
     );
@@ -132,7 +136,9 @@ export default () => {
 
     const [selectedIndent, setSelectedIndent] = useState<VendorUpdateData | null>(null);
     const [selectedHistory, setSelectedHistory] = useState<HistoryData | null>(null);
-    const [vendorTypeFilter, setVendorTypeFilter] = useState<'All' | 'Regular' | 'Three Party'>('All');
+    const [vendorTypeFilter, setVendorTypeFilter] = useState<'All' | 'Regular' | 'Three Party'>(
+        'All'
+    );
     const [departmentFilter, setDepartmentFilter] = useState<string>('All');
     const [openDialog, setOpenDialog] = useState(false);
     const [editingRow, setEditingRow] = useState<string | null>(null);
@@ -195,31 +201,39 @@ export default () => {
     });
 
     const tableData = useMemo(() => {
-        return pendingDataRaw?.pages.flatMap(page => page.data).map((record: any) => ({
-            indentNo: record.indent_number || '',
-            indenter: record.indenter_name || '',
-            department: record.department || '',
-            product: record.product_name || '',
-            quantity: record.approved_quantity || 0,
-            uom: record.uom || '',
-            vendorType: record.vendor_type as VendorUpdateData['vendorType'],
-            vendorName: record.approved_vendor_name || record.vendor_name_1 || '',
-        })) || [];
+        return (
+            pendingDataRaw?.pages
+                .flatMap((page) => page.data)
+                .map((record: any) => ({
+                    indentNo: record.indent_number || '',
+                    indenter: record.indenter_name || '',
+                    department: record.department || '',
+                    product: record.product_name || '',
+                    quantity: record.approved_quantity || 0,
+                    uom: record.uom || '',
+                    vendorType: record.vendor_type as VendorUpdateData['vendorType'],
+                    vendorName: record.approved_vendor_name || record.vendor_name_1 || '',
+                })) || []
+        );
     }, [pendingDataRaw]);
 
     const historyData = useMemo(() => {
-        return historyDataRaw?.pages.flatMap(page => page.data).map((record: any) => ({
-            date: record.actual_2 ? formatDate(new Date(record.actual_2)) : '',
-            indentNo: record.indent_number || '',
-            indenter: record.indenter_name || '',
-            department: record.department || '',
-            product: record.product_name || '',
-            quantity: record.quantity || 0,
-            uom: record.uom || '',
-            rate: record.approved_rate || 0,
-            vendorType: record.vendor_type as HistoryData['vendorType'],
-            vendorName: record.approved_vendor_name || record.vendor_name_1 || '',
-        })) || [];
+        return (
+            historyDataRaw?.pages
+                .flatMap((page) => page.data)
+                .map((record: any) => ({
+                    date: record.actual_2 ? formatDate(new Date(record.actual_2)) : '',
+                    indentNo: record.indent_number || '',
+                    indenter: record.indenter_name || '',
+                    department: record.department || '',
+                    product: record.product_name || '',
+                    quantity: record.quantity || 0,
+                    uom: record.uom || '',
+                    rate: record.approved_rate || 0,
+                    vendorType: record.vendor_type as HistoryData['vendorType'],
+                    vendorName: record.approved_vendor_name || record.vendor_name_1 || '',
+                })) || []
+        );
     }, [historyDataRaw]);
 
     const refreshVendors = async () => {
@@ -247,9 +261,9 @@ export default () => {
                     .select('payment_term')
                     .not('payment_term', 'is', null);
                 if (error) throw error;
-                const terms = [...new Set(
-                    (data || []).map((d: any) => d.payment_term).filter(Boolean)
-                )] as string[];
+                const terms = [
+                    ...new Set((data || []).map((d: any) => d.payment_term).filter(Boolean)),
+                ] as string[];
                 setPaymentTerms(terms);
             } catch (err) {
                 console.error('Error fetching payment terms:', err);
@@ -270,9 +284,9 @@ export default () => {
                     .select('item_name')
                     .not('item_name', 'is', null);
                 if (error) throw error;
-                const items = [...new Set(
-                    (data || []).map((d: any) => d.item_name).filter(Boolean)
-                )] as string[];
+                const items = [
+                    ...new Set((data || []).map((d: any) => d.item_name).filter(Boolean)),
+                ] as string[];
                 setProducts(items);
             } catch (err) {
                 console.error('Error fetching products:', err);
@@ -298,15 +312,13 @@ export default () => {
                 .from('master_data')
                 .insert([{ vendor_name: '-', payment_term: trimmed }]);
             if (error) throw error;
-            setPaymentTerms(prev => [...prev, trimmed]);
+            setPaymentTerms((prev) => [...prev, trimmed]);
             setNewPaymentTerm('');
             toast.success(`Added payment term: ${trimmed}`);
         } catch (err: any) {
             toast.error('Failed to add: ' + err.message);
         }
     };
-
-
 
     const handleEditClick = (row: HistoryData) => {
         setEditingRow(row.indentNo);
@@ -319,7 +331,6 @@ export default () => {
             vendorName: row.vendorName,
         });
     };
-
 
     const handleCancelEdit = () => {
         setEditingRow(null);
@@ -372,36 +383,35 @@ export default () => {
         }
     };
 
-
     const handleInputChange = (field: keyof HistoryData, value: any) => {
-        setEditValues(prev => ({ ...prev, [field]: value }));
+        setEditValues((prev) => ({ ...prev, [field]: value }));
     };
 
     // Creating table columns
     const columns: ColumnDef<VendorUpdateData>[] = [
         ...(user.updateVendorAction
             ? [
-                {
-                    header: 'Action',
-                    cell: ({ row }: { row: Row<VendorUpdateData> }) => {
-                        const indent = row.original;
+                  {
+                      header: 'Action',
+                      cell: ({ row }: { row: Row<VendorUpdateData> }) => {
+                          const indent = row.original;
 
-                        return (
-                            <div>
-                                <Button
-                                    variant="outline"
-                                    onClick={() => {
-                                        setSelectedIndent(indent);
-                                        setOpenDialog(true);
-                                    }}
-                                >
-                                    Update
-                                </Button>
-                            </div>
-                        );
-                    },
-                },
-            ]
+                          return (
+                              <div>
+                                  <Button
+                                      variant="outline"
+                                      onClick={() => {
+                                          setSelectedIndent(indent);
+                                          setOpenDialog(true);
+                                      }}
+                                  >
+                                      Update
+                                  </Button>
+                              </div>
+                          );
+                      },
+                  },
+              ]
             : []),
         {
             accessorKey: 'indentNo',
@@ -444,29 +454,31 @@ export default () => {
     ];
 
     const historyColumns: ColumnDef<HistoryData>[] = [
-        ...(user.updateVendorAction ? [
-            {
-                header: 'Action',
-                cell: ({ row }: { row: Row<HistoryData> }) => {
-                    const indent = row.original;
+        ...(user.updateVendorAction
+            ? [
+                  {
+                      header: 'Action',
+                      cell: ({ row }: { row: Row<HistoryData> }) => {
+                          const indent = row.original;
 
-                    return (
-                        <div>
-                            <Button
-                                variant="outline"
-                                disabled={indent.vendorType === "Three Party"}
-                                onClick={() => {
-                                    setSelectedHistory(indent);
-                                    setOpenDialog(true);
-                                }}
-                            >
-                                Update
-                            </Button>
-                        </div>
-                    );
-                },
-            },
-        ] : []),
+                          return (
+                              <div>
+                                  <Button
+                                      variant="outline"
+                                      disabled={indent.vendorType === 'Three Party'}
+                                      onClick={() => {
+                                          setSelectedHistory(indent);
+                                          setOpenDialog(true);
+                                      }}
+                                  >
+                                      Update
+                                  </Button>
+                              </div>
+                          );
+                      },
+                  },
+              ]
+            : []),
         {
             accessorKey: 'date',
             header: 'Date',
@@ -491,15 +503,19 @@ export default () => {
                 const currentValue = editValues.product ?? row.original.product;
 
                 // Ensure current value is included in list of options to display it correctly
-                const selectOptions = Array.from(new Set([...(products || []), currentValue])).filter(Boolean);
-                const filteredProducts = selectOptions.filter(p => p.toLowerCase().includes(productSearch.toLowerCase()));
+                const selectOptions = Array.from(
+                    new Set([...(products || []), currentValue])
+                ).filter(Boolean);
+                const filteredProducts = selectOptions.filter((p) =>
+                    p.toLowerCase().includes(productSearch.toLowerCase())
+                );
 
                 return isEditing ? (
                     <Select
                         value={currentValue}
                         onValueChange={(value) => handleInputChange('product', value)}
                         onOpenChange={(open) => {
-                            if (!open) setProductSearch("");
+                            if (!open) setProductSearch('');
                         }}
                     >
                         <SelectTrigger className="w-[200px]">
@@ -585,17 +601,15 @@ export default () => {
             },
         },
         {
-            accessorKey: "rate",
-            header: "Rate",
+            accessorKey: 'rate',
+            header: 'Rate',
             cell: ({ row }) => {
                 const isEditing = editingRow === row.original.indentNo;
                 const rate = row.original.rate;
                 const vendorType = row.original.vendorType;
 
-                if (!rate && vendorType === "Three Party") {
-                    return (
-                        <span className="text-muted-foreground">Not Decided</span>
-                    )
+                if (!rate && vendorType === 'Three Party') {
+                    return <span className="text-muted-foreground">Not Decided</span>;
                 }
 
                 return isEditing ? (
@@ -665,8 +679,8 @@ export default () => {
                             <SelectValue placeholder="Select vendor" />
                         </SelectTrigger>
                         <SelectContent>
-                            <AddVendorSection 
-                                onVendorAdded={refreshVendors} 
+                            <AddVendorSection
+                                onVendorAdded={refreshVendors}
                                 searchValue={vendorSearch}
                                 onSearchChange={setVendorSearch}
                             />
@@ -675,9 +689,17 @@ export default () => {
                                     <div className="py-6 text-center text-sm text-muted-foreground">
                                         Loading vendors...
                                     </div>
-                                ) : vendors?.filter(v => v.vendorName.toLowerCase().includes(vendorSearch.toLowerCase())).length > 0 ? (
+                                ) : vendors?.filter((v) =>
+                                      v.vendorName
+                                          .toLowerCase()
+                                          .includes(vendorSearch.toLowerCase())
+                                  ).length > 0 ? (
                                     vendors
-                                        .filter(v => v.vendorName.toLowerCase().includes(vendorSearch.toLowerCase()))
+                                        .filter((v) =>
+                                            v.vendorName
+                                                .toLowerCase()
+                                                .includes(vendorSearch.toLowerCase())
+                                        )
                                         .map((vendor, i) => (
                                             <SelectItem key={i} value={vendor.vendorName}>
                                                 {vendor.vendorName}
@@ -730,7 +752,9 @@ export default () => {
                 ) : (
                     <div className="flex items-center gap-2">
                         <Pill
-                            variant={row.original.vendorType === 'Regular' ? 'primary' : 'secondary'}
+                            variant={
+                                row.original.vendorType === 'Regular' ? 'primary' : 'secondary'
+                            }
                         >
                             {row.original.vendorType}
                         </Pill>
@@ -750,30 +774,26 @@ export default () => {
         },
         ...(user.updateVendorAction
             ? [
-                {
-                    id: 'editActions',
-                    cell: ({ row }: { row: Row<HistoryData> }) => {
-                        const isEditing = editingRow === row.original.indentNo;
-                        return isEditing ? (
-                            <div className="flex gap-2">
-                                <Button
-                                    size="sm"
-                                    onClick={() => handleSaveEdit(row.original.indentNo)}
-                                >
-                                    Save
-                                </Button>
-                                <Button
-                                    size="sm"
-                                    variant="outline"
-                                    onClick={handleCancelEdit}
-                                >
-                                    Cancel
-                                </Button>
-                            </div>
-                        ) : null;
-                    },
-                },
-            ]
+                  {
+                      id: 'editActions',
+                      cell: ({ row }: { row: Row<HistoryData> }) => {
+                          const isEditing = editingRow === row.original.indentNo;
+                          return isEditing ? (
+                              <div className="flex gap-2">
+                                  <Button
+                                      size="sm"
+                                      onClick={() => handleSaveEdit(row.original.indentNo)}
+                                  >
+                                      Save
+                                  </Button>
+                                  <Button size="sm" variant="outline" onClick={handleCancelEdit}>
+                                      Cancel
+                                  </Button>
+                              </div>
+                          ) : null;
+                      },
+                  },
+              ]
             : []),
     ];
 
@@ -815,8 +835,6 @@ export default () => {
         return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
     };
 
-
-
     async function onSubmitRegular(values: z.infer<typeof regularSchema>) {
         try {
             const { error } = await supabase
@@ -848,17 +866,19 @@ export default () => {
         }
     }
 
-
     // Creating Three Party Vendor form
     const threePartySchema = z.object({
         comparisonSheet: z.instanceof(File).optional(),
-        vendors: z.array(
-            z.object({
-                vendorName: z.string().nonempty(),
-                rate: z.coerce.number().gt(0),
-                paymentTerm: z.string().nonempty(),
-            })
-        ).max(3).min(3),
+        vendors: z
+            .array(
+                z.object({
+                    vendorName: z.string().nonempty(),
+                    rate: z.coerce.number().gt(0),
+                    paymentTerm: z.string().nonempty(),
+                })
+            )
+            .max(3)
+            .min(3),
     });
 
     const threePartyForm = useForm<z.infer<typeof threePartySchema>>({
@@ -932,25 +952,23 @@ export default () => {
         }
     }
 
-
-
     // History Update form
     const historyUpdateSchema = z.object({
         rate: z.coerce.number(),
-    })
+    });
 
     const historyUpdateForm = useForm({
         resolver: zodResolver(historyUpdateSchema),
         defaultValues: {
             rate: 0,
         },
-    })
+    });
 
     useEffect(() => {
         if (selectedHistory) {
-            historyUpdateForm.reset({ rate: selectedHistory.rate })
+            historyUpdateForm.reset({ rate: selectedHistory.rate });
         }
-    }, [selectedHistory])
+    }, [selectedHistory]);
 
     async function onSubmitHistoryUpdate(values: z.infer<typeof historyUpdateSchema>) {
         try {
@@ -1002,7 +1020,15 @@ export default () => {
                                     <DataTable
                                         data={tableData}
                                         columns={columns}
-                                        searchFields={['indentNo', 'product', 'department', 'indenter', 'vendorType', 'vendorName', 'date']}
+                                        searchFields={[
+                                            'indentNo',
+                                            'product',
+                                            'department',
+                                            'indenter',
+                                            'vendorType',
+                                            'vendorName',
+                                            'date',
+                                        ]}
                                         dataLoading={pendingLoading}
                                         isFetchingNextPage={isFetchingNextPendingPage}
                                         onLoadMore={() => fetchNextPendingPage()}
@@ -1010,26 +1036,52 @@ export default () => {
                                         infiniteScroll={true}
                                         searchExtra={
                                             <div className="flex gap-2">
-                                                <Select value={vendorTypeFilter} onValueChange={(v) => setVendorTypeFilter(v as typeof vendorTypeFilter)}>
+                                                <Select
+                                                    value={vendorTypeFilter}
+                                                    onValueChange={(v) =>
+                                                        setVendorTypeFilter(
+                                                            v as typeof vendorTypeFilter
+                                                        )
+                                                    }
+                                                >
                                                     <SelectTrigger className="w-[130px] h-9 text-xs">
                                                         <SelectValue placeholder="Vendor Type" />
                                                     </SelectTrigger>
                                                     <SelectContent>
-                                                        <SelectItem value="All">All Vendor Types</SelectItem>
-                                                        <SelectItem value="Regular">Regular</SelectItem>
-                                                        <SelectItem value="Three Party">Three Party</SelectItem>
+                                                        <SelectItem value="All">
+                                                            All Vendor Types
+                                                        </SelectItem>
+                                                        <SelectItem value="Regular">
+                                                            Regular
+                                                        </SelectItem>
+                                                        <SelectItem value="Three Party">
+                                                            Three Party
+                                                        </SelectItem>
                                                     </SelectContent>
                                                 </Select>
 
-                                                <Select value={departmentFilter} onValueChange={setDepartmentFilter}>
+                                                <Select
+                                                    value={departmentFilter}
+                                                    onValueChange={setDepartmentFilter}
+                                                >
                                                     <SelectTrigger className="w-[130px] h-9 text-xs">
                                                         <SelectValue placeholder="Department" />
                                                     </SelectTrigger>
                                                     <SelectContent>
-                                                        <SelectItem value="All">All Depts</SelectItem>
-                                                        {Array.from(new Set(tableData.map(r => r.department))).filter(Boolean).map(dept => (
-                                                            <SelectItem key={dept} value={dept}>{dept}</SelectItem>
-                                                        ))}
+                                                        <SelectItem value="All">
+                                                            All Depts
+                                                        </SelectItem>
+                                                        {Array.from(
+                                                            new Set(
+                                                                tableData.map((r) => r.department)
+                                                            )
+                                                        )
+                                                            .filter(Boolean)
+                                                            .map((dept) => (
+                                                                <SelectItem key={dept} value={dept}>
+                                                                    {dept}
+                                                                </SelectItem>
+                                                            ))}
                                                     </SelectContent>
                                                 </Select>
                                             </div>
@@ -1044,7 +1096,15 @@ export default () => {
                                     <DataTable
                                         data={historyData}
                                         columns={historyColumns}
-                                        searchFields={['indentNo', 'product', 'department', 'indenter', 'vendorType', 'vendorName', 'date']}
+                                        searchFields={[
+                                            'indentNo',
+                                            'product',
+                                            'department',
+                                            'indenter',
+                                            'vendorType',
+                                            'vendorName',
+                                            'date',
+                                        ]}
                                         dataLoading={historyLoading}
                                         isFetchingNextPage={isFetchingNextHistoryPage}
                                         onLoadMore={() => fetchNextHistoryPage()}
@@ -1052,26 +1112,52 @@ export default () => {
                                         infiniteScroll={true}
                                         searchExtra={
                                             <div className="flex gap-2">
-                                                <Select value={vendorTypeFilter} onValueChange={(v) => setVendorTypeFilter(v as typeof vendorTypeFilter)}>
+                                                <Select
+                                                    value={vendorTypeFilter}
+                                                    onValueChange={(v) =>
+                                                        setVendorTypeFilter(
+                                                            v as typeof vendorTypeFilter
+                                                        )
+                                                    }
+                                                >
                                                     <SelectTrigger className="w-[130px] h-9 text-xs">
                                                         <SelectValue placeholder="Vendor Type" />
                                                     </SelectTrigger>
                                                     <SelectContent>
-                                                        <SelectItem value="All">All Vendor Types</SelectItem>
-                                                        <SelectItem value="Regular">Regular</SelectItem>
-                                                        <SelectItem value="Three Party">Three Party</SelectItem>
+                                                        <SelectItem value="All">
+                                                            All Vendor Types
+                                                        </SelectItem>
+                                                        <SelectItem value="Regular">
+                                                            Regular
+                                                        </SelectItem>
+                                                        <SelectItem value="Three Party">
+                                                            Three Party
+                                                        </SelectItem>
                                                     </SelectContent>
                                                 </Select>
 
-                                                <Select value={departmentFilter} onValueChange={setDepartmentFilter}>
+                                                <Select
+                                                    value={departmentFilter}
+                                                    onValueChange={setDepartmentFilter}
+                                                >
                                                     <SelectTrigger className="w-[130px] h-9 text-xs">
                                                         <SelectValue placeholder="Department" />
                                                     </SelectTrigger>
                                                     <SelectContent>
-                                                        <SelectItem value="All">All Depts</SelectItem>
-                                                        {Array.from(new Set(historyData.map(r => r.department))).filter(Boolean).map(dept => (
-                                                            <SelectItem key={dept} value={dept}>{dept}</SelectItem>
-                                                        ))}
+                                                        <SelectItem value="All">
+                                                            All Depts
+                                                        </SelectItem>
+                                                        {Array.from(
+                                                            new Set(
+                                                                historyData.map((r) => r.department)
+                                                            )
+                                                        )
+                                                            .filter(Boolean)
+                                                            .map((dept) => (
+                                                                <SelectItem key={dept} value={dept}>
+                                                                    {dept}
+                                                                </SelectItem>
+                                                            ))}
                                                     </SelectContent>
                                                 </Select>
                                             </div>
@@ -1084,16 +1170,16 @@ export default () => {
                 </Tabs>
                 {selectedIndent &&
                     (selectedIndent.vendorType === 'Three Party' ? (
-                        <DialogContent>
+                        <DialogContent className="max-w-[50vw] sm:max-w-[50vw] w-full overflow-x-hidden">
                             <Form {...threePartyForm}>
                                 <form
                                     onSubmit={threePartyForm.handleSubmit(
                                         onSubmitThreeParty,
                                         onError
                                     )}
-                                    className="space-y-7"
+                                    className="space-y-4"
                                 >
-                                    <DialogHeader className="space-y-1">
+                                    <DialogHeader className="pb-0">
                                         <DialogTitle>Three Party Vendors</DialogTitle>
                                         <DialogDescription>
                                             Update vendors for{' '}
@@ -1103,191 +1189,259 @@ export default () => {
                                         </DialogDescription>
                                     </DialogHeader>
 
-                                    <div className="grid grid-cols-2 md:grid-cols-3 gap-3 bg-muted py-2 px-5 rounded-md ">
-                                        <div className="space-y-1">
-                                            <p className="font-medium">Indenter</p>
-                                            <p className="text-sm font-light">
+                                    <div className="flex items-center gap-8 bg-muted/30 px-4 py-3 rounded-lg border border-border/40">
+                                        <div className="min-w-0">
+                                            <p className="text-[10px] font-semibold text-muted-foreground/70 uppercase tracking-widest">
+                                                Indenter
+                                            </p>
+                                            <p className="text-sm font-semibold text-foreground truncate">
                                                 {selectedIndent.indenter}
                                             </p>
                                         </div>
-                                        <div className="space-y-1">
-                                            <p className="font-medium">Department</p>
-                                            <p className="text-sm font-light">
+                                        <div className="min-w-0">
+                                            <p className="text-[10px] font-semibold text-muted-foreground/70 uppercase tracking-widest">
+                                                Department
+                                            </p>
+                                            <p className="text-sm font-semibold text-foreground truncate">
                                                 {selectedIndent.department}
                                             </p>
                                         </div>
-                                        <div className="space-y-1">
-                                            <p className="font-medium">Product</p>
-                                            <p className="text-sm font-light">
+                                        <div className="min-w-0 flex-1">
+                                            <p className="text-[10px] font-semibold text-muted-foreground/70 uppercase tracking-widest">
+                                                Product
+                                            </p>
+                                            <p className="text-sm font-semibold text-foreground truncate">
                                                 {selectedIndent.product}
                                             </p>
                                         </div>
                                     </div>
-                                    <Tabs
-                                        defaultValue="0"
-                                        className="grid gap-5 p-4 border rounded-md"
-                                    >
-                                        <TabsList className="w-full p-1">
-                                            <TabsTrigger value="0">Vendor 1</TabsTrigger>
-                                            <TabsTrigger value="1">Vendor 2</TabsTrigger>
-                                            <TabsTrigger value="2">Vendor 3</TabsTrigger>
-                                        </TabsList>
+
+                                    <div className="space-y-3">
                                         {fields.map((field, index) => (
-                                            <TabsContent value={`${index}`} key={field.id}>
-                                                <div className="grid gap-3">
-                                                    <FormField
-                                                        control={threePartyForm.control}
-                                                        name={`vendors.${index}.vendorName`}
-                                                        render={({ field }) => (
-                                                            <FormItem>
-                                                                <FormLabel>Vendor Name</FormLabel>
-                                                                <Select
-                                                                    onValueChange={field.onChange}
-                                                                    value={field.value}
-                                                                    onOpenChange={(open) => {
-                                                                        if (!open) setVendorSearch("");
-                                                                    }}
-                                                                >
-                                                                    <FormControl>
-                                                                        <SelectTrigger className="w-full">
-                                                                            <SelectValue placeholder="Select vendor" />
-                                                                        </SelectTrigger>
-                                                                    </FormControl>
-                                                                    <SelectContent>
-                                                                        <AddVendorSection 
-                                                                            onVendorAdded={refreshVendors} 
-                                                                            searchValue={vendorSearch}
-                                                                            onSearchChange={setVendorSearch}
-                                                                        />
-                                                                        <div className="max-h-[300px] overflow-y-auto">
-                                                                            {vendorsLoading ? (
-                                                                                <div className="py-6 text-center text-sm text-muted-foreground">
-                                                                                    Loading vendors...
-                                                                                </div>
-                                                                            ) : vendors?.filter(v => v.vendorName.toLowerCase().includes(vendorSearch.toLowerCase())).length > 0 ? (
-                                                                                vendors
-                                                                                    .filter(v => v.vendorName.toLowerCase().includes(vendorSearch.toLowerCase()))
-                                                                                    .map((vendor, i) => (
-                                                                                        <SelectItem key={i} value={vendor.vendorName}>
-                                                                                            {vendor.vendorName}
-                                                                                        </SelectItem>
-                                                                                    ))
-                                                                            ) : (
-                                                                                <div className="py-6 text-center text-sm text-muted-foreground">
-                                                                                    No vendors available
-                                                                                </div>
-                                                                            )}
-                                                                        </div>
-                                                                    </SelectContent>
-                                                                </Select>
-                                                            </FormItem>
-                                                        )}
-                                                    />
-
-                                                    <FormField
-                                                        control={threePartyForm.control}
-                                                        name={`vendors.${index}.rate`}
-                                                        render={({ field }) => (
-                                                            <FormItem>
-                                                                <FormLabel>Rate</FormLabel>
+                                            <div
+                                                key={field.id}
+                                                className="flex items-end gap-3 rounded-lg border border-border/40 bg-muted/20 px-3 py-2"
+                                            >
+                                                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider whitespace-nowrap pb-2 min-w-[70px]">
+                                                    Vendor {String(index + 1).padStart(2, '0')}
+                                                </p>
+                                                <FormField
+                                                    control={threePartyForm.control}
+                                                    name={`vendors.${index}.vendorName`}
+                                                    render={({ field }) => (
+                                                        <FormItem className="flex-[4] min-w-[300px]">
+                                                            <FormLabel className="text-xs">
+                                                                Vendor Name
+                                                            </FormLabel>
+                                                            <Select
+                                                                onValueChange={field.onChange}
+                                                                value={field.value}
+                                                                onOpenChange={(open) => {
+                                                                    if (!open) setVendorSearch('');
+                                                                }}
+                                                            >
                                                                 <FormControl>
-                                                                    <Input
-                                                                        type="number"
-                                                                        placeholder="Enter rate"
-                                                                        {...field}
-                                                                    />
+                                                                    <SelectTrigger className="w-full">
+                                                                        <SelectValue placeholder="Select vendor" />
+                                                                    </SelectTrigger>
                                                                 </FormControl>
-                                                            </FormItem>
-                                                        )}
-                                                    />
-
-                                                    <FormField
-                                                        control={threePartyForm.control}
-                                                        name={`vendors.${index}.paymentTerm`}
-                                                        render={({ field }) => (
-                                                            <FormItem>
-                                                                <FormLabel>Payment Term</FormLabel>
-                                                                <Select
-                                                                    onValueChange={field.onChange}
-                                                                    value={field.value}
-                                                                >
-                                                                    <FormControl>
-                                                                        <SelectTrigger className="w-full">
-                                                                            <SelectValue placeholder="Select payment term" />
-                                                                        </SelectTrigger>
-                                                                    </FormControl>
-                                                                    <SelectContent>
-                                                                        <div className="p-2 border-b">
-                                                                            <div className="flex items-center gap-1">
-                                                                                <Input
-                                                                                    placeholder="New payment term..."
-                                                                                    className="h-8 text-sm"
-                                                                                    value={newPaymentTerm}
-                                                                                    onChange={(e) => setNewPaymentTerm(e.target.value)}
-                                                                                    onClick={(e) => e.stopPropagation()}
-                                                                                    onKeyDown={(e) => e.stopPropagation()}
-                                                                                />
-                                                                                <Button
-                                                                                    type="button"
-                                                                                    size="icon"
-                                                                                    className="h-8 w-8 shrink-0"
-                                                                                    onClick={(e) => { e.stopPropagation(); handleAddPaymentTerm(); }}
-                                                                                >
-                                                                                    <Plus className="h-4 w-4" />
-                                                                                </Button>
+                                                                <SelectContent>
+                                                                    <AddVendorSection
+                                                                        onVendorAdded={
+                                                                            refreshVendors
+                                                                        }
+                                                                        searchValue={vendorSearch}
+                                                                        onSearchChange={
+                                                                            setVendorSearch
+                                                                        }
+                                                                    />
+                                                                    <div className="max-h-[200px] overflow-y-auto">
+                                                                        {vendorsLoading ? (
+                                                                            <div className="py-4 text-center text-sm text-muted-foreground">
+                                                                                Loading vendors...
                                                                             </div>
+                                                                        ) : vendors?.filter((v) =>
+                                                                              v.vendorName
+                                                                                  .toLowerCase()
+                                                                                  .includes(
+                                                                                      vendorSearch.toLowerCase()
+                                                                                  )
+                                                                          ).length > 0 ? (
+                                                                            vendors
+                                                                                .filter((v) =>
+                                                                                    v.vendorName
+                                                                                        .toLowerCase()
+                                                                                        .includes(
+                                                                                            vendorSearch.toLowerCase()
+                                                                                        )
+                                                                                )
+                                                                                .map(
+                                                                                    (vendor, i) => (
+                                                                                        <SelectItem
+                                                                                            key={i}
+                                                                                            value={
+                                                                                                vendor.vendorName
+                                                                                            }
+                                                                                        >
+                                                                                            {
+                                                                                                vendor.vendorName
+                                                                                            }
+                                                                                        </SelectItem>
+                                                                                    )
+                                                                                )
+                                                                        ) : (
+                                                                            <div className="py-4 text-center text-sm text-muted-foreground">
+                                                                                No vendors available
+                                                                            </div>
+                                                                        )}
+                                                                    </div>
+                                                                </SelectContent>
+                                                            </Select>
+                                                        </FormItem>
+                                                    )}
+                                                />
+                                                <FormField
+                                                    control={threePartyForm.control}
+                                                    name={`vendors.${index}.rate`}
+                                                    render={({ field }) => (
+                                                        <FormItem className="w-[120px] shrink-0">
+                                                            <FormLabel className="text-xs">
+                                                                Rate
+                                                            </FormLabel>
+                                                            <FormControl>
+                                                                <Input
+                                                                    type="number"
+                                                                    placeholder="Enter rate"
+                                                                    {...field}
+                                                                />
+                                                            </FormControl>
+                                                        </FormItem>
+                                                    )}
+                                                />
+                                                <FormField
+                                                    control={threePartyForm.control}
+                                                    name={`vendors.${index}.paymentTerm`}
+                                                    render={({ field }) => (
+                                                        <FormItem className="flex-1 min-w-0">
+                                                            <FormLabel className="text-xs">
+                                                                Payment Term
+                                                            </FormLabel>
+                                                            <Select
+                                                                onValueChange={field.onChange}
+                                                                value={field.value}
+                                                            >
+                                                                <FormControl>
+                                                                    <SelectTrigger className="w-full">
+                                                                        <SelectValue placeholder="Select payment" />
+                                                                    </SelectTrigger>
+                                                                </FormControl>
+                                                                <SelectContent>
+                                                                    <div className="p-2 border-b">
+                                                                        <div className="flex items-center gap-1">
+                                                                            <Input
+                                                                                placeholder="New term..."
+                                                                                className="h-8 text-sm"
+                                                                                value={
+                                                                                    newPaymentTerm
+                                                                                }
+                                                                                onChange={(e) =>
+                                                                                    setNewPaymentTerm(
+                                                                                        e.target
+                                                                                            .value
+                                                                                    )
+                                                                                }
+                                                                                onClick={(e) =>
+                                                                                    e.stopPropagation()
+                                                                                }
+                                                                                onKeyDown={(e) =>
+                                                                                    e.stopPropagation()
+                                                                                }
+                                                                            />
+                                                                            <Button
+                                                                                type="button"
+                                                                                size="icon"
+                                                                                className="h-8 w-8 shrink-0"
+                                                                                onClick={(e) => {
+                                                                                    e.stopPropagation();
+                                                                                    handleAddPaymentTerm();
+                                                                                }}
+                                                                            >
+                                                                                <Plus className="h-4 w-4" />
+                                                                            </Button>
                                                                         </div>
-                                                                        <div className="max-h-[200px] overflow-y-auto">
-                                                                            {paymentTermsLoading ? (
-                                                                                <div className="py-6 text-center text-sm text-muted-foreground">Loading...</div>
-                                                                            ) : paymentTerms.length > 0 ? (
-                                                                                paymentTerms.map((term, i) => (
-                                                                                    <SelectItem key={i} value={term}>{term}</SelectItem>
-                                                                                ))
-                                                                            ) : (
-                                                                                <div className="py-6 text-center text-sm text-muted-foreground">No payment terms found</div>
-                                                                            )}
-                                                                        </div>
-                                                                    </SelectContent>
-                                                                </Select>
-                                                            </FormItem>
-                                                        )}
-                                                    />
-                                                </div>
-                                            </TabsContent>
+                                                                    </div>
+                                                                    <div className="max-h-[200px] overflow-y-auto">
+                                                                        {paymentTermsLoading ? (
+                                                                            <div className="py-4 text-center text-sm text-muted-foreground">
+                                                                                Loading...
+                                                                            </div>
+                                                                        ) : paymentTerms.length >
+                                                                          0 ? (
+                                                                            paymentTerms.map(
+                                                                                (term, i) => (
+                                                                                    <SelectItem
+                                                                                        key={i}
+                                                                                        value={term}
+                                                                                    >
+                                                                                        {term}
+                                                                                    </SelectItem>
+                                                                                )
+                                                                            )
+                                                                        ) : (
+                                                                            <div className="py-4 text-center text-sm text-muted-foreground">
+                                                                                No payment terms
+                                                                                found
+                                                                            </div>
+                                                                        )}
+                                                                    </div>
+                                                                </SelectContent>
+                                                            </Select>
+                                                        </FormItem>
+                                                    )}
+                                                />
+                                            </div>
                                         ))}
-                                    </Tabs>
-                                    <FormField
-                                        control={threePartyForm.control}
-                                        name="comparisonSheet"
-                                        render={({ field }) => (
-                                            <FormItem>
-                                                <FormLabel>Comparison Sheet</FormLabel>
-                                                <FormControl>
-                                                    <Input
-                                                        type="file"
-                                                        onChange={(e) =>
-                                                            field.onChange(e.target.files?.[0])
-                                                        }
-                                                    />
-                                                </FormControl>
-                                            </FormItem>
-                                        )}
-                                    />
-                                    <DialogFooter>
+                                    </div>
+                                    <div className="bg-muted/10 px-4 py-3 rounded-lg border border-border/40">
+                                        <FormField
+                                            control={threePartyForm.control}
+                                            name="comparisonSheet"
+                                            render={({ field }) => (
+                                                <FormItem className="flex items-center gap-4">
+                                                    <FormLabel className="text-[10px] font-semibold text-muted-foreground/70 uppercase tracking-widest whitespace-nowrap shrink-0">
+                                                        Comparison Sheet
+                                                    </FormLabel>
+                                                    <FormControl>
+                                                        <Input
+                                                            type="file"
+                                                            className="h-8 text-xs file:border-0 file:bg-primary/10 file:text-primary file:rounded file:px-3 file:py-0.5 file:mr-3 file:text-xs file:font-medium cursor-pointer"
+                                                            onChange={(e) =>
+                                                                field.onChange(e.target.files?.[0])
+                                                            }
+                                                        />
+                                                    </FormControl>
+                                                </FormItem>
+                                            )}
+                                        />
+                                    </div>
+                                    <DialogFooter className="gap-2 sm:gap-0 pt-0">
                                         <DialogClose asChild>
-                                            <Button variant="outline">Close</Button>
+                                            <Button variant="outline" size="sm" className="px-6">
+                                                Close
+                                            </Button>
                                         </DialogClose>
-
                                         <Button
                                             type="submit"
+                                            size="sm"
+                                            className="px-8"
                                             disabled={threePartyForm.formState.isSubmitting}
                                         >
                                             {threePartyForm.formState.isSubmitting && (
                                                 <Loader
-                                                    size={20}
+                                                    size={16}
                                                     color="white"
                                                     aria-label="Loading Spinner"
+                                                    className="mr-2"
                                                 />
                                             )}
                                             Update
@@ -1296,14 +1450,14 @@ export default () => {
                                 </form>
                             </Form>
                         </DialogContent>
-                    ) : (
-                        <DialogContent>
+                    ) : (selectedIndent.vendorType === 'Regular' ? (
+                        <DialogContent className="max-w-[95vw] sm:max-w-[95vw] w-full overflow-x-hidden">
                             <Form {...regularForm}>
                                 <form
                                     onSubmit={regularForm.handleSubmit(onSubmitRegular, onError)}
-                                    className="space-y-5"
+                                    className="space-y-4"
                                 >
-                                    <DialogHeader className="space-y-1">
+                                    <DialogHeader className="pb-0">
                                         <DialogTitle>Regular Vendor</DialogTitle>
                                         <DialogDescription>
                                             Update vendor for{' '}
@@ -1312,27 +1466,33 @@ export default () => {
                                             </span>
                                         </DialogDescription>
                                     </DialogHeader>
-                                    <div className="grid grid-cols-3 bg-muted p-2 rounded-md ">
-                                        <div className="space-y-1">
-                                            <p className="font-medium">Indenter</p>
-                                            <p className="text-sm font-light">
+                                    <div className="flex items-center gap-8 bg-muted/30 px-4 py-3 rounded-lg border border-border/40">
+                                        <div className="min-w-0">
+                                            <p className="text-[10px] font-semibold text-muted-foreground/70 uppercase tracking-widest">
+                                                Indenter
+                                            </p>
+                                            <p className="text-sm font-semibold text-foreground truncate">
                                                 {selectedIndent.indenter}
                                             </p>
                                         </div>
-                                        <div className="space-y-1">
-                                            <p className="font-medium">Department</p>
-                                            <p className="text-sm font-light">
+                                        <div className="min-w-0">
+                                            <p className="text-[10px] font-semibold text-muted-foreground/70 uppercase tracking-widest">
+                                                Department
+                                            </p>
+                                            <p className="text-sm font-semibold text-foreground truncate">
                                                 {selectedIndent.department}
                                             </p>
                                         </div>
-                                        <div className="space-y-1">
-                                            <p className="font-medium">Product</p>
-                                            <p className="text-sm font-light">
+                                        <div className="min-w-0 flex-1">
+                                            <p className="text-[10px] font-semibold text-muted-foreground/70 uppercase tracking-widest">
+                                                Product
+                                            </p>
+                                            <p className="text-sm font-semibold text-foreground truncate">
                                                 {selectedIndent.product}
                                             </p>
                                         </div>
                                     </div>
-                                    <div className="grid gap-3">
+                                    <div className="flex items-end gap-3 rounded-lg border border-border/40 bg-muted/20 px-3 py-2">
                                         {/* <FormField
                                             control={regularForm.control}
                                             name="vendorName"
@@ -1390,18 +1550,20 @@ export default () => {
                                             control={regularForm.control}
                                             name="vendorName"
                                             render={({ field }) => {
-                                                const filteredVendors = vendors?.filter(vendor =>
-                                                    vendor.vendorName.toLowerCase().includes(vendorSearch.toLowerCase())
+                                                const filteredVendors = vendors?.filter((vendor) =>
+                                                    vendor.vendorName
+                                                        .toLowerCase()
+                                                        .includes(vendorSearch.toLowerCase())
                                                 );
 
                                                 return (
-                                                    <FormItem>
-                                                        <FormLabel>Vendor Name</FormLabel>
+                                                    <FormItem className="flex-[4] min-w-[300px]">
+                                                        <FormLabel className="text-xs">Vendor Name</FormLabel>
                                                         <Select
                                                             onValueChange={field.onChange}
                                                             value={field.value}
                                                             onOpenChange={(open) => {
-                                                                if (!open) setVendorSearch("");
+                                                                if (!open) setVendorSearch('');
                                                             }}
                                                         >
                                                             <FormControl>
@@ -1410,24 +1572,34 @@ export default () => {
                                                                 </SelectTrigger>
                                                             </FormControl>
                                                             <SelectContent>
-                                                                <AddVendorSection 
-                                                                    onVendorAdded={refreshVendors} 
+                                                                <AddVendorSection
+                                                                    onVendorAdded={refreshVendors}
                                                                     searchValue={vendorSearch}
                                                                     onSearchChange={setVendorSearch}
                                                                 />
                                                                 <div className="max-h-[200px] overflow-y-auto">
                                                                     {vendorsLoading ? (
-                                                                        <div className="py-6 text-center text-sm text-muted-foreground">
+                                                                        <div className="py-4 text-center text-sm text-muted-foreground">
                                                                             Loading vendors...
                                                                         </div>
-                                                                    ) : filteredVendors?.length > 0 ? (
-                                                                        filteredVendors.map((vendor, i) => (
-                                                                            <SelectItem key={i} value={vendor.vendorName}>
-                                                                                {vendor.vendorName}
-                                                                            </SelectItem>
-                                                                        ))
+                                                                    ) : filteredVendors?.length >
+                                                                      0 ? (
+                                                                        filteredVendors.map(
+                                                                            (vendor, i) => (
+                                                                                <SelectItem
+                                                                                    key={i}
+                                                                                    value={
+                                                                                        vendor.vendorName
+                                                                                    }
+                                                                                >
+                                                                                    {
+                                                                                        vendor.vendorName
+                                                                                    }
+                                                                                </SelectItem>
+                                                                            )
+                                                                        )
                                                                     ) : (
-                                                                        <div className="py-6 text-center text-sm text-muted-foreground">
+                                                                        <div className="py-4 text-center text-sm text-muted-foreground">
                                                                             No vendors found
                                                                         </div>
                                                                     )}
@@ -1443,8 +1615,8 @@ export default () => {
                                             control={regularForm.control}
                                             name="rate"
                                             render={({ field }) => (
-                                                <FormItem>
-                                                    <FormLabel>Rate</FormLabel>
+                                                <FormItem className="w-[120px] shrink-0">
+                                                    <FormLabel className="text-xs">Rate</FormLabel>
                                                     <FormControl>
                                                         <Input type="number" {...field} />
                                                     </FormControl>
@@ -1455,33 +1627,44 @@ export default () => {
                                             control={regularForm.control}
                                             name="paymentTerm"
                                             render={({ field }) => (
-                                                <FormItem>
+                                                <FormItem className="flex-1 min-w-0">
+                                                    <FormLabel className="text-xs">Payment Term</FormLabel>
                                                     <Select
                                                         onValueChange={field.onChange}
                                                         value={field.value}
                                                     >
-                                                        <FormLabel>Payment Term</FormLabel>
                                                         <FormControl>
                                                             <SelectTrigger className="w-full">
-                                                                <SelectValue placeholder="Select payment term" />
+                                                                <SelectValue placeholder="Select term" />
                                                             </SelectTrigger>
                                                         </FormControl>
                                                         <SelectContent>
                                                             <div className="p-2 border-b">
                                                                 <div className="flex items-center gap-1">
                                                                     <Input
-                                                                        placeholder="New payment term..."
+                                                                        placeholder="New term..."
                                                                         className="h-8 text-sm"
                                                                         value={newPaymentTerm}
-                                                                        onChange={(e) => setNewPaymentTerm(e.target.value)}
-                                                                        onClick={(e) => e.stopPropagation()}
-                                                                        onKeyDown={(e) => e.stopPropagation()}
+                                                                        onChange={(e) =>
+                                                                            setNewPaymentTerm(
+                                                                                e.target.value
+                                                                            )
+                                                                        }
+                                                                        onClick={(e) =>
+                                                                            e.stopPropagation()
+                                                                        }
+                                                                        onKeyDown={(e) =>
+                                                                            e.stopPropagation()
+                                                                        }
                                                                     />
                                                                     <Button
                                                                         type="button"
                                                                         size="icon"
                                                                         className="h-8 w-8 shrink-0"
-                                                                        onClick={(e) => { e.stopPropagation(); handleAddPaymentTerm(); }}
+                                                                        onClick={(e) => {
+                                                                            e.stopPropagation();
+                                                                            handleAddPaymentTerm();
+                                                                        }}
                                                                     >
                                                                         <Plus className="h-4 w-4" />
                                                                     </Button>
@@ -1489,13 +1672,26 @@ export default () => {
                                                             </div>
                                                             <div className="max-h-[200px] overflow-y-auto">
                                                                 {paymentTermsLoading ? (
-                                                                    <div className="py-6 text-center text-sm text-muted-foreground">Loading...</div>
-                                                                ) : paymentTerms.length > 0 ? (
-                                                                    paymentTerms.map((term, i) => (
-                                                                        <SelectItem key={i} value={term}>{term}</SelectItem>
-                                                                    ))
+                                                                    <div className="py-4 text-center text-sm text-muted-foreground">
+                                                                        Loading...
+                                                                    </div>
+                                                                ) : paymentTerms.length >
+                                                                  0 ? (
+                                                                    paymentTerms.map(
+                                                                        (term, i) => (
+                                                                            <SelectItem
+                                                                                key={i}
+                                                                                value={term}
+                                                                            >
+                                                                                {term}
+                                                                            </SelectItem>
+                                                                        )
+                                                                    )
                                                                 ) : (
-                                                                    <div className="py-6 text-center text-sm text-muted-foreground">No payment terms found</div>
+                                                                    <div className="py-4 text-center text-sm text-muted-foreground">
+                                                                        No payment terms
+                                                                        found
+                                                                    </div>
                                                                 )}
                                                             </div>
                                                         </SelectContent>
@@ -1505,20 +1701,24 @@ export default () => {
                                         />
                                     </div>
 
-                                    <DialogFooter>
+                                    <DialogFooter className="gap-2 sm:gap-0 pt-0">
                                         <DialogClose asChild>
-                                            <Button variant="outline">Close</Button>
+                                            <Button variant="outline" size="sm" className="px-6">
+                                                Close
+                                            </Button>
                                         </DialogClose>
-
                                         <Button
                                             type="submit"
+                                            size="sm"
+                                            className="px-8"
                                             disabled={regularForm.formState.isSubmitting}
                                         >
                                             {regularForm.formState.isSubmitting && (
                                                 <Loader
-                                                    size={20}
+                                                    size={16}
                                                     color="white"
                                                     aria-label="Loading Spinner"
+                                                    className="mr-2"
                                                 />
                                             )}
                                             Update
@@ -1527,61 +1727,67 @@ export default () => {
                                 </form>
                             </Form>
                         </DialogContent>
-                    ))}
+                    ) : null)
+                )}
 
-                {selectedHistory &&
-                    selectedHistory.vendorType === "Regular" && (
-                        <DialogContent>
-                            <Form {...historyUpdateForm}>
-                                <form onSubmit={historyUpdateForm.handleSubmit(onSubmitHistoryUpdate, onError)} className="space-y-7">
-                                    <DialogHeader className="space-y-1">
-                                        <DialogTitle>Update Rate</DialogTitle>
-                                        <DialogDescription>
-                                            Update rate for{' '}
-                                            <span className="font-medium">
-                                                {selectedHistory.indentNo}
-                                            </span>
-                                        </DialogDescription>
-                                    </DialogHeader>
-                                    <div className="grid gap-3">
-                                        <FormField
-                                            control={historyUpdateForm.control}
-                                            name="rate"
-                                            render={({ field }) => (
-                                                <FormItem>
-                                                    <FormLabel>Rate</FormLabel>
-                                                    <FormControl>
-                                                        <Input type="number" {...field} />
-                                                    </FormControl>
-                                                </FormItem>
-                                            )}
-                                        />
-                                    </div>
+                {selectedHistory && selectedHistory.vendorType === 'Regular' && (
+                    <DialogContent>
+                        <Form {...historyUpdateForm}>
+                            <form
+                                onSubmit={historyUpdateForm.handleSubmit(
+                                    onSubmitHistoryUpdate,
+                                    onError
+                                )}
+                                className="space-y-7"
+                            >
+                                <DialogHeader className="space-y-1">
+                                    <DialogTitle>Update Rate</DialogTitle>
+                                    <DialogDescription>
+                                        Update rate for{' '}
+                                        <span className="font-medium">
+                                            {selectedHistory.indentNo}
+                                        </span>
+                                    </DialogDescription>
+                                </DialogHeader>
+                                <div className="grid gap-3">
+                                    <FormField
+                                        control={historyUpdateForm.control}
+                                        name="rate"
+                                        render={({ field }) => (
+                                            <FormItem>
+                                                <FormLabel>Rate</FormLabel>
+                                                <FormControl>
+                                                    <Input type="number" {...field} />
+                                                </FormControl>
+                                            </FormItem>
+                                        )}
+                                    />
+                                </div>
 
-                                    <DialogFooter>
-                                        <DialogClose asChild>
-                                            <Button variant="outline">Close</Button>
-                                        </DialogClose>
+                                <DialogFooter>
+                                    <DialogClose asChild>
+                                        <Button variant="outline">Close</Button>
+                                    </DialogClose>
 
-                                        <Button
-                                            type="submit"
-                                            disabled={historyUpdateForm.formState.isSubmitting}
-                                        >
-                                            {historyUpdateForm.formState.isSubmitting && (
-                                                <Loader
-                                                    size={20}
-                                                    color="white"
-                                                    aria-label="Loading Spinner"
-                                                />
-                                            )}
-                                            Update
-                                        </Button>
-                                    </DialogFooter>
-                                </form>
-                            </Form>
-                        </DialogContent>
-                    )}
+                                    <Button
+                                        type="submit"
+                                        disabled={historyUpdateForm.formState.isSubmitting}
+                                    >
+                                        {historyUpdateForm.formState.isSubmitting && (
+                                            <Loader
+                                                size={20}
+                                                color="white"
+                                                aria-label="Loading Spinner"
+                                            />
+                                        )}
+                                        Update
+                                    </Button>
+                                </DialogFooter>
+                            </form>
+                        </Form>
+                    </DialogContent>
+                )}
             </Dialog>
         </div>
-    )
+    );
 };
