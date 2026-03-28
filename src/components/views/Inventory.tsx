@@ -206,12 +206,6 @@ export default () => {
                 infiniteScroll={true}
                 onLoadMore={fetchNextPage}
                 hasMore={hasNextPage}
-                extraActions={
-                    <Button className="flex gap-2">
-                        <Plus size={20} />
-                        Add Item
-                    </Button>
-                }
             />
         </div>
     );

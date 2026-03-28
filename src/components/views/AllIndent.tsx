@@ -341,26 +341,7 @@ export default () => {
         },
 
 
-        {
-            accessorKey: 'indentType',
-            header: 'Indent Type',
-            cell: ({ row }) => {
-                const indent = row.original;
-                const isSelected = selectedRows.has(indent.id);
-                const currentValue = bulkUpdates.get(indent.id)?.indentType || indent.indentType;
 
-                return (
-                    <Input
-                        value={currentValue}
-                        onChange={(e) => handleBulkUpdate(indent.id, 'indentType', e.target.value)}
-                        disabled={!isSelected}
-                        className={`w-32 text-xs sm:text-sm ${!isSelected ? 'opacity-50' : ''}`}
-                        placeholder="Indent Type"
-                    />
-                );
-            },
-            size: 140,
-        },
         {
             accessorKey: 'department',
             header: 'Department',
@@ -579,7 +560,7 @@ export default () => {
                     <DataTable
                         data={tableData}
                         columns={columns}
-                        searchFields={['indentNumber', 'productName', 'department', 'indenterName', 'groupHead', 'indentType']}
+                        searchFields={['indentNumber', 'productName', 'department', 'indenterName', 'groupHead']}
                         dataLoading={dataLoading}
                         isFetchingNextPage={isFetchingNextPage}
                         infiniteScroll={true}

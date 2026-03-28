@@ -31,9 +31,23 @@ export default () => {
 
     const historyData = useMemo(() => {
         if (!orderHistoryDataRaw) return [];
-        return orderHistoryDataRaw.pages.flatMap(page => page.data)
-            .filter((sheet: any) => sheet.po_number || sheet.party_name)
-            .map((sheet: any) => ({
+        
+        const allRecords = orderHistoryDataRaw.pages.flatMap(page => page.data)
+            .filter((sheet: any) => sheet.po_number || sheet.party_name);
+            
+        // Make PO Numbers unique by keeping only the most recent entry for each PO
+        const uniqueMap = new Map<string, any>();
+        allRecords.forEach((sheet: any) => {
+             const poNumberKey = sheet.po_number?.trim();
+             // Use PO number if it exists, otherwise fallback to ID so we don't drop missing ones completely
+             const key = poNumberKey || sheet.id.toString();
+             
+             if (!uniqueMap.has(key)) {
+                 uniqueMap.set(key, sheet);
+             }
+        });
+        
+        return Array.from(uniqueMap.values()).map((sheet: any) => ({
                 approvedBy: sheet.approved_by || '',
                 poCopy: sheet.pdf_url || sheet.pdf_link || '',
                 poNumber: sheet.po_number || '',
