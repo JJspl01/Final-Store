@@ -38,6 +38,8 @@ interface MasterRow {
     item_name: string | null;
     uom: string | null; // Added uom
     created_at: string | null;
+    contact_person: string | null;
+    contact_number: string | null;
 }
 
 interface MasterForm {
@@ -50,6 +52,8 @@ interface MasterForm {
     group_head: string;
     item_name: string;
     uom: string; // Added uom
+    contact_person: string;
+    contact_number: string;
 }
 
 const emptyForm: MasterForm = {
@@ -62,6 +66,8 @@ const emptyForm: MasterForm = {
     group_head: '',
     item_name: '',
     uom: '',
+    contact_person: '',
+    contact_number: '',
 };
 
 /* ───── field helper ───── */
@@ -153,8 +159,10 @@ export default function MasterData() {
             group_head: row.group_head || '',
             item_name: row.item_name || '',
             uom: row.uom || '',
+            contact_person: row.contact_person || '',
+            contact_number: row.contact_number || '',
         });
-        setFormMode(row.item_name ? 'Add Item' : 'Add Vendor');
+        setFormMode('Add Vendor'); // Open Add Vendor mode by default on edit
         setEditingId(row.id);
         setDialogOpen(true);
     }
@@ -322,6 +330,8 @@ export default function MasterData() {
                 group_head: form.group_head.trim() || null,
                 item_name: form.item_name.trim() || null,
                 uom: form.uom.trim() || null,
+                contact_person: form.contact_person.trim() || null,
+                contact_number: form.contact_number.trim() || null,
             };
 
             if (formMode === 'Add Vendor' && !payload.vendor_name && payload.vendor_name !== '-') {
@@ -532,6 +542,22 @@ export default function MasterData() {
                                             onChange={setField('payment_term')}
                                             placeholder="e.g. Net 30, Advance"
                                         />
+                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+                                            <Field
+                                                label="Contact Person"
+                                                id="contact_person"
+                                                value={form.contact_person}
+                                                onChange={setField('contact_person')}
+                                                placeholder="Enter contact person name"
+                                            />
+                                            <Field
+                                                label="Contact Number"
+                                                id="contact_number"
+                                                value={form.contact_number}
+                                                onChange={setField('contact_number')}
+                                                placeholder="Enter contact number"
+                                            />
+                                        </div>
                                     </div>
                                 ) : (
                                     <div className="space-y-5 animate-in fade-in slide-in-from-top-1 duration-200">

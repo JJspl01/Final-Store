@@ -377,7 +377,7 @@ export async function fetchSheet(
                     billingAddress: allBillingAddresses[0] || 'Default Billing Address',
                     destinationAddress: allDestinationAddresses[0] || 'Default Destination Address',
                     defaultTerms: allDefaultTerms,
-                    vendors: allVendorNames.map(vendorName => ({ vendorName, gstin: '', address: '', email: '' })),
+                    vendors: allVendorNames.map(vendorName => ({ vendorName, gstin: '', address: '', email: '', contactPerson: '', contactNumber: '' })),
                     paymentTerms: allPaymentTerms
                 };
             } else {
@@ -464,7 +464,9 @@ export async function fetchSheet(
                     vendorName: v.name || v.vendorName || v.vendor_name || '',
                     gstin: v.gstin ?? '',
                     address: v.address ?? '',
-                    email: v.email ?? ''
+                    email: v.email ?? '',
+                    contactPerson: v.contact_person ?? v.contactPerson ?? '',
+                    contactNumber: v.contact_number ?? v.contactNumber ?? ''
                 }));
             }
             // If vendors is an array of strings
@@ -473,7 +475,9 @@ export async function fetchSheet(
                     vendorName: vendorName || '',
                     gstin: '',
                     address: '',
-                    email: ''
+                    email: '',
+                    contactPerson: '',
+                    contactNumber: ''
                 }));
             }
         }
@@ -539,7 +543,7 @@ export async function fetchVendors() {
         // Fetch vendors from master_data table with pagination
         const allData = await fetchFromSupabasePaginated(
             'master_data',
-            'vendor_name, vendor_gstin, vendor_address, vendor_email',
+            'vendor_name, vendor_gstin, vendor_address, vendor_email, contact_person, contact_number',
             { column: 'id', options: { ascending: true } }
         );
 
@@ -548,6 +552,8 @@ export async function fetchVendors() {
             gstin: string;
             address: string;
             email: string;
+            contactPerson: string;
+            contactNumber: string;
         }>();
 
         allData.forEach(row => {
@@ -555,6 +561,8 @@ export async function fetchVendors() {
             const gstin = row.vendor_gstin || '';
             const address = row.vendor_address || '';
             const email = row.vendor_email || '';
+            const contactPerson = row.contact_person || '';
+            const contactNumber = row.contact_number || '';
 
             // Helper to add vendor if not already present or if present but has empty fields
             const addVendor = (name: string) => {
@@ -566,7 +574,9 @@ export async function fetchVendors() {
                         vendorName: trimmedName,
                         gstin: gstin,
                         address: address,
-                        email: email
+                        email: email,
+                        contactPerson: contactPerson,
+                        contactNumber: contactNumber
                     });
                 } else {
                     // Optional: If already exists but current row has more info, update it
@@ -574,6 +584,8 @@ export async function fetchVendors() {
                     if (!existing.gstin && gstin) existing.gstin = gstin;
                     if (!existing.address && address) existing.address = address;
                     if (!existing.email && email) existing.email = email;
+                    if (!existing.contactPerson && contactPerson) existing.contactPerson = contactPerson;
+                    if (!existing.contactNumber && contactNumber) existing.contactNumber = contactNumber;
                 }
             };
 

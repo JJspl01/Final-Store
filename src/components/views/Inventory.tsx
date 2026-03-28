@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import type { ColumnDef } from '@tanstack/react-table';
 import { Pill } from '../ui/pill';
 import { Plus, Store } from 'lucide-react';
@@ -7,6 +7,7 @@ import Heading from '../element/Heading';
 import { useInfiniteSupabaseQuery } from '@/hooks/useInfiniteSupabaseQuery';
 import { Button } from '../ui/button';
 import { useSheets } from '@/context/SheetsContext';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select';
 
 interface InventoryTable {
     itemName: string;
@@ -23,7 +24,9 @@ interface InventoryTable {
 }
 
 export default () => {
-    const { indentSheet, receivedSheet } = useSheets();
+    const { indentSheet, receivedSheet, masterSheet } = useSheets();
+    const [groupHeadFilter, setGroupHeadFilter] = useState<string>('All');
+    const [productFilter, setProductFilter] = useState<string>('All');
     
     // Data Query
     const {
@@ -32,9 +35,18 @@ export default () => {
         hasNextPage,
         isLoading: dataLoading,
         isFetchingNextPage,
-    } = useInfiniteSupabaseQuery(['inventory'], {
+    } = useInfiniteSupabaseQuery(['inventory', groupHeadFilter, productFilter], {
         tableName: 'inventory_view',
-        queryBuilder: (q) => q.order('item_name', { ascending: true }),
+        queryBuilder: (q) => {
+            let query = q.order('item_name', { ascending: true });
+            if (groupHeadFilter !== 'All') {
+                query = query.eq('group_head', groupHeadFilter);
+            }
+            if (productFilter !== 'All') {
+                query = query.eq('item_name', productFilter);
+            }
+            return query;
+        },
         pageSize: 20,
     });
 
@@ -76,11 +88,15 @@ export default () => {
 
         if (indentSheet) {
             indentSheet.forEach(indent => {
-                 if (indent.indentNumber && indent.productName) {
+                 if (!indent.productName) return;
+
+                 // Apply filters to indent processing
+                 if (groupHeadFilter !== 'All' && indent.groupHead !== groupHeadFilter) return;
+                 if (productFilter !== 'All' && indent.productName !== productFilter) return;
+
+                 if (indent.indentNumber) {
                       indentProductMap[indent.indentNumber] = indent.productName;
                  }
-                 
-                 if (!indent.productName) return;
                  
                  let indentedAmt = 0;
                  let approvedAmt = 0;
@@ -156,7 +172,20 @@ export default () => {
         });
 
         return Array.from(unifiedMap.values());
-    }, [inventoryDataRaw, indentSheet, receivedSheet]);
+    }, [inventoryDataRaw, indentSheet, receivedSheet, groupHeadFilter, productFilter]);
+
+    const groupHeadOptions = useMemo(() => {
+        if (!masterSheet?.groupHeads) return [];
+        return Object.keys(masterSheet.groupHeads).sort();
+    }, [masterSheet]);
+
+    const productOptions = useMemo(() => {
+        if (!masterSheet?.groupHeads) return [];
+        if (groupHeadFilter !== 'All') {
+            return (masterSheet.groupHeads[groupHeadFilter] || []).sort();
+        }
+        return Array.from(new Set(Object.values(masterSheet.groupHeads).flat() as string[])).sort();
+    }, [masterSheet, groupHeadFilter]);
     const columns: ColumnDef<InventoryTable>[] = [
         {
             accessorKey: 'itemName',
@@ -206,6 +235,56 @@ export default () => {
                 infiniteScroll={true}
                 onLoadMore={fetchNextPage}
                 hasMore={hasNextPage}
+                extraActions={
+                    <div className="flex gap-4 items-center">
+                        <div className="flex flex-col gap-1">
+                            <Select value={groupHeadFilter} onValueChange={(v) => {
+                                setGroupHeadFilter(v);
+                                setProductFilter('All');
+                            }}>
+                                <SelectTrigger className="w-[220px] h-9 bg-white shadow-sm border-primary/20 hover:border-primary/40 transition-colors">
+                                    <SelectValue placeholder="All Group Heads" />
+                                </SelectTrigger>
+                                <SelectContent className="w-[280px] max-h-[220px] overflow-y-auto shadow-xl border-primary/10">
+                                    <SelectItem value="All" className="font-medium text-primary">All Group Heads</SelectItem>
+                                    <div className="h-px bg-primary/5 my-1" />
+                                    {groupHeadOptions.map(opt => (
+                                        <SelectItem key={opt} value={opt}>{opt}</SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                        </div>
+
+                        <div className="flex flex-col gap-1">
+                            <Select value={productFilter} onValueChange={setProductFilter}>
+                                <SelectTrigger className="w-[250px] h-9 bg-white shadow-sm border-primary/20 hover:border-primary/40 transition-colors">
+                                    <SelectValue placeholder="All Products" />
+                                </SelectTrigger>
+                                <SelectContent className="w-[300px] max-h-[220px] overflow-y-auto shadow-xl border-primary/10">
+                                    <SelectItem value="All" className="font-medium text-primary">All Products</SelectItem>
+                                    <div className="h-px bg-primary/5 my-1" />
+                                    {productOptions.map(opt => (
+                                        <SelectItem key={opt} value={opt}>{opt}</SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                        </div>
+                        
+                        {(groupHeadFilter !== 'All' || productFilter !== 'All') && (
+                            <Button 
+                                variant="ghost" 
+                                size="sm" 
+                                onClick={() => {
+                                    setGroupHeadFilter('All');
+                                    setProductFilter('All');
+                                }}
+                                className="h-9 text-xs text-muted-foreground hover:text-red-500 hover:bg-red-50 transition-all font-medium"
+                            >
+                                Reset Filters
+                            </Button>
+                        )}
+                    </div>
+                }
             />
         </div>
     );

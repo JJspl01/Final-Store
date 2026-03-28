@@ -164,6 +164,8 @@ export type Vendor = {
     gstin: string;
     address: string;
     email: string;
+    contactPerson?: string;
+    contactNumber?: string;
 };
 
 export type MasterSheet = {

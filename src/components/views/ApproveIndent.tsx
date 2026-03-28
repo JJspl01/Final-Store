@@ -190,27 +190,16 @@ export default () => {
         setBulkUpdates((prevUpdates) => {
             const newUpdates = new Map(prevUpdates);
 
-            if (field === 'vendorType') {
-                const vendorValue = value as string;
-                selectedRows.forEach((selectedIndentNo) => {
-                    const currentUpdate = newUpdates.get(selectedIndentNo) || {};
-                    newUpdates.set(selectedIndentNo, {
-                        ...currentUpdate,
-                        vendorType: vendorValue,
-                    });
-                });
-            } else {
-                const updateVal = value;
-                const currentUpdate = newUpdates.get(indentNo) || {};
-                newUpdates.set(indentNo, {
-                    ...currentUpdate,
-                    [field]: updateVal,
-                });
-            }
+            const updateVal = value;
+            const currentUpdate = newUpdates.get(indentNo) || {};
+            newUpdates.set(indentNo, {
+                ...currentUpdate,
+                [field]: updateVal,
+            });
 
             return newUpdates;
         });
-    }, [selectedRows]);
+    }, []);
 
     const handleSubmitBulkUpdates = async () => {
         if (selectedRows.size === 0) {
