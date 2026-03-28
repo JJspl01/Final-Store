@@ -1,16 +1,17 @@
 import { useMemo } from 'react';
 import type { ColumnDef } from '@tanstack/react-table';
 import { Pill } from '../ui/pill';
-import { Store } from 'lucide-react';
+import { Plus, Store } from 'lucide-react';
 import DataTable from '../element/DataTable';
 import Heading from '../element/Heading';
 import { useInfiniteSupabaseQuery } from '@/hooks/useInfiniteSupabaseQuery';
+import { Button } from '../ui/button';
+import { useSheets } from '@/context/SheetsContext';
 
 interface InventoryTable {
     itemName: string;
     groupHead: string;
     uom: string;
-    status: string;
     opening: number;
     rate: number;
     indented: number;
@@ -22,6 +23,8 @@ interface InventoryTable {
 }
 
 export default () => {
+    const { indentSheet, receivedSheet } = useSheets();
+    
     // Data Query
     const {
         data: inventoryDataRaw,
@@ -36,27 +39,128 @@ export default () => {
     });
 
     const tableData = useMemo(() => {
-        if (!inventoryDataRaw) return [];
-        return inventoryDataRaw.pages.flatMap(page => page.data).map((i: any) => ({
-            totalPrice: i.totalPrice || 0,
-            approvedIndents: i.approved || 0,
-            uom: i.uom || '',
-            rate: i.individualRate || 0,
-            current: i.current || 0,
-            status: i.colorCode || '',
-            indented: i.indented || 0,
-            opening: i.opening || 0,
-            itemName: i.item_name || '',
-            groupHead: i.group_head || '',
-            purchaseQuantity: i.purchase_quantity || 0,
-            approved: i.approved || 0,
-            outQuantity: i.out_quantity || 0,
-        }));
-    }, [inventoryDataRaw]);
+        const unifiedMap = new Map<string, InventoryTable>();
+
+        // 1. Process existing inventory data
+        if (inventoryDataRaw) {
+            inventoryDataRaw.pages.flatMap(page => page.data).forEach((i: any) => {
+                if (!i.item_name) return;
+                
+                unifiedMap.set(i.item_name, {
+                    itemName: i.item_name,
+                    groupHead: i.group_head || '',
+                    uom: i.uom || '',
+                    rate: i.individualRate || 0,
+                    opening: i.opening || 0,
+                    indented: i.indented || 0,
+                    approved: i.approved || 0,
+                    purchaseQuantity: i.purchase_quantity || 0,
+                    outQuantity: i.out_quantity || 0,
+                    current: i.current || 0,
+                    totalPrice: i.totalPrice || 0,
+                });
+            });
+        }
+
+        // 2. Pre-calculate total indented quantity per product and include new products from indents
+        // Reset indented, approved, purchaseQuantity, and outQuantity to recalculate from global sheets
+        unifiedMap.forEach(item => { 
+             item.indented = 0;
+             item.approved = 0;
+             item.purchaseQuantity = 0;
+             item.outQuantity = 0;
+        });
+
+        const indentProductMap: Record<string, string> = {};
+        const rateUpdated = new Set<string>();
+
+        if (indentSheet) {
+            indentSheet.forEach(indent => {
+                 if (indent.indentNumber && indent.productName) {
+                      indentProductMap[indent.indentNumber] = indent.productName;
+                 }
+                 
+                 if (!indent.productName) return;
+                 
+                 let indentedAmt = 0;
+                 let approvedAmt = 0;
+                 let outAmt = 0;
+
+                 // Separate Store Out and Purchase logic
+                 if (indent.indentType === 'Store Out') {
+                       // Store out indents count toward 'Total Issued' if approved
+                       if (indent.actual6 || indent.issueStatus === 'Done' || indent.issueStatus === 'Approved') {
+                           outAmt = Number(indent.issuedQuantity || indent.quantity || 0);
+                       }
+                 } else {
+                       indentedAmt = Number(indent.quantity || 0);
+                       const isApproved = indent.vendorType === 'Regular' || indent.vendorType === 'Three Party';
+                       approvedAmt = isApproved ? Number(indent.approvedQuantity || indent.quantity || 0) : 0;
+                 }
+                 
+                 let newRate: number | null = null;
+                 if (indent.approvedRate && !rateUpdated.has(indent.productName)) {
+                     newRate = Number(indent.approvedRate);
+                     rateUpdated.add(indent.productName);
+                 }
+                 
+                 if (unifiedMap.has(indent.productName)) {
+                      const existing = unifiedMap.get(indent.productName)!;
+                      existing.indented += indentedAmt;
+                      existing.approved += approvedAmt;
+                      existing.outQuantity += outAmt;
+                      
+                      if (newRate !== null) {
+                          existing.rate = newRate;
+                      }
+                      
+                      // Use groupHead and uom from indent if missing in inventory
+                      if (!existing.groupHead) existing.groupHead = indent.groupHead || '';
+                      if (!existing.uom) existing.uom = indent.uom || '';
+                 } else {
+                      // Add new product locally before it becomes officially purchased into inventory
+                      unifiedMap.set(indent.productName, {
+                            itemName: indent.productName,
+                            groupHead: indent.groupHead || '',
+                            uom: indent.uom || '',
+                            rate: newRate !== null ? newRate : 0,
+                            opening: 0,
+                            indented: indentedAmt,
+                            approved: approvedAmt,
+                            purchaseQuantity: 0,
+                            outQuantity: outAmt,
+                            current: 0,
+                            totalPrice: 0,
+                      });
+                 }
+            });
+        }
+
+        if (receivedSheet) {
+             receivedSheet.forEach(received => {
+                  if (received.indentNumber && received.receivedQuantity) {
+                       const productName = indentProductMap[received.indentNumber];
+                       if (productName && unifiedMap.has(productName)) {
+                            const existing = unifiedMap.get(productName)!;
+                            existing.purchaseQuantity += Number(received.receivedQuantity);
+                       }
+                  }
+             });
+        }
+
+        // Ensure Total Stock correctly reflects dynamically synced Purchased and Issued quantities
+        unifiedMap.forEach(item => {
+             item.current = item.opening + item.purchaseQuantity - item.outQuantity;
+             // Calculate accurate total price dynamically using new rate
+             item.totalPrice = Number((item.current * item.rate).toFixed(2));
+        });
+
+        return Array.from(unifiedMap.values());
+    }, [inventoryDataRaw, indentSheet, receivedSheet]);
     const columns: ColumnDef<InventoryTable>[] = [
         {
             accessorKey: 'itemName',
-            header: 'Item',
+            header: 'Product Name',
             cell: ({ row }) => {
                 return (
                     <div className="text-wrap max-w-40 text-center">{row.original.itemName}</div>
@@ -72,28 +176,11 @@ export default () => {
                 return <>&#8377;{row.original.rate}</>;
             },
         },
-        {
-            accessorKey: 'status',
-            header: 'Status',
-            cell: ({ row }) => {
-                const code = row.original.status.toLowerCase();
-                if (row.original.current === 0) {
-                    return <Pill variant="reject">Out of Stock</Pill>;
-                }
-                if (code === 'red') {
-                    return <Pill variant="pending">Low Stock</Pill>;
-                }
-                if (code === 'purple') {
-                    return <Pill variant="primary">Excess</Pill>;
-                }
-                return <Pill variant="secondary">In Stock</Pill>;
-            },
-        },
-        { accessorKey: 'indented', header: 'Indented' },
-        { accessorKey: 'approved', header: 'Approved' },
-        { accessorKey: 'purchaseQuantity', header: 'Purchased' },
-        { accessorKey: 'outQuantity', header: 'Issued' },
-        { accessorKey: 'current', header: 'Quantity' },
+        { accessorKey: 'indented', header: 'Total Indented' },
+        { accessorKey: 'approved', header: 'Total Approved' },
+        { accessorKey: 'purchaseQuantity', header: 'Total Purchased' },
+        { accessorKey: 'outQuantity', header: 'Total Issued' },
+        { accessorKey: 'current', header: 'Total Stock' },
         {
             accessorKey: 'totalPrice',
             header: 'Total Price',
@@ -106,7 +193,7 @@ export default () => {
 
     return (
         <div>
-            <Heading heading="Inventory" subtext="View inveontory">
+            <Heading heading="Inventory" subtext="View inventory">
                 <Store size={50} className="text-primary" />
             </Heading>
 
@@ -119,6 +206,12 @@ export default () => {
                 infiniteScroll={true}
                 onLoadMore={fetchNextPage}
                 hasMore={hasNextPage}
+                extraActions={
+                    <Button className="flex gap-2">
+                        <Plus size={20} />
+                        Add Item
+                    </Button>
+                }
             />
         </div>
     );

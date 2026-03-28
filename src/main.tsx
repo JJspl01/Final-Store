@@ -135,14 +135,14 @@ const routes: RouteAttributes[] = [
         gateKey: 'dashboard',
         notifications: () => 0,
     },
-    // {
-    //     path: 'inventory',
-    //     name: 'Inventory',
-    //     icon: <Store size={20} />,
-    //     element: <Inventory />,
-    //     gateKey: 'inventory',
-    //     notifications: () => 0,
-    // },
+    {
+        path: 'inventory',
+        name: 'Inventory',
+        icon: <Store size={20} />,
+        element: <Inventory />,
+        gateKey: 'inventory',
+        notifications: () => 0,
+    },
     {
         path: 'create-indent',
         gateKey: 'createIndent',

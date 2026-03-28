@@ -32,7 +32,7 @@ export default ({ items, variant, collapsible }: { items: RouteAttributes[]; var
             const pathToPermissionMap: Record<string, keyof UserPermissions> = {
                 '': 'dashboard', // Dashboard route
                 'dashboard': 'dashboard',
-                // 'inventory': 'inventory',
+                'inventory': 'inventory',
                 'setting': 'setting',
                 'create-indent': 'createIndent',
                 'all-indent': 'allIndent',
@@ -40,7 +40,7 @@ export default ({ items, variant, collapsible }: { items: RouteAttributes[]; var
                 'get-purchase': 'getPurchase',
                 'approve-indent': 'indentApprovalView',
                 'po-history': 'ordersView',
-                // 'po-master': 'poMaster',
+                'po-master': 'poMaster',
                 'pending-pos': 'pendingIndentsView',
                 'receive-items': 'receiveItemView',
                 'store-out-approval': 'storeOutApprovalView',
