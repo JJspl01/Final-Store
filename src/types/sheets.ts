@@ -68,6 +68,8 @@ export type IndentSheet = {
     advanceAmountIfAny: number;
     photoOfBill: string;
     rate: number;
+    openingStock?: number;
+    closingStock?: number;
 
     // Snake case equivalents for Supabase
     indent_number?: string;
@@ -83,6 +85,8 @@ export type IndentSheet = {
     photo_of_bill?: string;
     product_name?: string;
     approved_quantity?: number;
+    opening_stock?: number;
+    closing_stock?: number;
 };
 
 export type ReceivedSheet = {

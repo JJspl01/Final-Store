@@ -113,7 +113,7 @@ export default () => {
         { accessorKey: 'totalAmount', header: 'Total Amount', cell: ({ row }) => <>&#8377;{row.original.totalAmount.toLocaleString()}</> },
         {
             accessorKey: 'status',
-            header: 'Status',
+            header: 'Send Email',
             cell: ({ row }) => {
                 const status = row.original.status;
                 let color = 'text-gray-500';
